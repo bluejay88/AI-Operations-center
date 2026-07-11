@@ -58,6 +58,10 @@ python -m pip install -e ".[dev]"
 python -m pytest
 ```
 
+## Flowise URL
+
+To configure Flowise cloud, copy the base URL from the Flowise browser tab. Use only the protocol and domain, not the `/canvas/...` or `/chatflow/...` path.
+
 ## Common Commands
 
 ```powershell

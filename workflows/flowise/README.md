@@ -12,6 +12,33 @@ FLOWISE_API_KEY=your-flowise-api-key
 LOCAL_FLOWISE_URL=http://localhost:3001
 ```
 
+## Where To Get The Flowise URL
+
+Open the Flowise tab where you are logged in and copy only the base part from the address bar:
+
+```text
+https://example.flowise-host.com
+```
+
+Do not include the chatflow/canvas path. For example, if the address bar shows:
+
+```text
+https://example.flowise-host.com/canvas/abc123
+```
+
+then `FLOWISE_URL` should be:
+
+```text
+https://example.flowise-host.com
+```
+
+If you prefer to keep using your local `flowcheck.py` file, it can contain:
+
+```python
+api_key = "your-api-key"
+flowise_url = "https://your-flowise-base-url"
+```
+
 If you want to use the local Docker Flowise instance, leave `FLOWISE_URL` blank and run:
 
 ```powershell
@@ -52,4 +79,3 @@ Example body:
 ## Browser Setup
 
 Since you are already logged in, use Chrome to create or import the chatflows in Flowise. After each chatflow is created, copy its chatflow ID into `.env` or a future `config/flowise_chatflows.yaml` mapping.
-

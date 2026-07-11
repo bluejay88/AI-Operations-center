@@ -9,14 +9,36 @@ from .settings import get_settings
 
 def flowise_base_url() -> str:
     settings = get_settings()
-    return (settings.flowise_url or settings.local_flowise_url).rstrip("/")
+    return (settings.flowise_url or _local_flowcheck_url() or settings.local_flowise_url).rstrip("/")
 
 
 def flowise_headers() -> dict[str, str]:
     settings = get_settings()
-    if not settings.flowise_api_key:
+    api_key = settings.flowise_api_key or _local_flowcheck_api_key()
+    if not api_key:
         return {}
-    return {"Authorization": f"Bearer {settings.flowise_api_key}"}
+    return {"Authorization": f"Bearer {api_key}"}
+
+
+def _local_flowcheck_api_key() -> str:
+    try:
+        from flowcheck import api_key
+    except Exception:
+        return ""
+    return str(api_key).strip()
+
+
+def _local_flowcheck_url() -> str:
+    try:
+        import flowcheck
+    except Exception:
+        return ""
+
+    for attr in ("flowise_url", "url", "base_url"):
+        value = getattr(flowcheck, attr, "")
+        if value:
+            return str(value).strip()
+    return ""
 
 
 async def healthcheck() -> dict[str, Any]:
@@ -43,4 +65,3 @@ async def predict(chatflow_id: str, question: str, override_config: dict[str, An
         )
         response.raise_for_status()
         return response.json()
-

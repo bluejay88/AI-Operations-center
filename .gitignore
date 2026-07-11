@@ -1,4 +1,5 @@
 .env
+flowcheck.py
 .venv/
 __pycache__/
 *.pyc
@@ -9,4 +10,3 @@ data/
 exports/
 logs/
 node_modules/
-

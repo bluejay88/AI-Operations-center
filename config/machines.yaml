@@ -1,0 +1,64 @@
+machines:
+  - id: brain-gaming-pc
+    name: Gaming PC AI Server
+    role: brain
+    responsibilities:
+      - orchestrator
+      - database
+      - api
+      - reporting
+      - model-serving
+      - git-sync
+      - n8n-automation
+    capacity_weight: 4
+    services:
+      - postgres
+      - ollama
+      - open-webui
+      - n8n
+      - ai-ops-api
+
+  - id: business-laptop
+    name: Laptop A Business AI
+    role: business
+    responsibilities:
+      - email-sorting
+      - candidate-reminders
+      - calendar-management
+      - customer-support-drafts
+      - invoice-generation
+      - social-scheduling
+      - accounting-reports
+      - grant-searches
+      - crm-updates
+    capacity_weight: 2
+
+  - id: research-laptop
+    name: Laptop B Research AI
+    role: research
+    responsibilities:
+      - grants
+      - real-estate-deals
+      - estate-sales
+      - ebay-arbitrage
+      - gaming-trends
+      - ai-news
+      - illinois-business-opportunities
+      - government-funding
+      - database-building
+    capacity_weight: 2
+
+  - id: dev-laptop
+    name: Laptop C Development AI
+    role: development
+    responsibilities:
+      - write-code
+      - test-code
+      - unit-tests
+      - website-deployments
+      - app-builds
+      - pull-request-review
+      - security-checks
+      - documentation
+    capacity_weight: 3
+

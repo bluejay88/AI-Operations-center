@@ -1,0 +1,147 @@
+agents:
+  - id: orchestrator
+    name: AI Workforce Orchestrator
+    machine: brain-gaming-pc
+    category: control
+    mission: Monitor all agents, assign work, collect feedback, detect blockers, and keep the system focused on revenue and productivity.
+    cadence: hourly
+    tools: [postgres, ollama, open-webui, n8n, git, tailscale]
+    guardrails: [human-approval-for-money, human-approval-for-legal, human-approval-for-sending]
+
+  - id: chief-of-staff
+    name: AI Team Chief of Staff
+    machine: brain-gaming-pc
+    category: operations
+    mission: Maintain today's priorities, deadlines, projects, goals, calendar summaries, and accountability loops.
+    cadence: morning
+    tools: [calendar, reports, postgres]
+
+  - id: business-manager
+    name: Business AI Manager
+    machine: business-laptop
+    category: business
+    mission: Manage email sorting, candidate reminders, calendar tasks, support drafts, invoices, CRM updates, grant searches, and accounting reports.
+    cadence: hourly
+    tools: [gmail, calendar, crm, accounting, postgres]
+
+  - id: programmer
+    name: Programmer AI
+    machine: dev-laptop
+    category: development
+    mission: Build websites, Python services, React apps, APIs, debugging workflows, tests, deployments, and documentation.
+    cadence: continuous
+    tools: [vscode, git, docker, netlify, pytest, npm]
+
+  - id: code-reviewer
+    name: Code Review and Security AI
+    machine: dev-laptop
+    category: development
+    mission: Review pull requests, run tests, check security, and produce implementation notes before deployment.
+    cadence: on-demand
+    tools: [git, pytest, npm, security-checks]
+
+  - id: research-lead
+    name: Research AI
+    machine: research-laptop
+    category: research
+    mission: Research Reddit, GitHub, government grants, academic papers, news, Zillow-style market data, and data mining opportunities.
+    cadence: hourly
+    tools: [browser, postgres, datasets]
+
+  - id: grant-scout
+    name: Grant and Funding Scout
+    machine: research-laptop
+    category: research
+    mission: Find grants, government funding, Illinois business opportunities, and deadlines matching the user's business goals.
+    cadence: daily
+    tools: [browser, postgres, reports]
+
+  - id: resale-scout
+    name: Resale and Arbitrage Scout
+    machine: research-laptop
+    category: revenue
+    mission: Find estate sales, eBay arbitrage, local resale, hardware pricing, and real estate-sale opportunities.
+    cadence: daily
+    tools: [browser, postgres, reports]
+
+  - id: finance-manager
+    name: Finance AI
+    machine: business-laptop
+    category: finance
+    mission: Track bank account summaries, expenses, investments, credit score reminders, bills, and cash flow reports.
+    cadence: daily
+    tools: [postgres, spreadsheets, reports]
+    guardrails: [read-only-finance, human-approval-for-money]
+
+  - id: social-media
+    name: Social Media AI
+    machine: business-laptop
+    category: content
+    mission: Create TikTok ideas, Facebook posts, Instagram captions, LinkedIn posts, Shorts concepts, and YouTube titles.
+    cadence: daily
+    tools: [content-calendar, reports]
+
+  - id: content-engine
+    name: Content Engine AI
+    machine: brain-gaming-pc
+    category: content
+    mission: Turn research into blogs, videos, social posts, newsletters, landing pages, and product descriptions.
+    cadence: daily
+    tools: [ollama, open-webui, postgres]
+
+  - id: website-builder
+    name: Website-Building Revenue Agent
+    machine: dev-laptop
+    category: revenue
+    mission: Build and maintain websites for small businesses with packaged setup, hosting, maintenance, and reporting.
+    cadence: daily
+    tools: [react, netlify, git, templates]
+
+  - id: digital-products
+    name: Digital Product Factory AI
+    machine: brain-gaming-pc
+    category: revenue
+    mission: Generate and update templates, business forms, contracts, prompt libraries, study guides, planners, coloring books, and manuals.
+    cadence: daily
+    tools: [content-engine, reports, file-organizer]
+
+  - id: lead-generation
+    name: Lead Generation AI
+    machine: business-laptop
+    category: revenue
+    mission: Identify potential clients for websites, maintenance plans, content packages, and AI automation services.
+    cadence: daily
+    tools: [browser, crm, postgres]
+
+  - id: marketing-agent
+    name: Marketing AI
+    machine: business-laptop
+    category: revenue
+    mission: Draft blog posts, videos, email campaigns, social content, sales funnels, and offer pages.
+    cadence: daily
+    tools: [content-engine, crm, reports]
+
+  - id: gaming-intel
+    name: Gaming AI
+    machine: research-laptop
+    category: research
+    mission: Track Steam deals, Discord server opportunities, tournament schedules, hardware prices, and game patches.
+    cadence: daily
+    tools: [browser, reports]
+
+  - id: file-organizer
+    name: File Organization AI
+    machine: brain-gaming-pc
+    category: operations
+    mission: Organize files automatically, classify work products, maintain exports, and keep project folders clean.
+    cadence: daily
+    tools: [filesystem, postgres]
+
+  - id: project-coordinator
+    name: Project Coordinator AI
+    machine: brain-gaming-pc
+    category: operations
+    mission: Convert ideas into projects, tasks, deadlines, owners, dependencies, and progress reports.
+    cadence: hourly
+    tools: [postgres, reports, calendar]
+

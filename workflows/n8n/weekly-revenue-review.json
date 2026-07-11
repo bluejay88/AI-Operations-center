@@ -1,0 +1,51 @@
+{
+  "name": "AI Ops Weekly Revenue Review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "weekly-schedule",
+      "name": "Monday Morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://brain-gaming-pc:8088/reports/weekly"
+      },
+      "id": "get-weekly-report",
+      "name": "Get Weekly Revenue Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "Monday Morning": {
+      "main": [
+        [
+          {
+            "node": "Get Weekly Revenue Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "America/Chicago"
+  }
+}
+

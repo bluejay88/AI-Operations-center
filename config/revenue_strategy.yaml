@@ -1,0 +1,47 @@
+annual_revenue_target:
+  low: 250000
+  high: 500000
+  currency: USD
+
+priority_offers:
+  - name: Small Business Website Build
+    type: service
+    price_range: [1500, 7500]
+    recurring_range: [99, 750]
+    owning_agents: [website-builder, lead-generation, marketing-agent]
+    notes: Package setup, hosting, SEO basics, monthly maintenance, and analytics reports.
+
+  - name: AI-Powered Website Maintenance
+    type: subscription
+    price_range: [299, 1500]
+    recurring_range: [299, 1500]
+    owning_agents: [website-builder, programmer, content-engine]
+    notes: Updates, content refreshes, performance checks, uptime monitoring, and monthly insight reports.
+
+  - name: Social Content Packages
+    type: subscription
+    price_range: [299, 2500]
+    recurring_range: [299, 2500]
+    owning_agents: [social-media, marketing-agent, content-engine]
+    notes: Short-form ideas, captions, carousels, posting calendars, and repurposed blog/video content.
+
+  - name: Digital Product Store
+    type: passive
+    price_range: [9, 199]
+    owning_agents: [digital-products, content-engine, marketing-agent]
+    notes: Templates, forms, contracts, prompt libraries, planners, manuals, study guides, and coding books.
+
+  - name: Research Opportunity Briefs
+    type: subscription
+    price_range: [49, 499]
+    recurring_range: [49, 499]
+    owning_agents: [research-lead, grant-scout, resale-scout]
+    notes: Grants, resale opportunities, real estate leads, local market opportunities, and trend reports.
+
+operating_principles:
+  - Start with services that can produce cash quickly.
+  - Convert repeatable service work into templates, SOPs, automations, and subscriptions.
+  - Require measured demand before building large passive product libraries.
+  - Track lead source, conversion rate, time-to-delivery, gross margin, and recurring revenue.
+  - Keep human approval on legal, financial, publication, and client-facing sends until reviewed.
+

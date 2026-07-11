@@ -16,6 +16,7 @@ machines:
       - ollama
       - open-webui
       - n8n
+      - flowise
       - ai-ops-api
 
   - id: business-laptop
@@ -61,4 +62,3 @@ machines:
       - security-checks
       - documentation
     capacity_weight: 3
-

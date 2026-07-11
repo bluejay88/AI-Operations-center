@@ -1,0 +1,17 @@
+integrations:
+  flowise:
+    purpose: Visual agent and chain builder for reusable AI workflows.
+    primary_url_env: FLOWISE_URL
+    local_url_env: LOCAL_FLOWISE_URL
+    api_key_env: FLOWISE_API_KEY
+    recommended_flows:
+      - ai-ops-orchestrator
+      - revenue-idea-generator
+      - grant-research-assistant
+      - content-engine
+      - code-review-assistant
+    notes:
+      - Put your Flowise cloud URL in FLOWISE_URL.
+      - Use LOCAL_FLOWISE_URL=http://localhost:3001 for the Docker Flowise service.
+      - Store API keys only in .env, never in git.
+

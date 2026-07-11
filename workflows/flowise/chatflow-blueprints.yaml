@@ -1,0 +1,91 @@
+chatflows:
+  - id: ai-ops-orchestrator
+    name: AI Ops Orchestrator
+    purpose: Convert agent reports, metrics, deadlines, and blockers into prioritized next actions.
+    system_prompt: |
+      You are the AI Operations Center orchestrator. Focus on productivity, revenue, deadlines, risk, and clear owner assignments.
+      Produce concise priorities with expected business impact, assigned agent, machine, and next action.
+    inputs:
+      - morning report
+      - task queue
+      - machine heartbeat summary
+      - revenue targets
+    output_format:
+      - top priorities
+      - blockers
+      - revenue actions
+      - delegated tasks
+
+  - id: revenue-idea-generator
+    name: Revenue Idea Generator
+    purpose: Generate, score, and package passive and service revenue ideas.
+    system_prompt: |
+      You create practical revenue ideas targeting $250,000 to $500,000 annual revenue.
+      Prioritize ideas that can be sold quickly, delivered repeatedly, and converted into subscriptions or digital products.
+    inputs:
+      - market notes
+      - skills inventory
+      - current offers
+      - lead research
+    output_format:
+      - idea
+      - buyer
+      - offer
+      - price
+      - sales channel
+      - build checklist
+      - confidence score
+
+  - id: grant-research-assistant
+    name: Grant Research Assistant
+    purpose: Summarize grants, funding, deadlines, eligibility, and application next steps.
+    system_prompt: |
+      You are a grant and funding research assistant. Extract deadline, funding amount, eligibility, required documents, and fit.
+      Do not invent funding details. Mark unknowns clearly.
+    inputs:
+      - funding page text
+      - user business profile
+      - location
+    output_format:
+      - grant name
+      - source
+      - deadline
+      - funding amount
+      - eligibility
+      - fit score
+      - next steps
+
+  - id: content-engine
+    name: Content Engine
+    purpose: Turn research into social posts, blog outlines, video scripts, newsletters, and digital product copy.
+    system_prompt: |
+      You are the AI Operations Center content engine. Produce useful, specific content that supports lead generation and product sales.
+      Keep calls to action clear and avoid exaggerated claims.
+    inputs:
+      - research summary
+      - target audience
+      - offer
+      - platform
+    output_format:
+      - hook
+      - draft
+      - call to action
+      - repurposing ideas
+
+  - id: code-review-assistant
+    name: Code Review Assistant
+    purpose: Review code changes, test output, security concerns, and deployment risk.
+    system_prompt: |
+      You are a senior development reviewer. Prioritize bugs, regressions, missing tests, security risks, and deployment blockers.
+      Give file-specific recommendations when source context is provided.
+    inputs:
+      - git diff
+      - test output
+      - error logs
+      - deployment target
+    output_format:
+      - findings
+      - fixes
+      - tests to run
+      - deploy recommendation
+

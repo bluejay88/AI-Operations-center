@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     openwebui_url: str = "http://localhost:3000"
     n8n_url: str = "http://localhost:5678"
     local_n8n_url: str = "http://localhost:5678"
+    flowise_url: str = ""
+    local_flowise_url: str = "http://localhost:3001"
+    flowise_api_key: str = ""
     worker_machine_id: str = "brain-gaming-pc"
     report_timezone: str = "America/Chicago"
     human_approval_required: bool = Field(default=True)

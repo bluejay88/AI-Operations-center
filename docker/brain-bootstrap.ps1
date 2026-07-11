@@ -15,4 +15,4 @@ Write-Host "AI Operations Center is starting."
 Write-Host "API: http://localhost:8088"
 Write-Host "Open WebUI: http://localhost:3000"
 Write-Host "n8n: http://localhost:5678"
-
+Write-Host "Flowise: http://localhost:3001"

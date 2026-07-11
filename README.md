@@ -45,6 +45,7 @@ docker compose --profile worker up --build worker
 - Open WebUI: `http://localhost:3000`
 - n8n cloud: `https://aioperation.app.n8n.cloud`
 - local n8n fallback: `http://localhost:5678`
+- local Flowise fallback: `http://localhost:3001`
 
 ## Local Python Setup
 

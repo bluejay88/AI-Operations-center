@@ -17,7 +17,7 @@ The system should focus on practical business output:
 
 ### Gaming PC: Brain and AI Server
 
-Runs the orchestrator, database, API, Ollama, Open WebUI, n8n, reports, and Git sync. It owns system memory, task assignment, approval policy, and revenue accountability.
+Runs the orchestrator, database, API, Ollama, Open WebUI, Flowise, n8n, reports, and Git sync. It owns system memory, task assignment, approval policy, and revenue accountability.
 
 ### Business Laptop
 
@@ -87,4 +87,3 @@ Each new agent must have:
 - Success metrics.
 - Approval level.
 - Failure handling.
-

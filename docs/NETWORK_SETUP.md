@@ -8,6 +8,7 @@
 - VS Code on all machines.
 - Ollama on the Gaming PC first; optional on laptops later.
 - Open WebUI on the Gaming PC.
+- Flowise cloud or local Flowise on the Gaming PC for visual AI chains.
 - n8n cloud at `https://aioperation.app.n8n.cloud` for primary automations.
 - Optional local n8n on the Gaming PC for development and fallback.
 - PostgreSQL on the Gaming PC.
@@ -43,6 +44,12 @@ Change `WORKER_MACHINE_ID` for each laptop.
 ## n8n Cloud
 
 Use `https://aioperation.app.n8n.cloud` as the primary automation workspace. The Docker Compose n8n service remains useful for testing workflows locally before importing them into the cloud account.
+
+## Flowise
+
+Flowise should own reusable AI chains. Add your Flowise cloud URL to `.env` as `FLOWISE_URL`. If you want the local fallback, run the Docker Compose `flowise` service and open `http://localhost:3001`.
+
+Use n8n to schedule a workflow, then call either Flowise directly or the AI Operations API endpoint `/integrations/flowise/predict`.
 
 ## GitHub Repository
 

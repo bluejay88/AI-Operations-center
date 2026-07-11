@@ -5,7 +5,7 @@ agents:
     category: control
     mission: Monitor all agents, assign work, collect feedback, detect blockers, and keep the system focused on revenue and productivity.
     cadence: hourly
-    tools: [postgres, ollama, open-webui, n8n, git, tailscale]
+    tools: [postgres, ollama, open-webui, n8n, flowise, git, tailscale]
     guardrails: [human-approval-for-money, human-approval-for-legal, human-approval-for-sending]
 
   - id: chief-of-staff
@@ -87,7 +87,7 @@ agents:
     category: content
     mission: Turn research into blogs, videos, social posts, newsletters, landing pages, and product descriptions.
     cadence: daily
-    tools: [ollama, open-webui, postgres]
+    tools: [ollama, open-webui, flowise, postgres]
 
   - id: website-builder
     name: Website-Building Revenue Agent
@@ -144,4 +144,3 @@ agents:
     mission: Convert ideas into projects, tasks, deadlines, owners, dependencies, and progress reports.
     cadence: hourly
     tools: [postgres, reports, calendar]
-

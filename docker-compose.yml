@@ -51,6 +51,23 @@ services:
       postgres:
         condition: service_healthy
 
+  flowise:
+    image: flowiseai/flowise:latest
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      FLOWISE_USERNAME: ${FLOWISE_USERNAME:-admin}
+      FLOWISE_PASSWORD: ${FLOWISE_PASSWORD:-change-me}
+      APIKEY_PATH: /root/.flowise
+      SECRETKEY_PATH: /root/.flowise
+      LOG_PATH: /root/.flowise/logs
+    volumes:
+      - flowise-data:/root/.flowise
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   ai-ops-api:
     build: .
     env_file:
@@ -76,3 +93,4 @@ volumes:
   ollama-data:
   open-webui-data:
   n8n-data:
+  flowise-data:

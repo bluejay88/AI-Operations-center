@@ -3,6 +3,7 @@ const state = {
   readiness: null,
   tasks: [],
   connections: [],
+  factory: null,
   selectedReport: "hourly",
   stream: null,
 };
@@ -10,6 +11,8 @@ const state = {
 const els = {
   summary: document.querySelector("#summary-strip"),
   machines: document.querySelector("#machine-grid"),
+  factory: document.querySelector("#factory-grid"),
+  factoryGates: document.querySelector("#factory-gates"),
   agents: document.querySelector("#agent-matrix"),
   tasks: document.querySelector("#task-table"),
   report: document.querySelector("#report-output"),
@@ -19,6 +22,7 @@ const els = {
   dailyPriorities: document.querySelector("#daily-priorities"),
   devKickoff: document.querySelector("#dev-kickoff"),
   businessContinuity: document.querySelector("#business-continuity"),
+  redistributeBusiness: document.querySelector("#redistribute-business"),
   taskForm: document.querySelector("#task-form"),
 };
 
@@ -157,6 +161,55 @@ function renderAgents() {
     .join("");
 }
 
+function renderFactory() {
+  const machines = state.factory?.machines || [];
+  els.factory.innerHTML = machines
+    .map((machine) => {
+      const counts = machine.live_task_counts || {};
+      return `
+        <article class="factory-machine">
+          <header>
+            <h3>${iconForRole(machine.id === "brain-gaming-pc" ? "brain" : machine.id.includes("dev") ? "development" : machine.id.includes("research") ? "research" : "business")} ${escapeHtml(machine.title)}</h3>
+            <span class="pill">${escapeHtml(machine.id)}</span>
+          </header>
+          <p>${escapeHtml(machine.factory_role)}</p>
+          <div class="factory-kpis">
+            <span>Queued ${counts.queued || 0}</span>
+            <span>Running ${counts.running || 0}</span>
+            <span>Done ${counts.completed || 0}</span>
+          </div>
+          <h4>Duties</h4>
+          <ul>${machine.active_duties.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+          <h4>Subagents</h4>
+          <div class="tag-row">${machine.subagents.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+          <h4>Precheck Rubric</h4>
+          <ul>${machine.precheck_rubric.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+          <h4>Due Windows</h4>
+          <dl class="due-list">${Object.entries(machine.due_windows).map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>
+        </article>
+      `;
+    })
+    .join("");
+
+  const gates = state.factory?.handoff_gates || [];
+  els.factoryGates.innerHTML = `
+    <h3>Brain Evaluation Gates</h3>
+    <div class="gate-row">
+      ${gates
+        .map(
+          (gate) => `
+            <div class="gate">
+              <strong>${escapeHtml(gate.id)}</strong>
+              <span>${escapeHtml(gate.owner)}</span>
+              <p>${escapeHtml(gate.requirement)}</p>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderTasks() {
   els.tasks.innerHTML = state.tasks
     .map(
@@ -183,18 +236,21 @@ async function loadReport(type = state.selectedReport) {
 }
 
 async function refresh() {
-  const [registry, readiness, tasks, connections] = await Promise.all([
+  const [registry, readiness, tasks, connections, factory] = await Promise.all([
     api("/registry"),
     api("/readiness.json"),
     api("/tasks"),
     api("/connections"),
+    api("/factory"),
   ]);
   state.registry = registry;
   state.readiness = readiness;
   state.tasks = tasks.tasks;
   state.connections = connections.connections;
+  state.factory = factory;
   renderSummary();
   renderMachines();
+  renderFactory();
   renderAgents();
   renderTasks();
   await loadReport(state.selectedReport);
@@ -205,8 +261,10 @@ function applyRealtimePayload(payload) {
   state.readiness = payload.readiness;
   state.tasks = payload.tasks || [];
   state.connections = payload.connections || [];
+  state.factory = payload.factory || state.factory;
   renderSummary();
   renderMachines();
+  renderFactory();
   renderAgents();
   renderTasks();
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
@@ -245,6 +303,12 @@ els.devKickoff.addEventListener("click", async () => {
 els.businessContinuity.addEventListener("click", async () => {
   const data = await api("/orchestrator/business-continuity", { method: "POST" });
   toast(`Business work distributed: ${data.created_task_ids.join(", ")}`);
+  await refresh();
+});
+
+els.redistributeBusiness.addEventListener("click", async () => {
+  const data = await api("/orchestrator/redistribute-business-queue", { method: "POST" });
+  toast(`Reassigned ${data.reassigned.length} business tasks`);
   await refresh();
 });
 

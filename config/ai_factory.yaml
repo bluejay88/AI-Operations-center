@@ -1,0 +1,140 @@
+factory:
+  name: Bleujay AI Business Factory
+  mission: Build a revenue-producing AI operations business while keeping every laptop useful, audited, and accountable.
+  revenue_target:
+    annual_low: 250000
+    annual_high: 500000
+    primary_offers:
+      - AI-powered website maintenance
+      - Small-business website build packages
+      - Content and social media packages
+      - Digital products and templates
+      - Grant and opportunity research briefs
+  flow:
+    - intake
+    - assignment
+    - worker_execution
+    - subagent_precheck
+    - brain_evaluation
+    - development_or_delivery
+    - report
+
+machines:
+  - id: brain-gaming-pc
+    title: Brain PC / AI Server
+    factory_role: Command, evaluation, content engine, data, reporting, final approval
+    active_duties:
+      - Orchestrate all work and report progress.
+      - Evaluate worker outputs before they become deliverables.
+      - Create digital products, content drafts, scorecards, and plans.
+      - Maintain Postgres, dashboard, GitHub, Docker, Flowise, n8n, and reports.
+    subagents:
+      - chief-of-staff
+      - content-engine
+      - digital-products
+      - project-coordinator
+      - file-organizer
+      - evaluator
+    precheck_rubric:
+      - Output is clearly tied to revenue or productivity.
+      - No money, legal, posting, or sending action happens without human approval.
+      - Every deliverable has source notes, next action, owner, and deadline.
+      - Security baseline is preserved.
+    due_windows:
+      morning_report: "08:00 America/Chicago"
+      hourly_status: "every hour"
+      daily_eval: "17:00 America/Chicago"
+
+  - id: dev-laptop
+    title: Dev Agent / Build Machine
+    factory_role: Heavy lift for coding, websites, tools, automation, deployment prep, and technical QA
+    active_duties:
+      - Build website package scaffolds and technical assets.
+      - Convert approved plans into apps, APIs, dashboards, and templates.
+      - Run code review, tests, security checks, and implementation readiness.
+      - Carry extra business-building workload while Business Laptop is offline.
+    subagents:
+      - programmer
+      - code-reviewer
+      - website-builder
+      - qa-prechecker
+      - deployment-prechecker
+    precheck_rubric:
+      - Code or technical plan has build steps, tests, and rollback notes.
+      - Website packages include pages, pricing, hosting, maintenance, and client handoff.
+      - Security-sensitive work is flagged before deployment.
+      - Outputs are ready for Brain PC evaluation.
+    due_windows:
+      dev_sync: "continuous"
+      technical_review: "within 2 hours of assignment"
+      deployment_review: "before any publish"
+
+  - id: research-laptop
+    title: Research Agent / Opportunity Machine
+    factory_role: Grants, leads, market intelligence, resale opportunities, real estate, and data gathering
+    active_duties:
+      - Find grants, funding, and Illinois business opportunities.
+      - Build lead-source lists while Business Laptop is offline.
+      - Research target niches, competitor offers, pricing, and market demand.
+      - Feed verified opportunities to Brain PC and Dev Agent.
+    subagents:
+      - research-lead
+      - grant-scout
+      - resale-scout
+      - gaming-intel
+      - source-quality-prechecker
+    precheck_rubric:
+      - Every opportunity includes source, deadline, eligibility, expected value, and next step.
+      - Sources are reputable and dated.
+      - Leads are segmented by niche, pain point, and offer fit.
+      - No outreach is sent without Brain/human approval.
+    due_windows:
+      opportunity_scan: "hourly"
+      grant_watchlist: "daily by 11:00 America/Chicago"
+      market_brief: "daily by 15:00 America/Chicago"
+
+  - id: business-laptop
+    title: Business Agent / Admin and Sales Machine
+    factory_role: Email, calendar, CRM, bookkeeping, sales funnels, social scheduling, and business admin
+    active_duties:
+      - Own email/calendar/CRM/admin tasks once online.
+      - Take back lead-generation and marketing execution after onboarding.
+      - Draft invoices, support replies, and bookkeeping reports for human approval.
+      - Manage social posting schedule once accounts are connected.
+    subagents:
+      - business-manager
+      - finance-manager
+      - social-media
+      - lead-generation
+      - marketing-agent
+      - approval-prechecker
+    precheck_rubric:
+      - Finance actions are read-only unless approved.
+      - Messages remain drafts until approved.
+      - CRM changes are logged and reversible.
+      - Calendar/email operations identify conflicts and deadlines.
+    due_windows:
+      admin_sync: "hourly once online"
+      finance_summary: "daily by 16:00 America/Chicago"
+      sales_pipeline_review: "weekly Friday 14:00 America/Chicago"
+
+handoff_gates:
+  - id: worker_done
+    owner: assigned laptop
+    requirement: Worker completes task and stores result plus task_events.
+  - id: subagent_precheck
+    owner: local prechecker
+    requirement: Rubric pass/fail recorded before Brain evaluation.
+  - id: brain_evaluation
+    owner: brain-gaming-pc
+    requirement: Final quality, security, revenue, and approval review.
+  - id: development_or_delivery
+    owner: dev-laptop or brain-gaming-pc
+    requirement: Approved outputs move to implementation, productization, report, or human review queue.
+
+audit_cadence:
+  heartbeat: "10 seconds worker heartbeat, 30 seconds connectivity scan"
+  task_queue: "live dashboard stream every 5 seconds"
+  daily: "review task completion, blocked items, revenue movement, and laptop health"
+  weekly: "review offers, pipeline, conversion, grants, and delivery capacity"
+  monthly: "review revenue, costs, subscriptions, digital product performance, and system reliability"

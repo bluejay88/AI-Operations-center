@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .connectivity import connection_snapshot, record_connection
+from .factory import factory_snapshot, redistribute_business_queue
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
@@ -97,6 +98,11 @@ def registry() -> dict:
     return registry_snapshot()
 
 
+@app.get("/factory")
+def factory() -> dict:
+    return factory_snapshot()
+
+
 @app.get("/readiness")
 def readiness() -> dict[str, str]:
     return {"readiness": readiness_report()}
@@ -118,6 +124,7 @@ async def stream() -> StreamingResponse:
                 "readiness": readiness_snapshot(),
                 "tasks": task_snapshot(),
                 "connections": connection_snapshot(),
+                "factory": factory_snapshot(),
             }
             yield f"data: {json.dumps(payload, default=str)}\n\n"
             await asyncio.sleep(5)
@@ -173,6 +180,11 @@ def dev_kickoff() -> dict[str, list[int]]:
 @app.post("/orchestrator/business-continuity")
 def business_continuity() -> dict[str, list[int]]:
     return {"created_task_ids": create_business_continuity()}
+
+
+@app.post("/orchestrator/redistribute-business-queue")
+def redistribute_business() -> dict:
+    return {"reassigned": redistribute_business_queue()}
 
 
 @app.get("/reports/{report_type}")

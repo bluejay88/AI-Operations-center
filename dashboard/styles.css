@@ -246,6 +246,90 @@ svg {
   gap: 0.75rem;
 }
 
+.factory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.factory-machine,
+.factory-gates {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.factory-machine header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.factory-machine h3,
+.factory-machine h4 {
+  margin-bottom: 0.45rem;
+}
+
+.factory-machine p,
+.factory-machine li {
+  color: #c8d2df;
+}
+
+.factory-kpis,
+.tag-row,
+.gate-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.factory-kpis span,
+.tag-row span {
+  border: 1px solid var(--line);
+  background: #0d141c;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.due-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.due-list dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.due-list dd {
+  margin: 0.15rem 0 0;
+}
+
+.factory-gates {
+  margin-top: 0.9rem;
+}
+
+.gate {
+  flex: 1 1 220px;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.gate strong,
+.gate span {
+  display: block;
+}
+
+.gate span {
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
 .agent-group {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -444,6 +528,7 @@ pre {
   }
 
   .machine-grid,
+  .factory-grid,
   .agent-matrix,
   .task-layout {
     grid-template-columns: 1fr;

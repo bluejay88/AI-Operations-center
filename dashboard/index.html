@@ -15,6 +15,7 @@
         </div>
         <nav aria-label="Dashboard sections">
           <a href="#machines">Machines</a>
+          <a href="#factory">Factory</a>
           <a href="#agents">Agents</a>
           <a href="#tasks">Tasks</a>
           <a href="#reports">Reports</a>
@@ -41,6 +42,15 @@
             <p>Connection state, role assignment, and latest worker heartbeat.</p>
           </div>
           <div class="machine-grid" id="machine-grid"></div>
+        </section>
+
+        <section id="factory" class="workspace-section">
+          <div class="section-heading">
+            <h2>AI Bridge Factory</h2>
+            <p>Roles, subagents, due windows, precheck rubrics, handoff gates, and live work by machine.</p>
+          </div>
+          <div class="factory-grid" id="factory-grid"></div>
+          <div class="factory-gates" id="factory-gates"></div>
         </section>
 
         <section id="agents" class="workspace-section">
@@ -130,6 +140,7 @@
             <button id="daily-priorities" type="button">Create Daily Priorities</button>
             <button id="dev-kickoff" type="button">Start Dev Laptop Work</button>
             <button id="business-continuity" type="button">Distribute Business Work</button>
+            <button id="redistribute-business" type="button">Reassign Business Queue</button>
           </div>
           <div class="command-panel">
             <h3>Next Laptop Commands</h3>

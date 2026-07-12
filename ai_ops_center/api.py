@@ -5,10 +5,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .connectivity import connection_snapshot, record_connection
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
@@ -69,6 +71,17 @@ class TaskCreateRequest(BaseModel):
     priority: int = Field(default=50, ge=1, le=100)
 
 
+class ConnectionUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_machine_id: str = Field(min_length=2, max_length=80)
+    target_machine_id: str = Field(min_length=2, max_length=80)
+    channel: str = Field(min_length=2, max_length=80)
+    status: str = Field(pattern="^(online|offline|degraded|unknown|blocked)$")
+    latency_ms: float | None = Field(default=None, ge=0)
+    metadata: dict = Field(default_factory=dict)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -92,6 +105,42 @@ def readiness() -> dict[str, str]:
 @app.get("/readiness.json")
 def readiness_json() -> dict:
     return readiness_snapshot()
+
+
+@app.get("/stream")
+async def stream() -> StreamingResponse:
+    import asyncio
+    import json
+
+    async def events():
+        while True:
+            payload = {
+                "readiness": readiness_snapshot(),
+                "tasks": task_snapshot(),
+                "connections": connection_snapshot(),
+            }
+            yield f"data: {json.dumps(payload, default=str)}\n\n"
+            await asyncio.sleep(5)
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@app.get("/connections")
+def connections() -> dict:
+    return {"connections": connection_snapshot()}
+
+
+@app.post("/connections")
+def update_connection(request: ConnectionUpdateRequest) -> dict[str, str]:
+    record_connection(
+        source_machine_id=request.source_machine_id,
+        target_machine_id=request.target_machine_id,
+        channel=request.channel,
+        status=request.status,
+        latency_ms=request.latency_ms,
+        metadata=request.metadata,
+    )
+    return {"status": "recorded"}
 
 
 @app.get("/tasks")

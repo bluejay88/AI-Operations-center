@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from .connectivity import connection_snapshot
 from .db import connect
 
 
@@ -78,6 +79,11 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
         task_counts.setdefault(row["machine_id"], {})[row["status"]] = row["count"]
 
     machines = [dict(machine) for machine in machines]
+    connections = connection_snapshot(local=local)
+    connections_by_target: dict[str, list[dict]] = {}
+    for connection in connections:
+        connections_by_target.setdefault(connection["target_machine_id"], []).append(connection)
+
     for machine in machines:
         last_seen = machine["last_seen"]
         if last_seen is None:
@@ -89,6 +95,7 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
         machine["state"] = state
         machine["task_counts"] = task_counts.get(machine["id"], {})
         machine["latest_benchmark"] = dict(benchmarks[machine["id"]]) if machine["id"] in benchmarks else None
+        machine["connections"] = connections_by_target.get(machine["id"], [])
         machine["next_command"] = ONBOARD_COMMANDS.get(machine["id"]) if state != "online" else None
 
     return {

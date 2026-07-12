@@ -2,7 +2,9 @@ const state = {
   registry: null,
   readiness: null,
   tasks: [],
+  connections: [],
   selectedReport: "hourly",
+  stream: null,
 };
 
 const els = {
@@ -85,6 +87,8 @@ function renderMachines() {
       const stateLabel = readiness.state || "unknown";
       const isOnline = stateLabel === "online";
       const counts = tasksByMachine[machine.id] || {};
+      const mesh = (readiness.connections || []).find((connection) => connection.channel === "tailscale-ping");
+      const ssh = (readiness.connections || []).find((connection) => connection.channel === "ssh-22");
       return `
         <article class="machine">
           <header>
@@ -98,6 +102,8 @@ function renderMachines() {
           <dl>
             <div><dt>Role</dt><dd>${escapeHtml(machine.role)}</dd></div>
             <div><dt>Heartbeat</dt><dd>${readiness.last_seen ? new Date(readiness.last_seen).toLocaleTimeString() : "never"}</dd></div>
+            <div><dt>Tailscale</dt><dd>${escapeHtml(mesh?.status || "unknown")}</dd></div>
+            <div><dt>SSH</dt><dd>${escapeHtml(ssh?.status || "unknown")}</dd></div>
             <div><dt>Queued</dt><dd>${counts.queued || 0}</dd></div>
             <div><dt>Completed</dt><dd>${counts.completed || 0}</dd></div>
           </dl>
@@ -176,20 +182,45 @@ async function loadReport(type = state.selectedReport) {
 }
 
 async function refresh() {
-  const [registry, readiness, tasks] = await Promise.all([
+  const [registry, readiness, tasks, connections] = await Promise.all([
     api("/registry"),
     api("/readiness.json"),
     api("/tasks"),
+    api("/connections"),
   ]);
   state.registry = registry;
   state.readiness = readiness;
   state.tasks = tasks.tasks;
+  state.connections = connections.connections;
   renderSummary();
   renderMachines();
   renderAgents();
   renderTasks();
   await loadReport(state.selectedReport);
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
+}
+
+function applyRealtimePayload(payload) {
+  state.readiness = payload.readiness;
+  state.tasks = payload.tasks || [];
+  state.connections = payload.connections || [];
+  renderSummary();
+  renderMachines();
+  renderAgents();
+  renderTasks();
+  els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
+}
+
+function startStream() {
+  if (!window.EventSource) return;
+  state.stream = new EventSource("/stream");
+  state.stream.onmessage = (event) => {
+    const payload = JSON.parse(event.data);
+    applyRealtimePayload(payload);
+  };
+  state.stream.onerror = () => {
+    els.lastRefresh.textContent = "Live stream reconnecting";
+  };
 }
 
 els.refresh.addEventListener("click", () => refresh().catch((error) => toast(error.message)));
@@ -222,4 +253,5 @@ els.taskForm.addEventListener("submit", async (event) => {
 });
 
 refresh().catch((error) => toast(error.message));
-window.setInterval(() => refresh().catch(() => {}), 10000);
+startStream();
+window.setInterval(() => refresh().catch(() => {}), 30000);

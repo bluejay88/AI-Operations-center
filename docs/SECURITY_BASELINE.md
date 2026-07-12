@@ -35,6 +35,7 @@ Keep human approval required for:
 
 - Each laptop should run only its assigned worker role unless explicitly promoted.
 - Workers should heartbeat every 5-15 seconds into `machine_status_current`.
+- Connectivity scans should record only reachability metadata, not credentials or private files.
 - Workers should claim tasks through leases before doing production work.
 - Lost/stale laptops should have leases expired and tasks returned to the queue.
 

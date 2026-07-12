@@ -95,6 +95,26 @@ create table if not exists machine_heartbeats (
 
 create index if not exists idx_machine_heartbeats_machine_time on machine_heartbeats(machine_id, created_at desc);
 
+create table if not exists machine_benchmarks (
+    id bigserial primary key,
+    machine_id text not null references machines(id),
+    hostname text,
+    platform text,
+    cpu_count integer,
+    cpu_score numeric(14, 2),
+    memory_total_mb numeric(14, 2),
+    memory_available_mb numeric(14, 2),
+    disk_free_mb numeric(14, 2),
+    disk_write_mb_s numeric(14, 2),
+    brain_latency_ms numeric(14, 2),
+    docker_available boolean not null default false,
+    python_version text,
+    raw jsonb not null default '{}',
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_machine_benchmarks_machine_time on machine_benchmarks(machine_id, created_at desc);
+
 create table if not exists files_index (
     id bigserial primary key,
     machine_id text references machines(id),
@@ -125,4 +145,3 @@ create table if not exists system_state (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
-

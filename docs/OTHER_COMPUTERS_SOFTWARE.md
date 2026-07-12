@@ -92,6 +92,18 @@ Then configure the worker:
 docker\join-worker.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
+Run a benchmark from that laptop:
+
+```powershell
+docker\run-benchmark.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
+```
+
+Then check results on the brain PC:
+
+```powershell
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli benchmark-report
+```
+
 Change `business-laptop` to `research-laptop` or `dev-laptop` for the other machines.
 
 If the repository is not on GitHub yet, copy the whole `Ai Operations Center` folder to the laptop first, excluding local-only files:

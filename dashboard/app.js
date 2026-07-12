@@ -4,6 +4,7 @@ const state = {
   tasks: [],
   connections: [],
   factory: null,
+  phoenixBriefing: "",
   selectedReport: "hourly",
   stream: null,
 };
@@ -13,6 +14,9 @@ const els = {
   machines: document.querySelector("#machine-grid"),
   factory: document.querySelector("#factory-grid"),
   factoryGates: document.querySelector("#factory-gates"),
+  phoenixSummary: document.querySelector("#phoenix-summary"),
+  phoenixRefresh: document.querySelector("#phoenix-refresh"),
+  phoenixSpeak: document.querySelector("#phoenix-speak"),
   agents: document.querySelector("#agent-matrix"),
   tasks: document.querySelector("#task-table"),
   report: document.querySelector("#report-output"),
@@ -235,6 +239,12 @@ async function loadReport(type = state.selectedReport) {
   els.report.textContent = data.report;
 }
 
+async function loadPhoenixBriefing() {
+  const data = await api("/phoenix/briefing");
+  state.phoenixBriefing = data.briefing;
+  els.phoenixSummary.textContent = data.briefing;
+}
+
 async function refresh() {
   const [registry, readiness, tasks, connections, factory] = await Promise.all([
     api("/registry"),
@@ -254,6 +264,7 @@ async function refresh() {
   renderAgents();
   renderTasks();
   await loadReport(state.selectedReport);
+  await loadPhoenixBriefing();
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
 
@@ -283,6 +294,23 @@ function startStream() {
 }
 
 els.refresh.addEventListener("click", () => refresh().catch((error) => toast(error.message)));
+
+els.phoenixRefresh.addEventListener("click", () => loadPhoenixBriefing().catch((error) => toast(error.message)));
+
+els.phoenixSpeak.addEventListener("click", async () => {
+  if (!state.phoenixBriefing) {
+    await loadPhoenixBriefing();
+  }
+  if (!window.speechSynthesis) {
+    toast("Browser speech synthesis is not available");
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(state.phoenixBriefing);
+  utterance.rate = 0.95;
+  utterance.pitch = 0.92;
+  window.speechSynthesis.speak(utterance);
+});
 
 document.querySelectorAll("[data-report]").forEach((button) => {
   button.addEventListener("click", () => loadReport(button.dataset.report).catch((error) => toast(error.message)));

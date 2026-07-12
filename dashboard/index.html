@@ -16,6 +16,7 @@
         <nav aria-label="Dashboard sections">
           <a href="#machines">Machines</a>
           <a href="#factory">Factory</a>
+          <a href="#phoenix">Phoenix</a>
           <a href="#agents">Agents</a>
           <a href="#tasks">Tasks</a>
           <a href="#reports">Reports</a>
@@ -51,6 +52,24 @@
           </div>
           <div class="factory-grid" id="factory-grid"></div>
           <div class="factory-gates" id="factory-gates"></div>
+        </section>
+
+        <section id="phoenix" class="workspace-section phoenix-section">
+          <div class="section-heading">
+            <h2>Phoenix</h2>
+            <p>Brain PC voice briefing, command summary, and operational recommendations.</p>
+          </div>
+          <div class="phoenix-console">
+            <div>
+              <p class="eyebrow">Voice of the Brain</p>
+              <h3>Phoenix Command Interface</h3>
+              <p id="phoenix-summary">Waiting for Phoenix briefing.</p>
+            </div>
+            <div class="phoenix-actions">
+              <button id="phoenix-refresh" type="button">Refresh Briefing</button>
+              <button id="phoenix-speak" type="button">Speak Briefing</button>
+            </div>
+          </div>
         </section>
 
         <section id="agents" class="workspace-section">

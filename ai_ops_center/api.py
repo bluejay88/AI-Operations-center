@@ -16,6 +16,7 @@ from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
 from .orchestrator import create_daily_priorities
+from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
 from .reports import generate_report
@@ -101,6 +102,16 @@ def registry() -> dict:
 @app.get("/factory")
 def factory() -> dict:
     return factory_snapshot()
+
+
+@app.get("/phoenix/status")
+def phoenix_status() -> dict:
+    return phoenix_snapshot()
+
+
+@app.get("/phoenix/briefing")
+def phoenix_brief() -> dict[str, str]:
+    return {"briefing": phoenix_briefing()}
 
 
 @app.get("/readiness")

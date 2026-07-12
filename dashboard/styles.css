@@ -253,7 +253,8 @@ svg {
 }
 
 .factory-machine,
-.factory-gates {
+.factory-gates,
+.phoenix-console {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -328,6 +329,31 @@ svg {
 .gate span {
   color: var(--accent);
   font-size: 0.8rem;
+}
+
+.phoenix-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  border-color: rgba(73, 211, 166, 0.5);
+}
+
+.phoenix-console h3 {
+  margin-bottom: 0.45rem;
+}
+
+.phoenix-console p:last-child {
+  color: #d6dee8;
+  white-space: pre-wrap;
+  margin-bottom: 0;
+}
+
+.phoenix-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .agent-group {
@@ -530,7 +556,8 @@ pre {
   .machine-grid,
   .factory-grid,
   .agent-matrix,
-  .task-layout {
+  .task-layout,
+  .phoenix-console {
     grid-template-columns: 1fr;
   }
 

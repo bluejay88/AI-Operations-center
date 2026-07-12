@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from .benchmark import benchmark_report, run_benchmark
 from .db import init_db
+from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
 from .orchestrator import create_daily_priorities
+from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
 from .registry import seed_registry
 from .reports import generate_report
 from .settings import get_settings
+from .tasks import create_business_continuity, create_dev_kickoff
 from .worker import run_worker
 
 
@@ -20,8 +24,18 @@ def main() -> None:
     subparsers.add_parser("init-db")
     subparsers.add_parser("seed")
     subparsers.add_parser("daily-priorities")
+    subparsers.add_parser("dev-kickoff")
+    subparsers.add_parser("business-continuity")
+    subparsers.add_parser("redistribute-business")
     subparsers.add_parser("status")
     subparsers.add_parser("readiness")
+    subparsers.add_parser("factory")
+    subparsers.add_parser("phoenix-status")
+    subparsers.add_parser("phoenix-brief")
+    subparsers.add_parser("agent-prompts")
+
+    laptop_parser = subparsers.add_parser("laptop-instructions")
+    laptop_parser.add_argument("machine", choices=["brain-gaming-pc", "dev-laptop", "research-laptop", "business-laptop"])
 
     benchmark_parser = subparsers.add_parser("benchmark")
     benchmark_parser.add_argument("--machine", default=get_settings().worker_machine_id)
@@ -49,10 +63,29 @@ def main() -> None:
     elif args.command == "daily-priorities":
         ids = create_daily_priorities(local=args.local_db)
         print(f"Created task IDs: {ids}")
+    elif args.command == "dev-kickoff":
+        ids = create_dev_kickoff(local=args.local_db)
+        print(f"Created Dev Laptop task IDs: {ids}")
+    elif args.command == "business-continuity":
+        ids = create_business_continuity(local=args.local_db)
+        print(f"Created distributed business task IDs: {ids}")
+    elif args.command == "redistribute-business":
+        reassigned = redistribute_business_queue(local=args.local_db)
+        print(json.dumps({"reassigned": reassigned}, indent=2, default=str))
     elif args.command == "status":
         print(machine_status(local=args.local_db))
     elif args.command == "readiness":
         print(readiness_report(local=args.local_db))
+    elif args.command == "factory":
+        print(json.dumps(factory_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "phoenix-status":
+        print(json.dumps(phoenix_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "phoenix-brief":
+        print(phoenix_briefing(local=args.local_db))
+    elif args.command == "agent-prompts":
+        print(prompt_pack())
+    elif args.command == "laptop-instructions":
+        print(laptop_instruction(args.machine))
     elif args.command == "benchmark":
         result = run_benchmark(args.machine, brain_host=args.brain_host, local=args.local_db)
         print(result)

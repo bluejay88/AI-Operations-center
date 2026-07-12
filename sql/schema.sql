@@ -221,3 +221,25 @@ create table if not exists system_state (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+create table if not exists phoenix_events (
+    id bigserial primary key,
+    event_type text not null,
+    subject text not null,
+    body text not null,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_phoenix_events_type_time on phoenix_events(event_type, created_at desc);
+
+create table if not exists phoenix_voice_settings (
+    id text primary key default 'default',
+    persona text not null default 'Phoenix',
+    voice_provider text not null default 'browser-speech-synthesis',
+    voice_name text,
+    speaking_rate numeric(5, 2) not null default 1.00,
+    pitch numeric(5, 2) not null default 1.00,
+    metadata jsonb not null default '{}',
+    updated_at timestamptz not null default now()
+);

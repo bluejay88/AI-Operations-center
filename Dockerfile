@@ -9,6 +9,8 @@ COPY pyproject.toml README.md ./
 COPY ai_ops_center ./ai_ops_center
 COPY config ./config
 COPY dashboard ./dashboard
+COPY instructions ./instructions
+COPY prompts ./prompts
 COPY sql ./sql
 
 RUN pip install --no-cache-dir .

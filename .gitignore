@@ -12,3 +12,4 @@ data/
 exports/
 logs/
 node_modules/
+git-server/

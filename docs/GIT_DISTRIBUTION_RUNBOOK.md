@@ -27,6 +27,39 @@ Do not commit local secrets. These are already ignored:
 - `exports/`
 - `.docker/*` except `.docker/config.json`
 
+## Immediate Fallback: Brain-Hosted Git Over Tailscale
+
+If GitHub is not ready yet, the brain PC can host a read-only Git repo for laptops over Tailscale.
+
+On the brain PC:
+
+```powershell
+docker\publish-local-git-server.ps1
+docker\configure-local-git-firewall.ps1
+docker\start-local-git-server.ps1
+```
+
+On each laptop:
+
+```powershell
+git clone git://100.70.49.32/ai-operations-center.git
+cd ai-operations-center
+```
+
+When the brain PC has new committed updates, run:
+
+```powershell
+docker\publish-local-git-server.ps1
+```
+
+Then each laptop can run:
+
+```powershell
+docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+```
+
+Change `dev-laptop` to `research-laptop` or `business-laptop` on those machines.
+
 ## Step 2: Connect The Brain PC Repo
 
 From the brain PC repository folder, run this with your actual GitHub URL:

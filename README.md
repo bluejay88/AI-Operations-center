@@ -50,6 +50,12 @@ Then run:
 docker\resume-brain-after-reboot.ps1
 ```
 
+If Docker Desktop starts but cannot run because its fresh local cache is damaged, run:
+
+```powershell
+docker\recover-brain-core.ps1
+```
+
 The core brain starts only Postgres and the AI Operations API. Start heavier optional tools after the laptops are online:
 
 ```powershell

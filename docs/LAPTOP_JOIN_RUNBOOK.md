@@ -36,6 +36,14 @@ Then run:
 docker\resume-brain-after-reboot.ps1
 ```
 
+If Docker Desktop reports that it cannot start, run:
+
+```powershell
+docker\recover-brain-core.ps1
+```
+
+If that script tells you Docker still cannot start, open Docker Desktop > Troubleshoot. First try Restart Docker Desktop. If it still fails, use Clean / Purge data or Reset to factory defaults. This Docker install is fresh, so that only removes Docker's local images, containers, volumes, and broken cache.
+
 Start the brain stack:
 
 ```powershell

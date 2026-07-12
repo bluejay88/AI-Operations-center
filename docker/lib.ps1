@@ -1,7 +1,18 @@
 function Assert-DockerAvailable {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (!$docker -and (Test-Path "C:\Program Files\Docker\Docker\resources\bin\docker.exe")) {
+        $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
+        $env:Path = "$dockerBin;$env:Path"
+        $docker = Get-Command docker -ErrorAction SilentlyContinue
+    }
+
     if (!$docker) {
         throw "Docker CLI was not found. Install Docker Desktop, start it, then reopen PowerShell and rerun this command."
+    }
+
+    $repoDockerConfig = Join-Path (Get-Location) ".docker"
+    if (Test-Path $repoDockerConfig) {
+        $env:DOCKER_CONFIG = $repoDockerConfig
     }
 
     try {
@@ -32,4 +43,3 @@ function Assert-TailscaleAvailable {
     }
     return $tailscaleExe
 }
-

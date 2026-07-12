@@ -14,6 +14,13 @@ Tailscale confirms that a laptop is reachable, but the Brain PC cannot remotely 
 
 Use Windows OpenSSH Server restricted to the private Tailscale network.
 
+On the Brain PC, enable SSH receiving:
+
+```powershell
+cd "C:\Users\jayla\OneDrive\Desktop\Ai Operations Center"
+powershell -ExecutionPolicy Bypass -File docker\setup-brain-openssh.ps1
+```
+
 On each laptop, after pulling GitHub:
 
 ```powershell
@@ -27,6 +34,12 @@ Then from the Brain PC, test:
 ssh <windows-user>@<laptop-tailscale-ip> hostname
 ```
 
+From each laptop, test Brain SSH/API/listener/speaker:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File docker\test-brain-ssh-and-api.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -BrainUser <BrainWindowsUsername> -AgentId programmer
+```
+
 ## Security Rules
 
 - Do not expose SSH to the public internet.
@@ -34,4 +47,3 @@ ssh <windows-user>@<laptop-tailscale-ip> hostname
 - Use strong Windows account credentials or key-based auth.
 - Keep SSH access for update/deploy commands only.
 - Sensitive actions still require Brain/human approval.
-

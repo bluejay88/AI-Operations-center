@@ -84,6 +84,16 @@ docker\worker-bootstrap.ps1 -MachineId business-laptop
 
 Change `business-laptop` to `research-laptop` or `dev-laptop` for the other machines.
 
+If the repository is not on GitHub yet, copy the whole `Ai Operations Center` folder to the laptop first, excluding local-only files:
+
+- `.env`
+- `flowcheck.py`
+- `logs`
+- `.docker`
+- `__pycache__`
+
+GitHub is still the preferred path because it lets every laptop pull updates.
+
 ## Tailscale Names Seen From The Brain PC
 
 The brain PC currently sees:

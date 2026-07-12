@@ -21,6 +21,12 @@ Rename this Tailscale device if needed:
 docker\rename-this-pc.ps1 -Hostname brain-gaming-pc
 ```
 
+Allow Tailscale workers to reach the brain API and Postgres:
+
+```powershell
+docker\configure-brain-firewall.ps1
+```
+
 Install the brain prerequisites if Docker Desktop is not installed:
 
 ```powershell

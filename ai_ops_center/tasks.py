@@ -40,6 +40,80 @@ DEV_KICKOFF_TASKS = [
 ]
 
 
+BUSINESS_CONTINUITY_TASKS = [
+    {
+        "title": "Build the first AI website maintenance offer",
+        "agent_id": "website-builder",
+        "category": "revenue",
+        "description": (
+            "Create a concrete service package for small businesses: offer name, included pages, "
+            "monthly maintenance scope, setup price, recurring price, fulfillment checklist, and launch criteria."
+        ),
+        "priority": 98,
+    },
+    {
+        "title": "Create a small-business lead research list",
+        "agent_id": "research-lead",
+        "category": "revenue",
+        "description": (
+            "Research target niches and produce a lead-source plan for 30 local small businesses that likely need "
+            "website refresh, automation, content, or maintenance services. Do not send outreach."
+        ),
+        "priority": 96,
+    },
+    {
+        "title": "Draft outreach copy for website maintenance prospects",
+        "agent_id": "content-engine",
+        "category": "revenue",
+        "description": (
+            "Draft human-review-only outreach assets: one short email, one LinkedIn message, one phone script, "
+            "and one follow-up. Include approval guardrails before anything is sent."
+        ),
+        "priority": 94,
+    },
+    {
+        "title": "Design the business operating scorecard",
+        "agent_id": "project-coordinator",
+        "category": "business",
+        "description": (
+            "Define the dashboard metrics needed to run toward $250k-$500k annual revenue: leads, replies, calls, "
+            "proposals, closes, MRR, delivery time, margin, cash flow, and weekly review cadence."
+        ),
+        "priority": 92,
+    },
+    {
+        "title": "Prepare grant and funding opportunities for business launch",
+        "agent_id": "grant-scout",
+        "category": "research",
+        "description": (
+            "Build a funding watchlist for Illinois, small-business, technology, workforce, and digital services grants. "
+            "Capture eligibility, deadline, award range, source URL, and next step."
+        ),
+        "priority": 90,
+    },
+    {
+        "title": "Create reusable digital product launch plan",
+        "agent_id": "digital-products",
+        "category": "revenue",
+        "description": (
+            "Define one digital product that can be built quickly from existing AI Ops knowledge: title, buyer, promise, "
+            "outline, format, price, upsell path, and production checklist."
+        ),
+        "priority": 88,
+    },
+    {
+        "title": "Review implementation path for production worker tools",
+        "agent_id": "programmer",
+        "category": "development",
+        "description": (
+            "Break down the implementation work needed for agents to create files, reports, websites, and business artifacts "
+            "as real outputs rather than planning-pass text."
+        ),
+        "priority": 86,
+    },
+]
+
+
 def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
     with connect(local=local) as conn:
         with conn.cursor() as cur:
@@ -90,4 +164,20 @@ def create_dev_kickoff(local: bool = False) -> list[int]:
     created = []
     for task in DEV_KICKOFF_TASKS:
         created.append(create_task(**task, metadata={"created_by": "dashboard-dev-kickoff"}, local=local))
+    return created
+
+
+def create_business_continuity(local: bool = False) -> list[int]:
+    created = []
+    for task in BUSINESS_CONTINUITY_TASKS:
+        created.append(
+            create_task(
+                **task,
+                metadata={
+                    "created_by": "business-continuity",
+                    "reason": "Business laptop is not online; distribute business-building work to available machines.",
+                },
+                local=local,
+            )
+        )
     return created

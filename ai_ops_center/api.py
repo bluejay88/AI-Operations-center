@@ -19,7 +19,7 @@ from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
 from .reports import generate_report
 from .settings import get_settings
-from .tasks import create_dev_kickoff, create_manual_task, task_snapshot
+from .tasks import create_business_continuity, create_dev_kickoff, create_manual_task, task_snapshot
 
 settings = get_settings()
 docs_url = "/docs" if settings.expose_api_docs or settings.app_env != "production" else None
@@ -168,6 +168,11 @@ def daily_priorities() -> dict[str, list[int]]:
 @app.post("/orchestrator/dev-kickoff")
 def dev_kickoff() -> dict[str, list[int]]:
     return {"created_task_ids": create_dev_kickoff()}
+
+
+@app.post("/orchestrator/business-continuity")
+def business_continuity() -> dict[str, list[int]]:
+    return {"created_task_ids": create_business_continuity()}
 
 
 @app.get("/reports/{report_type}")

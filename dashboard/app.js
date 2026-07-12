@@ -18,6 +18,7 @@ const els = {
   toast: document.querySelector("#toast"),
   dailyPriorities: document.querySelector("#daily-priorities"),
   devKickoff: document.querySelector("#dev-kickoff"),
+  businessContinuity: document.querySelector("#business-continuity"),
   taskForm: document.querySelector("#task-form"),
 };
 
@@ -238,6 +239,12 @@ els.dailyPriorities.addEventListener("click", async () => {
 els.devKickoff.addEventListener("click", async () => {
   const data = await api("/orchestrator/dev-kickoff", { method: "POST" });
   toast(`Dev tasks queued: ${data.created_task_ids.join(", ")}`);
+  await refresh();
+});
+
+els.businessContinuity.addEventListener("click", async () => {
+  const data = await api("/orchestrator/business-continuity", { method: "POST" });
+  toast(`Business work distributed: ${data.created_task_ids.join(", ")}`);
   await refresh();
 });
 

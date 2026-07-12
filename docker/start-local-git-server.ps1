@@ -5,7 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if (!(Get-Command git -ErrorAction SilentlyContinue)) {
+$gitCommand = Get-Command git -ErrorAction SilentlyContinue
+if (!$gitCommand) {
     throw "Git is not installed or not on PATH."
 }
 
@@ -16,9 +17,13 @@ if (!(Test-Path (Join-Path $serverRoot "ai-operations-center.git"))) {
     throw "Local Git repo was not published yet. Run docker\publish-local-git-server.ps1 first."
 }
 
-$gitPath = (Get-Command git).Source
+$gitExecPath = (git --exec-path)
+$gitDaemonPath = Join-Path $gitExecPath "git-daemon.exe"
+if (!(Test-Path $gitDaemonPath)) {
+    throw "Cannot find git-daemon.exe at $gitDaemonPath."
+}
+
 $args = @(
-    "daemon",
     "--verbose",
     "--reuseaddr",
     "--export-all",
@@ -28,7 +33,7 @@ $args = @(
     $serverRoot
 )
 
-Start-Process -FilePath $gitPath -ArgumentList $args -WindowStyle Hidden
+Start-Process -FilePath $gitDaemonPath -ArgumentList $args -WindowStyle Hidden
 Write-Host "Started read-only Git server on git://$ListenAddress`:$Port/"
 Write-Host "Laptop clone URL:"
 Write-Host "  git clone git://$ListenAddress/ai-operations-center.git"

@@ -113,10 +113,22 @@ The brain PC currently sees:
 - `desktop-ls24m7v` at `100.71.82.122`
 - `laptop-5qgp9kbc` at `100.90.219.88`
 
+Friendly names are okay:
+
+- `Dev Agent` maps to internal worker role `dev-laptop`.
+- `Research Agent` maps to internal worker role `research-laptop`.
+- `Business Agent` maps to internal worker role `business-laptop`.
+
 Rename each laptop by running this repo command on that actual laptop:
 
 ```powershell
-docker\rename-this-pc.ps1 -Hostname business-laptop
+docker\rename-this-pc.ps1 -Hostname research-laptop
 ```
 
-Use `research-laptop` and `dev-laptop` on the other two machines. Tailscale's local CLI renames the current device; remote renaming should be done from the Tailscale admin dashboard if you want to rename them all from one place.
+Use `business-laptop` and `dev-laptop` on the other machines. Tailscale's local CLI renames the current device; remote renaming should be done from the Tailscale admin dashboard if you want to rename them all from one place.
+
+Even if the visible Tailscale name is `Research Agent`, run the worker as:
+
+```powershell
+docker\join-worker.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
+```

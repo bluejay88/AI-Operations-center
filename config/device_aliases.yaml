@@ -1,0 +1,23 @@
+aliases:
+  brain:
+    internal_machine_id: brain-gaming-pc
+    tailscale_names:
+      - brain-gaming-pc
+  development:
+    internal_machine_id: dev-laptop
+    tailscale_names:
+      - dev-laptop
+      - Dev Agent
+      - dev-agent
+  research:
+    internal_machine_id: research-laptop
+    tailscale_names:
+      - research-laptop
+      - Research Agent
+      - research-agent
+  business:
+    internal_machine_id: business-laptop
+    tailscale_names:
+      - business-laptop
+      - Business Agent
+      - business-agent

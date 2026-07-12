@@ -94,6 +94,8 @@ Research laptop:
 docker\join-worker.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
+If the device is already named `Research Agent` in Tailscale, that is fine. The worker role should still be `research-laptop`.
+
 Development laptop:
 
 ```powershell

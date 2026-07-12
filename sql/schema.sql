@@ -95,6 +95,49 @@ create table if not exists machine_heartbeats (
 
 create index if not exists idx_machine_heartbeats_machine_time on machine_heartbeats(machine_id, created_at desc);
 
+create table if not exists machine_status_current (
+    machine_id text primary key references machines(id),
+    status text not null default 'online',
+    last_seen_at timestamptz not null default now(),
+    hostname text,
+    tailscale_ip text,
+    worker_version text,
+    active_task_id bigint references tasks(id) on delete set null,
+    load numeric(8, 2),
+    metadata jsonb not null default '{}',
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_machine_status_current_status_seen on machine_status_current(status, last_seen_at desc);
+
+create table if not exists machine_links (
+    id bigserial primary key,
+    machine_id text not null references machines(id),
+    tailscale_name text,
+    tailscale_ip text,
+    hostname text,
+    device_fingerprint text,
+    is_primary boolean not null default false,
+    last_seen_at timestamptz,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique(machine_id, tailscale_name, tailscale_ip)
+);
+
+create table if not exists agent_machine_assignments (
+    id bigserial primary key,
+    agent_id text not null references agents(id),
+    machine_id text not null references machines(id),
+    priority integer not null default 100,
+    status text not null default 'active',
+    max_concurrent_tasks integer not null default 1,
+    capabilities_required jsonb not null default '[]',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique(agent_id, machine_id)
+);
+
 create table if not exists machine_benchmarks (
     id bigserial primary key,
     machine_id text not null references machines(id),
@@ -114,6 +157,39 @@ create table if not exists machine_benchmarks (
 );
 
 create index if not exists idx_machine_benchmarks_machine_time on machine_benchmarks(machine_id, created_at desc);
+
+create table if not exists machine_connections (
+    id bigserial primary key,
+    source_machine_id text not null references machines(id),
+    target_machine_id text not null references machines(id),
+    channel text not null,
+    status text not null default 'unknown',
+    latency_ms numeric(14, 2),
+    last_checked_at timestamptz,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique(source_machine_id, target_machine_id, channel)
+);
+
+create index if not exists idx_machine_connections_status on machine_connections(status, updated_at desc);
+
+create table if not exists agent_messages (
+    id bigserial primary key,
+    source_agent_id text references agents(id),
+    target_agent_id text references agents(id),
+    task_id bigint references tasks(id) on delete set null,
+    message_type text not null default 'status',
+    subject text not null,
+    body text not null,
+    status text not null default 'created',
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    delivered_at timestamptz,
+    acknowledged_at timestamptz
+);
+
+create index if not exists idx_agent_messages_target_status on agent_messages(target_agent_id, status, created_at desc);
 
 create table if not exists files_index (
     id bigserial primary key,

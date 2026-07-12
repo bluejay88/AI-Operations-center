@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Operations Center</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Bleujay Brain</p>
+          <h1>AI Operations Center</h1>
+        </div>
+        <nav aria-label="Dashboard sections">
+          <a href="#machines">Machines</a>
+          <a href="#agents">Agents</a>
+          <a href="#tasks">Tasks</a>
+          <a href="#reports">Reports</a>
+          <a href="#actions">Actions</a>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="last-refresh">Waiting for data</span>
+          <button id="refresh-button" type="button">Refresh</button>
+        </div>
+      </aside>
+
+      <main>
+        <section class="topbar" aria-labelledby="overview-title">
+          <div>
+            <p class="eyebrow">Live command view</p>
+            <h2 id="overview-title">Distributed workforce status</h2>
+          </div>
+          <div class="status-strip" id="summary-strip"></div>
+        </section>
+
+        <section id="machines" class="workspace-section">
+          <div class="section-heading">
+            <h2>Machines</h2>
+            <p>Connection state, role assignment, and latest worker heartbeat.</p>
+          </div>
+          <div class="machine-grid" id="machine-grid"></div>
+        </section>
+
+        <section id="agents" class="workspace-section">
+          <div class="section-heading">
+            <h2>AI Workforce</h2>
+            <p>All 18 assigned agents, grouped by the machine responsible for their work.</p>
+          </div>
+          <div class="agent-matrix" id="agent-matrix"></div>
+        </section>
+
+        <section id="tasks" class="workspace-section">
+          <div class="section-heading">
+            <h2>Task Queue</h2>
+            <p>Queued, running, and completed work across the brain and worker laptops.</p>
+          </div>
+          <div class="task-layout">
+            <div class="task-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Task</th>
+                    <th>Agent</th>
+                    <th>Machine</th>
+                  </tr>
+                </thead>
+                <tbody id="task-table"></tbody>
+              </table>
+            </div>
+            <form id="task-form" class="task-form">
+              <h3>Create Task</h3>
+              <label>
+                Title
+                <input name="title" required placeholder="Build first service package plan" />
+              </label>
+              <label>
+                Agent
+                <select name="agent_id">
+                  <option value="programmer">Programmer AI</option>
+                  <option value="code-reviewer">Code Reviewer</option>
+                  <option value="website-builder">Website Builder</option>
+                  <option value="lead-generation">Lead Generation</option>
+                  <option value="grant-scout">Grant Scout</option>
+                  <option value="business-manager">Business Manager</option>
+                </select>
+              </label>
+              <label>
+                Category
+                <input name="category" value="development" />
+              </label>
+              <label>
+                Priority
+                <input name="priority" type="number" min="1" max="100" value="75" />
+              </label>
+              <label>
+                Description
+                <textarea name="description" rows="5" required placeholder="What should the agent produce?"></textarea>
+              </label>
+              <button type="submit">Queue Task</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="reports" class="workspace-section">
+          <div class="section-heading">
+            <h2>Reports</h2>
+            <p>Morning, hourly, daily, weekly, monthly, and quarterly operating summaries.</p>
+          </div>
+          <div class="report-controls">
+            <button data-report="morning" type="button">Morning</button>
+            <button data-report="hourly" type="button">Hourly</button>
+            <button data-report="daily" type="button">Daily</button>
+            <button data-report="weekly" type="button">Weekly</button>
+            <button data-report="monthly" type="button">Monthly</button>
+            <button data-report="quarterly" type="button">Quarterly</button>
+          </div>
+          <pre id="report-output"></pre>
+        </section>
+
+        <section id="actions" class="workspace-section actions-section">
+          <div class="section-heading">
+            <h2>Actions</h2>
+            <p>Use these controls to move connected machines from idle to productive.</p>
+          </div>
+          <div class="action-row">
+            <button id="daily-priorities" type="button">Create Daily Priorities</button>
+            <button id="dev-kickoff" type="button">Start Dev Laptop Work</button>
+          </div>
+          <div class="command-panel">
+            <h3>Next Laptop Commands</h3>
+            <code>git clone https://github.com/bluejay88/AI-Operations-center.git</code>
+            <code>powershell -ExecutionPolicy Bypass -File docker\onboard-laptop.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -RenameTailscale</code>
+            <code>powershell -ExecutionPolicy Bypass -File docker\onboard-laptop.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale</code>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

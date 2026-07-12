@@ -8,6 +8,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY ai_ops_center ./ai_ops_center
 COPY config ./config
+COPY dashboard ./dashboard
 COPY sql ./sql
 
 RUN pip install --no-cache-dir .
@@ -15,4 +16,3 @@ RUN pip install --no-cache-dir .
 EXPOSE 8088
 
 CMD ["uvicorn", "ai_ops_center.api:app", "--host", "0.0.0.0", "--port", "8088"]
-

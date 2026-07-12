@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from datetime import UTC, datetime
 from typing import Any
 
@@ -112,6 +113,14 @@ def claim_next_task(machine_id: str, local: bool = False) -> dict[str, Any] | No
                 (machine_id,),
             )
             task = cur.fetchone()
+            if task:
+                cur.execute(
+                    """
+                    insert into task_events (task_id, event_type, message)
+                    values (%s, 'claimed', %s)
+                    """,
+                    (task["id"], f"{machine_id} claimed task {task['id']}"),
+                )
         conn.commit()
     return task
 
@@ -141,8 +150,21 @@ def complete_task(task_id: int, result: str, local: bool = False) -> None:
 
 
 def record_heartbeat(machine_id: str, status: str = "online", local: bool = False) -> None:
+    hostname = socket.gethostname()
     with connect(local=local) as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into machine_status_current (machine_id, status, last_seen_at, hostname, updated_at)
+                values (%s, %s, now(), %s, now())
+                on conflict (machine_id) do update set
+                    status = excluded.status,
+                    last_seen_at = excluded.last_seen_at,
+                    hostname = excluded.hostname,
+                    updated_at = now()
+                """,
+                (machine_id, status, hostname),
+            )
             cur.execute(
                 """
                 insert into machine_heartbeats (machine_id, status)
@@ -151,4 +173,3 @@ def record_heartbeat(machine_id: str, status: str = "online", local: bool = Fals
                 (machine_id, status),
             )
         conn.commit()
-

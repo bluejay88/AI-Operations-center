@@ -6,6 +6,7 @@ from .benchmark import benchmark_report, run_benchmark
 from .db import init_db
 from .health import machine_status
 from .orchestrator import create_daily_priorities
+from .readiness import readiness_report
 from .registry import seed_registry
 from .reports import generate_report
 from .settings import get_settings
@@ -20,6 +21,7 @@ def main() -> None:
     subparsers.add_parser("seed")
     subparsers.add_parser("daily-priorities")
     subparsers.add_parser("status")
+    subparsers.add_parser("readiness")
 
     benchmark_parser = subparsers.add_parser("benchmark")
     benchmark_parser.add_argument("--machine", default=get_settings().worker_machine_id)
@@ -33,7 +35,7 @@ def main() -> None:
     worker_parser = subparsers.add_parser("worker")
     worker_parser.add_argument("--machine", default=get_settings().worker_machine_id)
     worker_parser.add_argument("--once", action="store_true")
-    worker_parser.add_argument("--sleep-seconds", type=int, default=15)
+    worker_parser.add_argument("--sleep-seconds", type=int, default=get_settings().worker_sleep_seconds)
 
     parser.add_argument("--local-db", action="store_true", help="Use LOCAL_DATABASE_URL instead of DATABASE_URL")
     args = parser.parse_args()
@@ -49,6 +51,8 @@ def main() -> None:
         print(f"Created task IDs: {ids}")
     elif args.command == "status":
         print(machine_status(local=args.local_db))
+    elif args.command == "readiness":
+        print(readiness_report(local=args.local_db))
     elif args.command == "benchmark":
         result = run_benchmark(args.machine, brain_host=args.brain_host, local=args.local_db)
         print(result)

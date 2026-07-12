@@ -17,9 +17,11 @@ class Settings(BaseSettings):
     local_flowise_url: str = "http://localhost:3001"
     flowise_api_key: str = ""
     worker_machine_id: str = "brain-gaming-pc"
+    worker_sleep_seconds: int = 10
     report_timezone: str = "America/Chicago"
     brain_host: str = "100.70.49.32"
     human_approval_required: bool = Field(default=True)
+    expose_api_docs: bool = True
 
 
 @lru_cache

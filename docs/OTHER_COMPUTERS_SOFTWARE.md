@@ -126,6 +126,14 @@ If the repository is not on GitHub yet, copy the whole `Ai Operations Center` fo
 
 GitHub is still the preferred path because it lets every laptop pull updates.
 
+After GitHub is connected, use:
+
+```powershell
+docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
+```
+
+Change the machine id for the Research and Development laptops.
+
 ## Tailscale Names Seen From The Brain PC
 
 The brain PC currently sees:

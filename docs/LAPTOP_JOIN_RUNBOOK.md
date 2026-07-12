@@ -66,6 +66,8 @@ docker compose run --rm ai-ops-api python -m ai_ops_center.cli status
 
 Clone or copy the repository, then configure that laptop.
 
+Preferred path: clone from GitHub after following `docs\GIT_DISTRIBUTION_RUNBOOK.md`.
+
 If GitHub is not ready yet, create `exports\ai-operations-center-worker.zip` from the brain PC:
 
 ```powershell

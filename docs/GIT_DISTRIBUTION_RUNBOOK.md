@@ -27,9 +27,9 @@ Do not commit local secrets. These are already ignored:
 - `exports/`
 - `.docker/*` except `.docker/config.json`
 
-## Immediate Fallback: Brain-Hosted Git Over Tailscale
+## Optional Fallback: Brain-Hosted Git Over Tailscale
 
-If GitHub is not ready yet, the brain PC can host a read-only Git repo for laptops over Tailscale.
+If GitHub is not ready yet, the brain PC can host a read-only Git repo for laptops over Tailscale. This depends on Git for Windows being able to keep `git daemon` running and Windows Firewall allowing TCP `9418`.
 
 On the brain PC:
 
@@ -59,6 +59,8 @@ docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
 ```
 
 Change `dev-laptop` to `research-laptop` or `business-laptop` on those machines.
+
+If `git clone git://100.70.49.32/ai-operations-center.git` reports connection refused, use the GitHub path below or the transfer zip in `docs\LAPTOP_JOIN_RUNBOOK.md`.
 
 ## Step 2: Connect The Brain PC Repo
 

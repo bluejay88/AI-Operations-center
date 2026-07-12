@@ -55,6 +55,8 @@ foreach ($target in $targets) {
         }
         if ($pingOutput -match "time=([0-9.]+)ms") {
             $latency = [double]$Matches[1]
+        } elseif ($pingOutput -match "in ([0-9.]+)ms") {
+            $latency = [double]$Matches[1]
         }
     } else {
         $reachable = Test-Connection -ComputerName $target.Ip -Count 1 -Quiet

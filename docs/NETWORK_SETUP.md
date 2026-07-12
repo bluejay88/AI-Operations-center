@@ -44,6 +44,22 @@ Change `WORKER_MACHINE_ID` for each laptop.
 6. Start each laptop worker with `docker/worker-bootstrap.ps1 -MachineId business-laptop`.
 7. Check heartbeats with `python -m ai_ops_center.cli status`.
 
+## Live Connectivity Monitor
+
+From the brain PC, run a one-time Tailscale/SSH scan:
+
+```powershell
+docker\scan-connectivity.ps1
+```
+
+Start the repeating monitor:
+
+```powershell
+docker\start-connectivity-monitor.ps1 -IntervalSeconds 30
+```
+
+The monitor records `tailscale-ping` and `ssh-22` status in the brain database. The dashboard reads those records through `/connections` and `/readiness.json`.
+
 See `docs/LAPTOP_JOIN_RUNBOOK.md` for the full machine-by-machine checklist.
 
 ## n8n Cloud

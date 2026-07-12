@@ -44,6 +44,12 @@ docker\install-brain-prereqs.ps1
 Approve the Administrator prompt, then restart Windows if requested.
 After restart, open Docker Desktop once and let it finish first-run setup.
 
+Then run:
+
+```powershell
+docker\resume-brain-after-reboot.ps1
+```
+
 ```powershell
 docker compose --profile worker up --build worker
 ```

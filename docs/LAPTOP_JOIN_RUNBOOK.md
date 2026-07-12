@@ -30,6 +30,12 @@ docker\install-brain-prereqs.ps1
 Approve the Administrator prompt. Restart Windows if the installer or WSL requests it.
 After restart, open Docker Desktop once and let it finish its first-run setup.
 
+Then run:
+
+```powershell
+docker\resume-brain-after-reboot.ps1
+```
+
 Start the brain stack:
 
 ```powershell

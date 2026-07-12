@@ -1,5 +1,7 @@
 .env
 flowcheck.py
+.docker/*
+!.docker/config.json
 .venv/
 __pycache__/
 *.pyc

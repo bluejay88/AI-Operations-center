@@ -50,6 +50,13 @@ Then run:
 docker\resume-brain-after-reboot.ps1
 ```
 
+The core brain starts only Postgres and the AI Operations API. Start heavier optional tools after the laptops are online:
+
+```powershell
+docker\start-optional-tools.ps1 -AiTools
+docker\start-optional-tools.ps1 -AutomationTools
+```
+
 ```powershell
 docker compose --profile worker up --build worker
 ```

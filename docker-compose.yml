@@ -16,6 +16,7 @@ services:
       retries: 5
 
   ollama:
+    profiles: ["ai-tools"]
     image: ollama/ollama:latest
     ports:
       - "11434:11434"
@@ -23,6 +24,7 @@ services:
       - ollama-data:/root/.ollama
 
   open-webui:
+    profiles: ["ai-tools"]
     image: ghcr.io/open-webui/open-webui:main
     depends_on:
       - ollama
@@ -34,6 +36,7 @@ services:
       - open-webui-data:/app/backend/data
 
   n8n:
+    profiles: ["automation-tools"]
     image: n8nio/n8n:latest
     ports:
       - "5678:5678"
@@ -52,6 +55,7 @@ services:
         condition: service_healthy
 
   flowise:
+    profiles: ["automation-tools"]
     image: flowiseai/flowise:latest
     ports:
       - "3001:3000"

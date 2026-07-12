@@ -17,6 +17,7 @@
           <a href="#machines">Machines</a>
           <a href="#factory">Factory</a>
           <a href="#phoenix">Phoenix</a>
+          <a href="#brain-bus">Brain Bus</a>
           <a href="#agents">Agents</a>
           <a href="#tasks">Tasks</a>
           <a href="#reports">Reports</a>
@@ -78,6 +79,48 @@
             <p>All 18 assigned agents, grouped by the machine responsible for their work.</p>
           </div>
           <div class="agent-matrix" id="agent-matrix"></div>
+        </section>
+
+        <section id="brain-bus" class="workspace-section">
+          <div class="section-heading">
+            <h2>Approval And Listener Bus</h2>
+            <p>Brain approval requests, laptop events, speaker messages, and external model status.</p>
+          </div>
+          <div class="bus-grid">
+            <section class="bus-panel">
+              <header>
+                <h3>Approvals</h3>
+                <button id="refresh-approvals" type="button">Refresh</button>
+              </header>
+              <div id="approval-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel">
+              <header>
+                <h3>Listener Events</h3>
+                <button id="refresh-listener" type="button">Refresh</button>
+              </header>
+              <div id="listener-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel">
+              <header>
+                <h3>Speaker Feed</h3>
+                <select id="speaker-target">
+                  <option value="brain-gaming-pc">Brain PC</option>
+                  <option value="dev-laptop">Dev Laptop</option>
+                  <option value="research-laptop">Research Laptop</option>
+                  <option value="business-laptop">Business Laptop</option>
+                </select>
+              </header>
+              <div id="speaker-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel">
+              <header>
+                <h3>Model Mesh</h3>
+                <button id="refresh-integrations" type="button">Refresh</button>
+              </header>
+              <div id="integration-list" class="compact-list"></div>
+            </section>
+          </div>
         </section>
 
         <section id="tasks" class="workspace-section">

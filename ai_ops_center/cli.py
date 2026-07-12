@@ -3,10 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 
+from .approvals import approval_snapshot, create_approval_request, review_approval_request
 from .benchmark import benchmark_report, run_benchmark
+from .brain_bus import listener_snapshot, speaker_feed, submit_listener_event
 from .db import init_db
 from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
+from .integrations import integration_status
 from .orchestrator import create_daily_priorities
 from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
@@ -33,6 +36,35 @@ def main() -> None:
     subparsers.add_parser("phoenix-status")
     subparsers.add_parser("phoenix-brief")
     subparsers.add_parser("agent-prompts")
+    subparsers.add_parser("approvals")
+    subparsers.add_parser("listener-events")
+    subparsers.add_parser("integrations")
+
+    request_approval_parser = subparsers.add_parser("request-approval")
+    request_approval_parser.add_argument("--title", required=True)
+    request_approval_parser.add_argument("--type", default="change_request")
+    request_approval_parser.add_argument("--machine", required=True)
+    request_approval_parser.add_argument("--agent", required=True)
+    request_approval_parser.add_argument("--risk", default="medium")
+    request_approval_parser.add_argument("--summary", required=True)
+    request_approval_parser.add_argument("--changes", required=True)
+
+    review_parser = subparsers.add_parser("review-approval")
+    review_parser.add_argument("id", type=int)
+    review_parser.add_argument("decision", choices=["approved", "rejected", "needs_changes", "deployed"])
+    review_parser.add_argument("--feedback", required=True)
+    review_parser.add_argument("--actor", default="brain-gaming-pc")
+
+    listener_parser = subparsers.add_parser("listen")
+    listener_parser.add_argument("--source-id", required=True)
+    listener_parser.add_argument("--event-type", required=True)
+    listener_parser.add_argument("--subject", required=True)
+    listener_parser.add_argument("--body", required=True)
+    listener_parser.add_argument("--priority", type=int, default=50)
+    listener_parser.add_argument("--source-type", default="machine")
+
+    feed_parser = subparsers.add_parser("speaker-feed")
+    feed_parser.add_argument("target_id")
 
     laptop_parser = subparsers.add_parser("laptop-instructions")
     laptop_parser.add_argument("machine", choices=["brain-gaming-pc", "dev-laptop", "research-laptop", "business-laptop"])
@@ -86,6 +118,44 @@ def main() -> None:
         print(prompt_pack())
     elif args.command == "laptop-instructions":
         print(laptop_instruction(args.machine))
+    elif args.command == "approvals":
+        print(json.dumps({"approvals": approval_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "request-approval":
+        request_id = create_approval_request(
+            title=args.title,
+            request_type=args.type,
+            requester_machine_id=args.machine,
+            requester_agent_id=args.agent,
+            risk_level=args.risk,
+            summary=args.summary,
+            proposed_changes=args.changes,
+            local=args.local_db,
+        )
+        print(f"Created approval request {request_id}")
+    elif args.command == "review-approval":
+        print(json.dumps(review_approval_request(args.id, args.decision, args.feedback, args.actor, local=args.local_db), indent=2, default=str))
+    elif args.command == "listen":
+        print(
+            json.dumps(
+                submit_listener_event(
+                    source_type=args.source_type,
+                    source_id=args.source_id,
+                    event_type=args.event_type,
+                    subject=args.subject,
+                    body=args.body,
+                    priority=args.priority,
+                    local=args.local_db,
+                ),
+                indent=2,
+                default=str,
+            )
+        )
+    elif args.command == "listener-events":
+        print(json.dumps({"events": listener_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "speaker-feed":
+        print(json.dumps(speaker_feed(args.target_id, local=args.local_db), indent=2, default=str))
+    elif args.command == "integrations":
+        print(json.dumps(integration_status(), indent=2, default=str))
     elif args.command == "benchmark":
         result = run_benchmark(args.machine, brain_host=args.brain_host, local=args.local_db)
         print(result)

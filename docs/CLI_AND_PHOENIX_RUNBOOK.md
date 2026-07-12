@@ -59,6 +59,8 @@ Phoenix is the Brain PC command voice and briefing layer.
 ```powershell
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli phoenix-status
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli phoenix-brief
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli approvals
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli integrations
 ```
 
 Dashboard endpoints:
@@ -66,12 +68,48 @@ Dashboard endpoints:
 ```text
 GET http://localhost:8088/phoenix/status
 GET http://localhost:8088/phoenix/briefing
+GET http://localhost:8088/approvals
+GET http://localhost:8088/listener/events
+GET http://localhost:8088/speaker/feed/brain-gaming-pc
+GET http://localhost:8088/integrations/status
 ```
 
 Dashboard UI:
 
 ```text
 http://localhost:8088/dashboard/#phoenix
+http://localhost:8088/dashboard/#brain-bus
+```
+
+## Listener/Speaker Loop
+
+Laptops and external AI helpers send updates to:
+
+```text
+POST http://100.70.49.32:8088/listener/events
+```
+
+The Brain applies routing logic:
+
+- `workload_update` becomes a Brain speaker message.
+- `approval_request`, `change_request`, and `deployment_request` become approval requests.
+- `task_request` creates a task.
+- Other events are logged and surfaced to the Brain PC.
+
+Laptops pull instructions and feedback from:
+
+```text
+GET http://100.70.49.32:8088/speaker/feed/dev-laptop
+GET http://100.70.49.32:8088/speaker/feed/research-laptop
+GET http://100.70.49.32:8088/speaker/feed/business-laptop
+```
+
+Approvals are reviewed by the Brain:
+
+```powershell
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli review-approval 1 needs_changes --feedback "Add test output and rollback notes before approval."
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli review-approval 1 approved --feedback "Approved for supervised deployment."
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli review-approval 1 deployed --feedback "Deployment verified."
 ```
 
 ## Phoenix Voice Roadmap
@@ -94,4 +132,3 @@ Reference docs:
 - Realtime/audio: https://developers.openai.com/api/docs/guides/realtime
 - Agents SDK: https://developers.openai.com/api/docs/guides/agents
 - Text to speech: https://developers.openai.com/api/docs/guides/text-to-speech
-

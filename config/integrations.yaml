@@ -1,4 +1,11 @@
 integrations:
+  openai:
+    purpose: Backend chat intelligence, Phoenix voice/reasoning, tool orchestration, and final Brain synthesis.
+    api_key_env: OPENAI_API_KEY
+    notes:
+      - Store API keys only in .env.
+      - Use for Phoenix natural voice, Brain synthesis, and supervised tool orchestration.
+
   flowise:
     purpose: Visual agent and chain builder for reusable AI workflows.
     primary_url_env: FLOWISE_URL
@@ -15,3 +22,28 @@ integrations:
       - Use LOCAL_FLOWISE_URL=http://localhost:3001 for the Docker Flowise service.
       - Store API keys only in .env, never in git.
 
+  n8n:
+    purpose: Automation workflows, scheduled checks, external app actions, and laptop update chains.
+    primary_url_env: N8N_URL
+    webhook_env: N8N_WEBHOOK_URL
+    notes:
+      - Use webhooks for supervised automation triggers.
+      - Sensitive actions must create approval requests first.
+
+  groq:
+    purpose: Fast model responses for summaries, routing, drafts, and quick critiques.
+    api_key_env: GROQ_API_KEY
+    notes:
+      - Use as a fast helper model, not final approval authority.
+
+  claude:
+    purpose: Long-context review, writing critique, risk review, and implementation feedback.
+    api_key_env: ANTHROPIC_API_KEY
+    notes:
+      - Use for second-opinion review and dense document/code analysis.
+
+  gemini:
+    purpose: Research, multimodal review, broad alternate-model critique, and data interpretation.
+    api_key_env: GOOGLE_API_KEY
+    notes:
+      - Use for research cross-checking and alternate reasoning.

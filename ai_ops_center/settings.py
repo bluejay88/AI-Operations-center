@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     flowise_url: str = ""
     local_flowise_url: str = "http://localhost:3001"
     flowise_api_key: str = ""
+    n8n_webhook_url: str = ""
+    groq_api_key: str = ""
+    anthropic_api_key: str = ""
+    google_api_key: str = ""
+    openai_api_key: str = ""
     worker_machine_id: str = "brain-gaming-pc"
     worker_sleep_seconds: int = 10
     report_timezone: str = "America/Chicago"

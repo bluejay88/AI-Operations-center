@@ -78,24 +78,33 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
     for row in task_rows:
         task_counts.setdefault(row["machine_id"], {})[row["status"]] = row["count"]
 
-    machines = [dict(machine) for machine in machines]
     connections = connection_snapshot(local=local)
     connections_by_target: dict[str, list[dict]] = {}
     for connection in connections:
         connections_by_target.setdefault(connection["target_machine_id"], []).append(connection)
 
+    machines = [dict(machine) for machine in machines]
     for machine in machines:
         last_seen = machine["last_seen"]
-        if last_seen is None:
+        machine_connections = connections_by_target.get(machine["id"], [])
+        tailscale_online = any(
+            connection["channel"] == "tailscale-ping" and connection["status"] == "online"
+            for connection in machine_connections
+        )
+        if last_seen is None and tailscale_online:
+            state = "reachable_not_onboarded"
+        elif last_seen is None:
             state = "never_seen"
+        elif last_seen < cutoff and tailscale_online:
+            state = "reachable_worker_stale"
         elif last_seen < cutoff:
-            state = "stale"
+            state = "worker_stale"
         else:
             state = machine["current_status"] or "online"
         machine["state"] = state
         machine["task_counts"] = task_counts.get(machine["id"], {})
         machine["latest_benchmark"] = dict(benchmarks[machine["id"]]) if machine["id"] in benchmarks else None
-        machine["connections"] = connections_by_target.get(machine["id"], [])
+        machine["connections"] = machine_connections
         machine["next_command"] = ONBOARD_COMMANDS.get(machine["id"]) if state != "online" else None
 
     return {
@@ -103,7 +112,7 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
         "stale_after_minutes": stale_after_minutes,
         "machines": machines,
         "next_gates": [
-            "Dev Agent is ready when it is online, has a benchmark, and can complete a development task.",
+            "Dev Agent is ready when it is worker-online, has a benchmark, and can complete a development task.",
             "Research Agent is ready when it checks in and completes a grant or opportunity task.",
             "Business Agent is ready when it checks in and completes a lead generation or business task.",
             "Remote desktop/SSH is required before the brain can show popups or install apps without someone running commands on each laptop.",

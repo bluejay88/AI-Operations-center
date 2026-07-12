@@ -10,11 +10,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .approvals import approval_detail, approval_snapshot, create_approval_request, review_approval_request
+from .brain_bus import acknowledge_speaker_message, create_speaker_message, listener_snapshot, speaker_feed, submit_listener_event
 from .connectivity import connection_snapshot, record_connection
 from .factory import factory_snapshot, redistribute_business_queue
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
+from .integrations import dispatch_to_provider, integration_status, provider_health
 from .orchestrator import create_daily_priorities
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
@@ -84,6 +87,57 @@ class ConnectionUpdateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class ApprovalCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=3, max_length=180)
+    request_type: str = Field(min_length=3, max_length=80)
+    requester_machine_id: str = Field(min_length=2, max_length=80)
+    requester_agent_id: str = Field(min_length=2, max_length=80)
+    risk_level: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+    summary: str = Field(min_length=3, max_length=4000)
+    proposed_changes: str = Field(min_length=3, max_length=8000)
+    metadata: dict = Field(default_factory=dict)
+
+
+class ApprovalReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str = Field(pattern="^(approved|rejected|needs_changes|deployed)$")
+    feedback: str = Field(min_length=3, max_length=8000)
+    actor: str = Field(default="brain-gaming-pc", min_length=2, max_length=80)
+    metadata: dict = Field(default_factory=dict)
+
+
+class ListenerEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_type: str = Field(default="machine", min_length=2, max_length=80)
+    source_id: str = Field(min_length=2, max_length=120)
+    event_type: str = Field(min_length=3, max_length=80)
+    subject: str = Field(min_length=3, max_length=180)
+    body: str = Field(min_length=3, max_length=8000)
+    priority: int = Field(default=50, ge=1, le=100)
+    metadata: dict = Field(default_factory=dict)
+
+
+class SpeakerAckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: str = Field(min_length=2, max_length=120)
+
+
+class IntegrationDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=2, max_length=80)
+    purpose: str = Field(min_length=3, max_length=180)
+    prompt: str = Field(min_length=3, max_length=12000)
+    task_id: int | None = None
+    approval_request_id: int | None = None
+    options: dict = Field(default_factory=dict)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -136,6 +190,7 @@ async def stream() -> StreamingResponse:
                 "tasks": task_snapshot(),
                 "connections": connection_snapshot(),
                 "factory": factory_snapshot(),
+                "approvals": approval_snapshot(limit=20),
             }
             yield f"data: {json.dumps(payload, default=str)}\n\n"
             await asyncio.sleep(5)
@@ -178,6 +233,76 @@ def create_task(request: TaskCreateRequest) -> dict[str, int]:
     return {"task_id": task_id}
 
 
+@app.get("/approvals")
+def approvals() -> dict:
+    return {"approvals": approval_snapshot()}
+
+
+@app.post("/approvals")
+def create_approval(request: ApprovalCreateRequest) -> dict[str, int]:
+    request_id = create_approval_request(
+        title=request.title,
+        request_type=request.request_type,
+        requester_machine_id=request.requester_machine_id,
+        requester_agent_id=request.requester_agent_id,
+        risk_level=request.risk_level,
+        summary=request.summary,
+        proposed_changes=request.proposed_changes,
+        metadata=request.metadata,
+    )
+    return {"approval_request_id": request_id}
+
+
+@app.get("/approvals/{request_id}")
+def approval(request_id: int) -> dict:
+    detail = approval_detail(request_id)
+    return {"approval": detail}
+
+
+@app.post("/approvals/{request_id}/review")
+def review_approval(request_id: int, request: ApprovalReviewRequest) -> dict:
+    reviewed = review_approval_request(request_id, request.decision, request.feedback, request.actor, request.metadata)
+    requester_machine = reviewed.get("requester_machine_id")
+    if requester_machine:
+        create_speaker_message(
+            target_id=requester_machine,
+            message_type=f"approval_{request.decision}",
+            subject=f"Brain review: {reviewed['title']}",
+            body=request.feedback,
+            priority=90 if request.decision in {"approved", "needs_changes"} else 70,
+            metadata={"approval_request_id": request_id, "decision": request.decision},
+        )
+    return {"approval": reviewed}
+
+
+@app.get("/listener/events")
+def listener_events() -> dict:
+    return {"events": listener_snapshot()}
+
+
+@app.post("/listener/events")
+def listener_event(request: ListenerEventRequest) -> dict:
+    return submit_listener_event(
+        source_type=request.source_type,
+        source_id=request.source_id,
+        event_type=request.event_type,
+        subject=request.subject,
+        body=request.body,
+        priority=request.priority,
+        metadata=request.metadata,
+    )
+
+
+@app.get("/speaker/feed/{target_id}")
+def speaker(target_id: str, include_acknowledged: bool = False) -> dict:
+    return speaker_feed(target_id, include_acknowledged=include_acknowledged)
+
+
+@app.post("/speaker/messages/{message_id}/ack")
+def speaker_ack(message_id: int, request: SpeakerAckRequest) -> dict:
+    return {"message": acknowledge_speaker_message(message_id, request.actor)}
+
+
 @app.post("/orchestrator/daily-priorities")
 def daily_priorities() -> dict[str, list[int]]:
     return {"created_task_ids": create_daily_priorities()}
@@ -211,6 +336,28 @@ async def flowise_health() -> dict:
 @app.post("/integrations/flowise/predict")
 async def flowise_prediction(request: FlowisePredictionRequest) -> dict:
     return await flowise_predict(request.chatflow_id, request.question, request.override_config)
+
+
+@app.get("/integrations/status")
+def integrations_status() -> dict:
+    return integration_status()
+
+
+@app.get("/integrations/health")
+async def integrations_health() -> dict:
+    return await provider_health()
+
+
+@app.post("/integrations/dispatch")
+async def integrations_dispatch(request: IntegrationDispatchRequest) -> dict:
+    return await dispatch_to_provider(
+        provider=request.provider,
+        purpose=request.purpose,
+        prompt=request.prompt,
+        task_id=request.task_id,
+        approval_request_id=request.approval_request_id,
+        options=request.options,
+    )
 
 
 if DASHBOARD_DIR.exists():

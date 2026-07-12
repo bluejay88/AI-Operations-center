@@ -5,6 +5,10 @@ const state = {
   connections: [],
   factory: null,
   phoenixBriefing: "",
+  approvals: [],
+  listenerEvents: [],
+  speakerFeed: null,
+  integrations: [],
   selectedReport: "hourly",
   stream: null,
 };
@@ -17,6 +21,14 @@ const els = {
   phoenixSummary: document.querySelector("#phoenix-summary"),
   phoenixRefresh: document.querySelector("#phoenix-refresh"),
   phoenixSpeak: document.querySelector("#phoenix-speak"),
+  approvals: document.querySelector("#approval-list"),
+  listenerEvents: document.querySelector("#listener-list"),
+  speakerList: document.querySelector("#speaker-list"),
+  speakerTarget: document.querySelector("#speaker-target"),
+  integrations: document.querySelector("#integration-list"),
+  refreshApprovals: document.querySelector("#refresh-approvals"),
+  refreshListener: document.querySelector("#refresh-listener"),
+  refreshIntegrations: document.querySelector("#refresh-integrations"),
   agents: document.querySelector("#agent-matrix"),
   tasks: document.querySelector("#task-table"),
   report: document.querySelector("#report-output"),
@@ -94,7 +106,7 @@ function renderMachines() {
     .map((machine) => {
       const readiness = readinessByMachine[machine.id] || {};
       const stateLabel = readiness.state || "unknown";
-      const isOnline = stateLabel === "online";
+      const isOnline = stateLabel === "online" || stateLabel.startsWith("reachable");
       const counts = tasksByMachine[machine.id] || {};
       const mesh = (readiness.connections || []).find((connection) => connection.channel === "tailscale-ping");
       const ssh = (readiness.connections || []).find((connection) => connection.channel === "ssh-22");
@@ -233,6 +245,66 @@ function renderTasks() {
     .join("");
 }
 
+function renderApprovals() {
+  els.approvals.innerHTML = (state.approvals || [])
+    .slice(0, 12)
+    .map(
+      (item) => `
+        <article>
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.status)} / ${escapeHtml(item.risk_level)} / ${escapeHtml(item.requester_machine_id || "")}</span>
+          <p>${escapeHtml(item.summary || "")}</p>
+        </article>
+      `
+    )
+    .join("") || `<p class="muted">No approvals yet.</p>`;
+}
+
+function renderListenerEvents() {
+  els.listenerEvents.innerHTML = (state.listenerEvents || [])
+    .slice(0, 12)
+    .map(
+      (item) => `
+        <article>
+          <strong>${escapeHtml(item.subject)}</strong>
+          <span>${escapeHtml(item.event_type)} / ${escapeHtml(item.source_id)}</span>
+          <p>${escapeHtml(item.body || "")}</p>
+        </article>
+      `
+    )
+    .join("") || `<p class="muted">No listener events yet.</p>`;
+}
+
+function renderSpeakerFeed() {
+  const feed = state.speakerFeed || {};
+  els.speakerList.innerHTML = (feed.messages || [])
+    .slice(0, 12)
+    .map(
+      (item) => `
+        <article>
+          <strong>${escapeHtml(item.subject)}</strong>
+          <span>${escapeHtml(item.message_type)} / ${escapeHtml(item.status)} / P${escapeHtml(item.priority)}</span>
+          <p>${escapeHtml(item.body || "")}</p>
+        </article>
+      `
+    )
+    .join("") || `<p class="muted">No speaker messages for this target.</p>`;
+}
+
+function renderIntegrations() {
+  els.integrations.innerHTML = (state.integrations || [])
+    .map(
+      (item) => `
+        <article>
+          <strong>${escapeHtml(item.label)}</strong>
+          <span>${item.configured ? "configured" : "not configured"}</span>
+          <p>${escapeHtml(item.capability)}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
 async function loadReport(type = state.selectedReport) {
   state.selectedReport = type;
   const data = await api(`/reports/${type}`);
@@ -243,6 +315,30 @@ async function loadPhoenixBriefing() {
   const data = await api("/phoenix/briefing");
   state.phoenixBriefing = data.briefing;
   els.phoenixSummary.textContent = data.briefing;
+}
+
+async function loadApprovals() {
+  const data = await api("/approvals");
+  state.approvals = data.approvals || [];
+  renderApprovals();
+}
+
+async function loadListenerEvents() {
+  const data = await api("/listener/events");
+  state.listenerEvents = data.events || [];
+  renderListenerEvents();
+}
+
+async function loadSpeakerFeed() {
+  const target = els.speakerTarget.value;
+  state.speakerFeed = await api(`/speaker/feed/${encodeURIComponent(target)}`);
+  renderSpeakerFeed();
+}
+
+async function loadIntegrations() {
+  const data = await api("/integrations/status");
+  state.integrations = data.providers || [];
+  renderIntegrations();
 }
 
 async function refresh() {
@@ -265,6 +361,7 @@ async function refresh() {
   renderTasks();
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
+  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations()]);
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
 
@@ -273,11 +370,13 @@ function applyRealtimePayload(payload) {
   state.tasks = payload.tasks || [];
   state.connections = payload.connections || [];
   state.factory = payload.factory || state.factory;
+  state.approvals = payload.approvals || state.approvals;
   renderSummary();
   renderMachines();
   renderFactory();
   renderAgents();
   renderTasks();
+  renderApprovals();
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
 
@@ -296,6 +395,10 @@ function startStream() {
 els.refresh.addEventListener("click", () => refresh().catch((error) => toast(error.message)));
 
 els.phoenixRefresh.addEventListener("click", () => loadPhoenixBriefing().catch((error) => toast(error.message)));
+els.refreshApprovals.addEventListener("click", () => loadApprovals().catch((error) => toast(error.message)));
+els.refreshListener.addEventListener("click", () => loadListenerEvents().catch((error) => toast(error.message)));
+els.refreshIntegrations.addEventListener("click", () => loadIntegrations().catch((error) => toast(error.message)));
+els.speakerTarget.addEventListener("change", () => loadSpeakerFeed().catch((error) => toast(error.message)));
 
 els.phoenixSpeak.addEventListener("click", async () => {
   if (!state.phoenixBriefing) {

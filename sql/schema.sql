@@ -243,3 +243,86 @@ create table if not exists phoenix_voice_settings (
     metadata jsonb not null default '{}',
     updated_at timestamptz not null default now()
 );
+
+create table if not exists approval_requests (
+    id bigserial primary key,
+    title text not null,
+    request_type text not null,
+    requester_machine_id text,
+    requester_agent_id text,
+    risk_level text not null default 'medium',
+    status text not null default 'pending',
+    summary text not null,
+    proposed_changes text not null,
+    audit_feedback text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    reviewed_at timestamptz,
+    approved_at timestamptz,
+    deployed_at timestamptz,
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_approval_requests_status_time on approval_requests(status, created_at desc);
+create index if not exists idx_approval_requests_requester on approval_requests(requester_machine_id, requester_agent_id);
+
+create table if not exists approval_events (
+    id bigserial primary key,
+    approval_request_id bigint not null references approval_requests(id) on delete cascade,
+    event_type text not null,
+    actor text not null default 'brain-gaming-pc',
+    message text not null,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_approval_events_request_time on approval_events(approval_request_id, created_at desc);
+
+create table if not exists integration_runs (
+    id bigserial primary key,
+    provider text not null,
+    purpose text not null,
+    status text not null default 'created',
+    request_body text not null,
+    response_body text,
+    task_id bigint references tasks(id) on delete set null,
+    approval_request_id bigint references approval_requests(id) on delete set null,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    completed_at timestamptz
+);
+
+create index if not exists idx_integration_runs_provider_time on integration_runs(provider, created_at desc);
+
+create table if not exists listener_events (
+    id bigserial primary key,
+    source_type text not null default 'machine',
+    source_id text not null,
+    event_type text not null,
+    subject text not null,
+    body text not null,
+    priority integer not null default 50,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    processed_at timestamptz
+);
+
+create index if not exists idx_listener_events_type_time on listener_events(event_type, created_at desc);
+create index if not exists idx_listener_events_source_time on listener_events(source_id, created_at desc);
+
+create table if not exists speaker_messages (
+    id bigserial primary key,
+    target_type text not null default 'machine',
+    target_id text not null,
+    message_type text not null,
+    subject text not null,
+    body text not null,
+    priority integer not null default 50,
+    status text not null default 'pending',
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    delivered_at timestamptz,
+    acknowledged_at timestamptz
+);
+
+create index if not exists idx_speaker_messages_target_status on speaker_messages(target_id, status, priority desc, created_at desc);

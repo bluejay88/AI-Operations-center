@@ -19,6 +19,23 @@ factory:
     - development_or_delivery
     - report
 
+temporary_hybrid_business_coverage:
+  active_until: business-laptop is worker-online and completing business tasks
+  coverage_rule: Brain PC, Dev Laptop, and Research Laptop share Business AI duties until the dedicated Business Laptop is fully onboarded.
+  routing:
+    email_calendar_crm_admin: brain-gaming-pc/project-coordinator
+    finance_cashflow_bills: brain-gaming-pc/project-coordinator
+    social_content_marketing: brain-gaming-pc/content-engine
+    lead_generation: research-laptop/research-lead
+    website_offer_sales_assets: dev-laptop/website-builder
+    implementation_and_delivery: dev-laptop/programmer
+  auto_transition_when_online:
+    - Detect Business Laptop heartbeat and benchmark.
+    - Reassign new business-manager, finance-manager, social-media, lead-generation, and marketing-agent tasks to Business Laptop.
+    - Keep already-running tasks with their current owner unless Brain approval says to transfer.
+    - Move unfinished queued fallback tasks back to the proper Business Laptop agents after validation.
+    - Phoenix announces the role transition and updates dashboard recommendations.
+
 machines:
   - id: brain-gaming-pc
     title: Brain PC / AI Server

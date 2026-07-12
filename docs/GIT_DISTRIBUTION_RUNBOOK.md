@@ -17,6 +17,12 @@ Create a private GitHub repository named:
 ai-operations-center
 ```
 
+Current GitHub repo:
+
+```text
+https://github.com/bluejay88/AI-Operations-center.git
+```
+
 Recommended visibility: private.
 
 Do not commit local secrets. These are already ignored:
@@ -70,6 +76,12 @@ From the brain PC repository folder, run this with your actual GitHub URL:
 docker\configure-git-remote.ps1 -RemoteUrl https://github.com/YOUR-USER/ai-operations-center.git
 ```
 
+For the current repo:
+
+```powershell
+docker\configure-git-remote.ps1 -RemoteUrl https://github.com/bluejay88/AI-Operations-center.git
+```
+
 Then push:
 
 ```powershell
@@ -88,6 +100,13 @@ On each laptop, choose a folder such as:
 cd $env:USERPROFILE\Desktop
 git clone https://github.com/YOUR-USER/ai-operations-center.git
 cd ai-operations-center
+```
+
+For the current repo:
+
+```powershell
+git clone https://github.com/bluejay88/AI-Operations-center.git
+cd AI-Operations-center
 ```
 
 Then run the matching onboarding command.

@@ -20,8 +20,8 @@ if ($currentBranch -ne $Branch) {
     git branch -M $Branch
 }
 
-$existingOrigin = git remote get-url origin 2>$null
-if ($LASTEXITCODE -eq 0 -and ![string]::IsNullOrWhiteSpace($existingOrigin)) {
+$remoteNames = git remote
+if ($remoteNames -contains "origin") {
     git remote set-url origin $RemoteUrl
 } else {
     git remote add origin $RemoteUrl

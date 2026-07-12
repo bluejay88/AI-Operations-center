@@ -8,8 +8,10 @@ All computers are already connected to Tailscale, which is the network layer. Th
 - Docker Desktop.
 - Git for Windows.
 - PowerShell.
+- ChatGPT desktop app.
 
 Minimum needed to connect a laptop as a worker: Tailscale + Docker Desktop + Git.
+ChatGPT is installed by the onboarding script when Windows allows winget/Microsoft Store installs.
 
 ## Strongly Recommended On Every Laptop
 
@@ -86,7 +88,15 @@ On each laptop, install prerequisites manually or run:
 docker\install-laptop-prereqs.ps1 -MachineId business-laptop
 ```
 
-Then configure the worker:
+Recommended one-command onboarding:
+
+```powershell
+docker\onboard-laptop.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
+```
+
+That command shows `Bleujay Brain is now connected`, checks/installs ChatGPT, joins the worker, and runs a benchmark.
+
+Manual worker configuration:
 
 ```powershell
 docker\join-worker.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale

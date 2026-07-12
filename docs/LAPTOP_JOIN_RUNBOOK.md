@@ -74,13 +74,41 @@ docker\package-worker-transfer.ps1
 
 Copy and extract that zip on the laptop.
 
-On each laptop, first rename that laptop in Tailscale:
+Fast path: run the full onboarding command on the laptop. This shows the desktop message, installs/checks the laptop prerequisites, installs/checks ChatGPT, joins the worker pool, and records a benchmark.
+
+Business laptop:
+
+```powershell
+docker\onboard-laptop.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
+```
+
+Research laptop:
+
+```powershell
+docker\onboard-laptop.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -RenameTailscale
+```
+
+Development laptop:
+
+```powershell
+docker\onboard-laptop.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -RenameTailscale
+```
+
+If you only want the visible connection popup on a laptop:
+
+```powershell
+docker\show-connected-message.ps1
+```
+
+Manual path: first rename that laptop in Tailscale:
 
 ```powershell
 docker\rename-this-pc.ps1 -Hostname business-laptop
 ```
 
 Use `research-laptop` or `dev-laptop` on the other machines.
+
+Then join the worker:
 
 Business laptop:
 
@@ -124,3 +152,13 @@ Each running laptop should show as online within five minutes.
 3. Run `docker\check-brain.ps1 -BrainHost brain-gaming-pc`.
 4. If MagicDNS fails, use the Gaming PC Tailscale IP instead of `brain-gaming-pc`.
 5. Restart the worker command.
+
+## Remote Control Notes
+
+Tailscale proves the laptops can reach the brain PC, but it does not automatically grant remote PowerShell control. To run onboarding remotely from the brain PC, enable one remote command channel on each laptop:
+
+- Tailscale SSH or Windows OpenSSH Server.
+- PowerShell Remoting / WinRM over the Tailscale network.
+- A remote desktop tool where you can run the onboarding command locally.
+
+Until one of those is enabled, run `docker\onboard-laptop.ps1` directly on each laptop.

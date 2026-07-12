@@ -89,11 +89,7 @@ docker\install-laptop-prereqs.ps1 -MachineId business-laptop
 Then configure the worker:
 
 ```powershell
-git clone YOUR_REPO_URL
-cd "Ai Operations Center"
-docker\configure-worker-env.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
-docker\check-brain.ps1 -BrainHost 100.70.49.32
-docker\worker-bootstrap.ps1 -MachineId business-laptop
+docker\join-worker.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
 Change `business-laptop` to `research-laptop` or `dev-laptop` for the other machines.

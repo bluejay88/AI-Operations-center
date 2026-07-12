@@ -85,25 +85,19 @@ Use `research-laptop` or `dev-laptop` on the other machines.
 Business laptop:
 
 ```powershell
-docker\configure-worker-env.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
-docker\check-brain.ps1 -BrainHost 100.70.49.32
-docker\worker-bootstrap.ps1 -MachineId business-laptop
+docker\join-worker.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
 Research laptop:
 
 ```powershell
-docker\configure-worker-env.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
-docker\check-brain.ps1 -BrainHost 100.70.49.32
-docker\worker-bootstrap.ps1 -MachineId research-laptop
+docker\join-worker.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
 Development laptop:
 
 ```powershell
-docker\configure-worker-env.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
-docker\check-brain.ps1 -BrainHost 100.70.49.32
-docker\worker-bootstrap.ps1 -MachineId dev-laptop
+docker\join-worker.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
 ## Verify From The Gaming PC
@@ -111,6 +105,12 @@ docker\worker-bootstrap.ps1 -MachineId dev-laptop
 ```powershell
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli status
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli report hourly
+```
+
+Or watch status from the brain PC:
+
+```powershell
+docker\watch-workers.ps1
 ```
 
 Each running laptop should show as online within five minutes.

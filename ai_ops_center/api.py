@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
+from .health import machine_status
 from .orchestrator import create_daily_priorities
 from .registry import registry_snapshot
 from .reports import generate_report
@@ -21,6 +22,11 @@ class FlowisePredictionRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/status")
+def status() -> dict[str, str]:
+    return {"status": machine_status()}
 
 
 @app.get("/registry")

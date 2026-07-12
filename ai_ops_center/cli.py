@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from .db import init_db
+from .health import machine_status
 from .orchestrator import create_daily_priorities
 from .registry import seed_registry
 from .reports import generate_report
@@ -17,6 +18,7 @@ def main() -> None:
     subparsers.add_parser("init-db")
     subparsers.add_parser("seed")
     subparsers.add_parser("daily-priorities")
+    subparsers.add_parser("status")
 
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("type", choices=["morning", "hourly", "daily", "weekly", "monthly", "quarterly"])
@@ -38,6 +40,8 @@ def main() -> None:
     elif args.command == "daily-priorities":
         ids = create_daily_priorities(local=args.local_db)
         print(f"Created task IDs: {ids}")
+    elif args.command == "status":
+        print(machine_status(local=args.local_db))
     elif args.command == "report":
         print(generate_report(args.type, local=args.local_db))
     elif args.command == "worker":
@@ -46,4 +50,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

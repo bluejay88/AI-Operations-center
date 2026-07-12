@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+. ".\docker\lib.ps1"
+Assert-DockerAvailable
+
 if (!(Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
 }

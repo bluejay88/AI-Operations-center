@@ -1,0 +1,20 @@
+tailnet:
+  discovered_at: "2026-07-11"
+  brain_host: 100.70.49.32
+  devices:
+    - tailscale_name: bleujay
+      tailscale_ip: 100.70.49.32
+      ai_ops_role: brain-gaming-pc
+      status: online
+    - tailscale_name: desktop-jv56q9p
+      tailscale_ip: 100.112.91.61
+      ai_ops_role: assign-business-or-research-or-dev
+      status: online
+    - tailscale_name: desktop-ls24m7v
+      tailscale_ip: 100.71.82.122
+      ai_ops_role: assign-business-or-research-or-dev
+      status: online
+    - tailscale_name: laptop-5qgp9kbc
+      tailscale_ip: 100.90.219.88
+      ai_ops_role: assign-business-or-research-or-dev
+      status: offline-last-seen-14m

@@ -23,6 +23,7 @@
    - `business-laptop`
    - `research-laptop`
    - `dev-laptop`
+   You can do this from this repo with `docker/rename-this-pc.ps1 -Hostname brain-gaming-pc`, changing the hostname for each device.
 4. Use the Gaming PC Tailscale IP or MagicDNS hostname as the central API and database host.
 5. Update each laptop `.env`:
 
@@ -38,8 +39,12 @@ Change `WORKER_MACHINE_ID` for each laptop.
 1. Start Docker on the Gaming PC.
 2. Run `docker/brain-bootstrap.ps1`.
 3. Confirm `http://localhost:8088/health` returns `{"status":"ok"}`.
-4. Start each laptop worker with `docker/worker-bootstrap.ps1 -MachineId business-laptop`.
-5. Check heartbeats in the morning or hourly report.
+4. On each laptop, run `docker/configure-worker-env.ps1 -MachineId business-laptop -BrainHost 100.70.49.32`.
+5. Confirm the laptop can reach the brain with `docker/check-brain.ps1 -BrainHost 100.70.49.32`.
+6. Start each laptop worker with `docker/worker-bootstrap.ps1 -MachineId business-laptop`.
+7. Check heartbeats with `python -m ai_ops_center.cli status`.
+
+See `docs/LAPTOP_JOIN_RUNBOOK.md` for the full machine-by-machine checklist.
 
 ## n8n Cloud
 

@@ -35,6 +35,15 @@ docker compose up --build
 
 5. On each laptop, set `WORKER_MACHINE_ID` in `.env`, then run:
 
+On the brain PC, if Docker Desktop or WSL is missing, run:
+
+```powershell
+docker\install-brain-prereqs.ps1
+```
+
+Approve the Administrator prompt, then restart Windows if requested.
+After restart, open Docker Desktop once and let it finish first-run setup.
+
 ```powershell
 docker compose --profile worker up --build worker
 ```
@@ -69,6 +78,7 @@ python -m ai_ops_center.cli init-db
 python -m ai_ops_center.cli seed
 python -m ai_ops_center.cli report morning
 python -m ai_ops_center.cli report hourly
+python -m ai_ops_center.cli status
 python -m ai_ops_center.cli worker --machine business-laptop
 python -m ai_ops_center.cli worker --machine research-laptop
 python -m ai_ops_center.cli worker --machine dev-laptop

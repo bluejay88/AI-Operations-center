@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     flowise_api_key: str = ""
     worker_machine_id: str = "brain-gaming-pc"
     report_timezone: str = "America/Chicago"
+    brain_host: str = "100.70.49.32"
     human_approval_required: bool = Field(default=True)
 
 

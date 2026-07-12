@@ -66,6 +66,14 @@ docker compose run --rm ai-ops-api python -m ai_ops_center.cli status
 
 Clone or copy the repository, then configure that laptop.
 
+If GitHub is not ready yet, create `exports\ai-operations-center-worker.zip` from the brain PC:
+
+```powershell
+docker\package-worker-transfer.ps1
+```
+
+Copy and extract that zip on the laptop.
+
 On each laptop, first rename that laptop in Tailscale:
 
 ```powershell

@@ -72,7 +72,21 @@ Later integrations:
 
 ## First Connection Checklist
 
-On each laptop:
+If GitHub is not ready yet, create a transfer zip on the brain PC:
+
+```powershell
+docker\package-worker-transfer.ps1
+```
+
+Copy `exports\ai-operations-center-worker.zip` to the laptop and extract it.
+
+On each laptop, install prerequisites manually or run:
+
+```powershell
+docker\install-laptop-prereqs.ps1 -MachineId business-laptop
+```
+
+Then configure the worker:
 
 ```powershell
 git clone YOUR_REPO_URL

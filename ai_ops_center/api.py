@@ -36,6 +36,7 @@ from .ops2 import (
     split_project,
 )
 from .operator_requests import create_operator_request, operator_request_snapshot
+from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
@@ -232,6 +233,16 @@ class DeviceTelemetryRequest(BaseModel):
     load_average: float | None = None
     health_score: int | None = None
     metadata: dict = Field(default_factory=dict)
+
+
+class FailoverEvaluateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    battery_percent: float | None = None
+    state: str | None = None
+    trigger: str = "manual"
+    simulate_only: bool = False
 
 
 class NotificationRequest(BaseModel):
@@ -584,6 +595,24 @@ async def ops2_workstation_update(request: Request) -> dict:
 @app.post("/ops2/device-telemetry")
 def ops2_device_telemetry(request: DeviceTelemetryRequest) -> dict:
     return publish_device_telemetry(request.model_dump())
+
+
+@app.post("/ops2/failover/evaluate")
+def ops2_failover_evaluate(request: FailoverEvaluateRequest) -> dict:
+    payload = request.model_dump()
+    if payload.get("simulate_only"):
+        return {"triggered": False, "recommendation": failover_recommendation(payload["machine_id"], payload.get("battery_percent"), payload.get("state"))}
+    return evaluate_failover(
+        payload["machine_id"],
+        battery_percent=payload.get("battery_percent"),
+        state=payload.get("state"),
+        trigger=payload.get("trigger", "manual"),
+    )
+
+
+@app.post("/ops2/failover/stale-workers")
+def ops2_failover_stale_workers(stale_after_minutes: int = 3) -> dict:
+    return evaluate_stale_workers(stale_after_minutes=stale_after_minutes)
 
 
 @app.post("/ops2/notifications")

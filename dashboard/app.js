@@ -277,7 +277,7 @@ function renderNoc() {
       (project) => `
         <article>
           <strong>${escapeHtml(project.name)}</strong>
-          <span>${escapeHtml(project.status)} / owner ${escapeHtml(project.owner_machine_id)} / risk ${escapeHtml(project.risk_score)}</span>
+          <span>${escapeHtml(project.status)} / owner ${escapeHtml(project.owner_machine_id || project.current_owner_machine_id || "unassigned")} / risk ${escapeHtml(project.risk_score)}</span>
           <p>Progress ${escapeHtml(project.progress)}%, quality ${escapeHtml(project.quality_score)}, coverage ${escapeHtml(project.test_coverage)}%, target ${escapeHtml(project.revenue_target || 0)}</p>
         </article>
       `
@@ -299,7 +299,7 @@ function renderNoc() {
         <article>
           <strong>${escapeHtml(machine.machine_id)}</strong>
           <span>${escapeHtml(machine.status)} / ${escapeHtml(machine.hostname || tele.hostname || "unknown host")}</span>
-          <p>Health ${escapeHtml(tele.health_score ?? "n/a")} / temp ${escapeHtml(tele.temperature_c ?? "n/a")}C / SSH ${escapeHtml(ssh.state || "not audited")}</p>
+          <p>Health ${escapeHtml(tele.health_score ?? "n/a")} / battery ${escapeHtml(tele.battery_percent ?? "n/a")}% / temp ${escapeHtml(tele.temperature_c ?? "n/a")}C / SSH ${escapeHtml(ssh.state || "not audited")}</p>
         </article>
       `;
     })
@@ -427,7 +427,7 @@ function renderPets() {
         animation,
         status: readiness.state || "unknown",
         primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
-        secondary: `Health ${telemetry.health_score ?? "n/a"} / Temp ${telemetry.temperature_c ?? "n/a"}C`,
+        secondary: `Health ${telemetry.health_score ?? "n/a"} / Battery ${telemetry.battery_percent ?? "n/a"}% / Temp ${telemetry.temperature_c ?? "n/a"}C`,
       });
     }),
     petMarkup({

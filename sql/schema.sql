@@ -379,6 +379,8 @@ create table if not exists projects (
     updated_at timestamptz not null default now()
 );
 
+alter table projects add column if not exists revenue_target numeric(14, 2);
+
 create index if not exists idx_projects_status_risk on projects(status, risk_score desc);
 
 create table if not exists project_phases (

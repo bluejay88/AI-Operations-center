@@ -136,6 +136,10 @@ def _json(value: Any) -> str:
     return json.dumps(value, default=str)
 
 
+def _ensure_project_compat_columns(cur: Any) -> None:
+    cur.execute("alter table projects add column if not exists revenue_target numeric(14, 2)")
+
+
 def seed_operations_2(local: bool = False) -> dict[str, Any]:
     config = load_operations_2()
     mission = config["mission_control"]
@@ -143,10 +147,11 @@ def seed_operations_2(local: bool = False) -> dict[str, Any]:
 
     with connect(local=local) as conn:
         with conn.cursor() as cur:
+            _ensure_project_compat_columns(cur)
             cur.execute(
                 """
                 insert into projects (
-                    id, name, project_type, status, owner_machine_id, owner_agent_id,
+                    id, name, project_type, status, current_owner_machine_id, current_owner_agent_id,
                     progress, risk_score, cost_estimate, quality_score, test_coverage,
                     revenue_target, metadata
                 )
@@ -155,8 +160,8 @@ def seed_operations_2(local: bool = False) -> dict[str, Any]:
                 on conflict (id) do update set
                     name = excluded.name,
                     status = excluded.status,
-                    owner_machine_id = excluded.owner_machine_id,
-                    owner_agent_id = excluded.owner_agent_id,
+                    current_owner_machine_id = excluded.current_owner_machine_id,
+                    current_owner_agent_id = excluded.current_owner_agent_id,
                     revenue_target = excluded.revenue_target,
                     metadata = excluded.metadata,
                     updated_at = now()
@@ -456,12 +461,13 @@ def seed_business_launches(local: bool = False) -> dict[str, Any]:
     result: dict[str, Any] = {"businesses": {}, "total_tasks": 0}
     with connect(local=local) as conn:
         with conn.cursor() as cur:
+            _ensure_project_compat_columns(cur)
             for business in BUSINESS_LAUNCH_BLUEPRINTS:
                 project_id = f"business-{business['id']}"
                 cur.execute(
                     """
                     insert into projects (
-                        id, name, project_type, status, owner_machine_id, owner_agent_id,
+                        id, name, project_type, status, current_owner_machine_id, current_owner_agent_id,
                         progress, risk_score, cost_estimate, quality_score, revenue_target, goals, metadata
                     )
                     values (%s, %s, 'business-launch', 'active', 'brain-gaming-pc', 'orchestrator',
@@ -469,6 +475,8 @@ def seed_business_launches(local: bool = False) -> dict[str, Any]:
                     on conflict (id) do update set
                         name = excluded.name,
                         status = excluded.status,
+                        current_owner_machine_id = excluded.current_owner_machine_id,
+                        current_owner_agent_id = excluded.current_owner_agent_id,
                         revenue_target = excluded.revenue_target,
                         goals = excluded.goals,
                         metadata = excluded.metadata,
@@ -1043,7 +1051,19 @@ def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> di
             )
             _create_health_recommendation(cur, payload)
         conn.commit()
-    return {"telemetry": telemetry}
+    failover = None
+    battery = payload.get("battery_percent")
+    if battery is not None and float(battery) <= 5:
+        from .failover import evaluate_failover
+
+        failover = evaluate_failover(
+            payload["machine_id"],
+            battery_percent=float(battery),
+            state=payload.get("network_status") or "online",
+            trigger="battery-critical",
+            local=local,
+        )
+    return {"telemetry": telemetry, "failover": failover}
 
 
 def _create_health_recommendation(cur: Any, payload: dict[str, Any]) -> None:
@@ -1059,6 +1079,10 @@ def _create_health_recommendation(cur: Any, payload: dict[str, Any]) -> None:
     if health is not None and int(health) < 60:
         summary = f"{payload['machine_id']} health score is below routing threshold."
         _insert_recommendation(cur, payload["machine_id"], "health_score", 80, summary, "Route new work elsewhere until telemetry improves.")
+    battery = payload.get("battery_percent")
+    if battery is not None and float(battery) <= 5:
+        summary = f"{payload['machine_id']} battery is critical at {battery}%."
+        _insert_recommendation(cur, payload["machine_id"], "critical_battery", 98, summary, "Create a git savepoint and fail over running work before power loss.")
 
 
 def _insert_recommendation(cur: Any, machine_id: str, rec_type: str, priority: int, summary: str, rationale: str) -> None:

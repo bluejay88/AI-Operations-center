@@ -12,6 +12,7 @@ from .health import machine_status
 from .integrations import integration_status
 from .orchestrator import create_daily_priorities
 from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_improvement_backlog, seed_laptop_work_batches, seed_operations_2, split_project
+from .failover import evaluate_failover, evaluate_stale_workers
 from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
 from .registry import seed_registry
@@ -45,6 +46,13 @@ def main() -> None:
     laptop_work_parser = subparsers.add_parser("ops2-seed-laptop-work")
     laptop_work_parser.add_argument("--tasks-per-laptop", type=int, default=100)
     subparsers.add_parser("ops2-noc")
+    subparsers.add_parser("failover-stale-workers")
+
+    failover_parser = subparsers.add_parser("failover-evaluate")
+    failover_parser.add_argument("--machine-id", required=True)
+    failover_parser.add_argument("--battery-percent", type=float)
+    failover_parser.add_argument("--state")
+    failover_parser.add_argument("--trigger", default="cli")
 
     split_parser = subparsers.add_parser("ops2-split-project")
     split_parser.add_argument("--project-id", default="ai-operations-center-2")
@@ -79,6 +87,7 @@ def main() -> None:
     telemetry_parser.add_argument("--gpu")
     telemetry_parser.add_argument("--ram-mb", type=float)
     telemetry_parser.add_argument("--storage-free-mb", type=float)
+    telemetry_parser.add_argument("--battery-percent", type=float)
     telemetry_parser.add_argument("--temperature-c", type=float)
     telemetry_parser.add_argument("--health-score", type=int)
 
@@ -206,6 +215,10 @@ def main() -> None:
         print(json.dumps(seed_laptop_work_batches(tasks_per_laptop=args.tasks_per_laptop, local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-noc":
         print(json.dumps(noc_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "failover-evaluate":
+        print(json.dumps(evaluate_failover(args.machine_id, args.battery_percent, args.state, args.trigger, local=args.local_db), indent=2, default=str))
+    elif args.command == "failover-stale-workers":
+        print(json.dumps(evaluate_stale_workers(local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-split-project":
         print(json.dumps(split_project(args.project_id, args.template, local=args.local_db), indent=2, default=str))
     elif args.command == "project-context":
@@ -257,6 +270,7 @@ def main() -> None:
                         "gpu": args.gpu,
                         "ram_mb": args.ram_mb,
                         "storage_free_mb": args.storage_free_mb,
+                        "battery_percent": args.battery_percent,
                         "temperature_c": args.temperature_c,
                         "health_score": args.health_score,
                     },

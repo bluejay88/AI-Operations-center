@@ -47,6 +47,7 @@ def test_worker_immediately_requests_more_work_after_completion(monkeypatch):
     claims = iter([{"id": 7, "claim_token": "token", "title": "task"}, None])
     sleeps = []
 
+    monkeypatch.setattr(worker, "apply_migrations", lambda *args, **kwargs: {})
     monkeypatch.setattr(worker, "record_heartbeat", lambda *args, **kwargs: None)
     monkeypatch.setattr(worker, "_consume_machine_messages", lambda *args, **kwargs: 0)
     monkeypatch.setattr(worker, "steward_queue", lambda *args, **kwargs: {})

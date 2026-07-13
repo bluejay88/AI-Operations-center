@@ -114,4 +114,7 @@ def _parse_migration_name(path: Path) -> tuple[str, str]:
 def _checksum(path: Path) -> str:
     import hashlib
 
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Git on Windows may rewrite SQL files from LF to CRLF in the working tree.
+    # Migrations are immutable by content, not by platform-specific line endings.
+    normalized = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

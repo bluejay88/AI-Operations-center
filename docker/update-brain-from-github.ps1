@@ -4,6 +4,7 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipAudit,
     [switch]$NoPush,
+    [int]$HealthTimeoutSeconds = 120,
     [int]$ConnectivityIntervalSeconds = 30
 )
 
@@ -37,6 +38,24 @@ function Run-Step {
     Log-Step "DONE $Name"
 }
 
+function Wait-ServiceHealthy {
+    param(
+        [string]$Service,
+        [int]$TimeoutSeconds = 120
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $status = docker compose ps $Service --format json 2>$null | ConvertFrom-Json
+        if ($status -and ($status.Health -eq "healthy" -or ($status.State -eq "running" -and [string]::IsNullOrWhiteSpace($status.Health)))) {
+            Log-Step "$Service is healthy/running."
+            return
+        }
+        Start-Sleep -Seconds 3
+    }
+    docker compose ps | Tee-Object -FilePath $logPath -Append
+    throw "$Service did not become healthy within $TimeoutSeconds seconds."
+}
+
 Push-Location $repoRoot
 try {
     $before = git rev-parse HEAD
@@ -59,15 +78,25 @@ try {
     $afterPull = git rev-parse HEAD
     Log-Step "Post-pull commit: $afterPull"
 
-    Run-Step "syntax check migrations" { python -m py_compile ai_ops_center\migrations.py ai_ops_center\api.py ai_ops_center\cli.py }
+    Run-Step "syntax check migrations" { python -m py_compile ai_ops_center\migrations.py ai_ops_center\api.py ai_ops_center\cli.py ai_ops_center\worker.py }
 
     if (!$SkipBuild) {
-        Run-Step "rebuild brain services" { docker compose --profile worker up -d --build ai-ops-api worker postgres }
+        Run-Step "build new brain images without stopping current services" { docker compose --profile worker build ai-ops-api worker }
     } else {
-        Run-Step "restart brain services" { docker compose --profile worker up -d ai-ops-api worker postgres }
+        Log-Step "Skipping image build by request."
     }
 
-    Run-Step "apply database migrations" { docker compose exec -T ai-ops-api python -m ai_ops_center.cli migrate }
+    Run-Step "ensure database is online" { docker compose up -d postgres }
+    Wait-ServiceHealthy -Service "postgres" -TimeoutSeconds $HealthTimeoutSeconds
+
+    Run-Step "apply database migrations with one-shot updated image" { docker compose --profile worker run --rm --no-deps ai-ops-api python -m ai_ops_center.cli migrate }
+
+    Run-Step "restart api after migrations" { docker compose up -d --no-deps ai-ops-api }
+    Wait-ServiceHealthy -Service "ai-ops-api" -TimeoutSeconds $HealthTimeoutSeconds
+
+    Run-Step "restart worker after api is healthy" { docker compose --profile worker up -d --no-deps worker }
+    Wait-ServiceHealthy -Service "worker" -TimeoutSeconds $HealthTimeoutSeconds
+
     Run-Step "seed registry" { docker compose exec -T ai-ops-api python -m ai_ops_center.cli seed }
 
     if (!$SkipAudit) {

@@ -15,6 +15,8 @@ const state = {
   integrations: [],
   endpoints: null,
   collaboration: null,
+  teamChat: null,
+  codexPipeline: null,
   enterpriseFeatures: null,
   nodeMesh: null,
   operatorRequests: [],
@@ -33,6 +35,7 @@ const state = {
   stream: null,
   refreshTimer: null,
   unlocked: false,
+  petCompletionClusters: {},
 };
 
 const PET_CAPABILITY_PROFILES = {
@@ -67,6 +70,17 @@ const PET_CAPABILITY_PROFILES = {
     featureLanes: ["Detect", "Assess", "Approve", "Protect", "Audit"],
   },
 };
+
+const PET_TASK_MOTION_RULES = [
+  [/deploy|release|publish|ship/i, "shipping"],
+  [/test|audit|rubric|verify|validat/i, "testing"],
+  [/debug|repair|fix|incident|error/i, "debugging"],
+  [/research|source|market|grant|trend|scan/i, "researching"],
+  [/design|brand|creative|campaign|asset/i, "designing"],
+  [/report|brief|summary|document/i, "reporting"],
+  [/connect|ssh|network|diagnostic|pulse/i, "connecting"],
+  [/build|implement|develop|code/i, "building"],
+];
 
 const DEFAULT_BRAIN_API = "http://100.70.49.32:8088";
 const params = new URLSearchParams(window.location.search);
@@ -631,8 +645,12 @@ function renderNoc() {
 
   const updates = noc.collaboration?.updates || [];
   const recs = noc.collaboration?.recommendations || [];
+  const teamMessages = state.teamChat?.messages || [];
+  const codexMessages = state.codexPipeline?.pipeline_messages || [];
   els.nocCollaboration.innerHTML = [
     ...(noc.ssh_status || []).map((item) => `<article><strong>${escapeHtml(item.machine_id)} SSH</strong><span>${escapeHtml(item.label)} / user ${escapeHtml(item.brain_ssh_user || "unknown")}</span><p>API ${escapeHtml(item.brain_api)} / port 22 ${escapeHtml(item.brain_ssh_port)} / noninteractive ${escapeHtml(item.ssh_noninteractive)}</p></article>`),
+    ...codexMessages.slice(0, 5).map((item) => `<article><strong>Codex pipe: ${escapeHtml(item.subject)}</strong><span>${escapeHtml(item.actor_id)} / ${escapeHtml(item.message_type)} / P${escapeHtml(item.priority)}</span><p>${escapeHtml(item.body || "").slice(0, 360)}</p></article>`),
+    ...teamMessages.slice(0, 5).map((item) => `<article><strong>Team room: ${escapeHtml(item.subject)}</strong><span>${escapeHtml(item.actor_type)}:${escapeHtml(item.actor_id)} / ${escapeHtml(item.channel)} / ${escapeHtml(item.thread_key)}</span><p>${escapeHtml(item.body || "").slice(0, 360)}</p></article>`),
     ...updates.slice(0, 8).map((item) => {
       const metrics = item.metrics || {};
       const body =
@@ -685,7 +703,16 @@ function mascotForMachine(machine) {
   };
 }
 
-function chooseAnimation(machine, readiness, taskCountsForMachine, telemetry) {
+function taskMotionForMachine(machineId) {
+  const runningTasks = state.tasks
+    .filter((task) => task.machine_id === machineId && task.status === "running")
+    .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0) || Number(left.id || 0) - Number(right.id || 0));
+  const task = runningTasks[0];
+  const taskText = `${task?.title || ""} ${task?.description || ""}`;
+  return PET_TASK_MOTION_RULES.find(([pattern]) => pattern.test(taskText))?.[1] || null;
+}
+
+function chooseAnimation(machine, readiness, taskCountsForMachine, telemetry, completionCelebration = false) {
   const stateLabel = readiness?.state || "unknown";
   const temp = telemetry?.temperature_c;
   const health = telemetry?.health_score;
@@ -694,12 +721,14 @@ function chooseAnimation(machine, readiness, taskCountsForMachine, telemetry) {
   if (health !== undefined && health !== null && Number(health) < 60) return "warning";
   if ((taskCountsForMachine?.running || 0) >= 2) return "heavy-work";
   if ((taskCountsForMachine?.running || 0) > 0) {
+    const taskMotion = taskMotionForMachine(machine.id);
+    if (taskMotion) return taskMotion;
     if (machine.id.includes("dev")) return "building";
     if (machine.id.includes("research")) return "researching";
     if (machine.id.includes("business")) return "emailing";
     return "routing";
   }
-  if ((taskCountsForMachine?.completed || 0) >= 10 && (taskCountsForMachine.completed % 10) <= 2) return "on-roll";
+  if (completionCelebration) return "on-roll";
   if ((taskCountsForMachine?.queued || 0) > 4) return "queuing";
   return mascotForMachine(machine).baseAnimation;
 }
@@ -716,15 +745,27 @@ function renderPets() {
       const readiness = readinessByMachine[machine.id] || {};
       const counts = taskCountsForMachine(machine.id, readiness);
       const telemetry = telemetryByMachine[machine.id] || {};
-      const animation = chooseAnimation(machine, readiness, counts, telemetry);
       const completedCluster = Math.floor((counts.completed || 0) / 10);
+      const previousCluster = state.petCompletionClusters[machine.id];
+      const completionCelebration = previousCluster !== undefined && completedCluster > previousCluster;
+      state.petCompletionClusters[machine.id] = completedCluster;
+      const animation = chooseAnimation(machine, readiness, counts, telemetry, completionCelebration);
+      const readinessState = String(readiness.state || "").toLowerCase();
+      const sshOnline = (readiness.connections || []).some((connection) =>
+        ["ssh-22", "ssh-22-brain-to-laptop"].includes(connection.channel) && String(connection.status).toLowerCase() === "online");
+      const signal = readinessState === "online" && sshOnline
+        ? "strong"
+        : readinessState === "online" || readinessState.startsWith("reachable") || readinessState.includes("stale")
+          ? "limited"
+          : "lost";
       return petMarkup({
         ...mascot,
         machineId: machine.id,
         animation,
         workload: (counts.running || 0) >= 3 || (counts.queued || 0) >= 8 ? "critical" : (counts.running || 0) || (counts.queued || 0) >= 3 ? "busy" : (counts.queued || 0) ? "ready" : "calm",
-        signal: readiness.state === "online" || readiness.state?.startsWith("reachable") ? "strong" : readiness.state?.includes("stale") ? "limited" : "lost",
+        signal,
         stateClass: petStateClass(animation, readiness.state),
+        completionCelebration,
         completedCluster,
         status: readiness.state || "unknown",
         primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
@@ -774,7 +815,7 @@ function petMarkup(pet) {
   const profile = pet.capabilities || { attributes: [], operational: [], governed: [], featureLanes: [] };
   const petId = `pet-${String(pet.machineId).replace(/[^a-z0-9-]/gi, "-")}`;
   return `
-    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}" id="${escapeHtml(petId)}" data-pet-id="${escapeHtml(pet.machineId)}" data-capability-status="mixed" data-workload="${escapeHtml(pet.workload || "calm")}" data-signal="${escapeHtml(pet.signal || "strong")}" aria-labelledby="${escapeHtml(petId)}-title">
+    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}" id="${escapeHtml(petId)}" data-pet-id="${escapeHtml(pet.machineId)}" data-capability-status="mixed" data-workload="${escapeHtml(pet.workload || "calm")}" data-signal="${escapeHtml(pet.signal || "strong")}" data-roll="${pet.completionCelebration ? "true" : "false"}" aria-labelledby="${escapeHtml(petId)}-title">
       <div class="pet-stage" aria-hidden="true">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
           <span class="pet-signal-orbit"><i></i><i></i><i></i></span>
@@ -1073,6 +1114,12 @@ async function loadCollaboration() {
   renderCollaboration();
 }
 
+async function loadTeamRoom() {
+  state.teamChat = await safeApi("/team-chat/digest", { messages: [], summary: {} }, "team room");
+  state.codexPipeline = await safeApi("/codex/pipeline", { pipeline_messages: [], team_digest: {} }, "Codex pipeline");
+  renderNoc();
+}
+
 async function loadEnterpriseFeatures() {
   state.enterpriseFeatures = await safeApi("/enterprise-features", { domains: [], total_features: 500 }, "enterprise features");
   renderEnterpriseFeatures();
@@ -1131,6 +1178,7 @@ async function refresh() {
     loadIntegrations(),
     loadEndpoints(),
     loadCollaboration(),
+    loadTeamRoom(),
     loadEnterpriseFeatures(),
     loadNodeMesh(),
     loadOperatorRequests(),
@@ -1153,6 +1201,8 @@ function applyRealtimePayload(payload) {
   state.listenerEvents = payload.listener?.events || state.listenerEvents;
   state.speakerFeed = payload.speaker || state.speakerFeed;
   state.collaboration = payload.collaboration || state.collaboration;
+  state.teamChat = payload.team_chat || state.teamChat;
+  state.codexPipeline = payload.codex_pipeline || state.codexPipeline;
   if (payload.integrations) {
     state.integrations = Array.isArray(payload.integrations)
       ? payload.integrations

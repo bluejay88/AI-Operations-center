@@ -1145,3 +1145,37 @@ body[data-machine-id="business-laptop"] { --accent: #d98bff; --accent-2: #edc2ff
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* Telemetry-driven PET motion rig. Transform/opacity-only loops keep repaint cost low. */
+.pet-signal-orbit, .pet-work-stream, .pet-task-flare { position: absolute; display: block; pointer-events: none; }
+.pet-signal-orbit { inset: -12px -16px -4px; border: 1px solid color-mix(in srgb, var(--pet-accent) 28%, transparent); border-radius: 50%; opacity: .62; animation: pet-orbit-drift 7s linear infinite; }
+.pet-signal-orbit::before, .pet-signal-orbit::after { content: ""; position: absolute; inset: 9px; border: 1px dashed color-mix(in srgb, var(--pet-accent) 17%, transparent); border-radius: inherit; }
+.pet-signal-orbit i { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--pet-accent-2); box-shadow: 0 0 9px var(--pet-accent); }
+.pet-signal-orbit i:nth-child(1) { left: 16%; top: 20%; }
+.pet-signal-orbit i:nth-child(2) { right: 4%; top: 48%; }
+.pet-signal-orbit i:nth-child(3) { left: 42%; bottom: -3px; }
+.pet-work-stream { left: 20px; right: 20px; bottom: 1px; height: 24px; opacity: .18; overflow: hidden; }
+.pet-work-stream i { position: absolute; left: 0; width: 28px; height: 2px; border-radius: 99px; background: linear-gradient(90deg, transparent, var(--pet-accent), transparent); animation: pet-packet-flow 1.8s linear infinite; }
+.pet-work-stream i:nth-child(2) { top: 8px; animation-delay: -600ms; }
+.pet-work-stream i:nth-child(3) { top: 16px; animation-delay: -1.2s; }
+.pet-task-flare { inset: -3px; border: 1px solid var(--pet-accent); border-radius: 42%; opacity: 0; transform: scale(.75); }
+[data-workload="busy"] .pet-work-stream, [data-workload="critical"] .pet-work-stream { opacity: .78; }
+[data-workload="critical"] .pet-work-stream i { animation-duration: .75s; }
+[data-workload="critical"] .pet-screenplate { filter: saturate(1.2); }
+[data-signal="limited"] .pet-signal-orbit { opacity: .32; animation-duration: 11s; }
+[data-signal="limited"] .pet-signal-orbit i:nth-child(2) { opacity: .15; }
+[data-signal="lost"] .pet-signal-orbit { opacity: .2; animation-play-state: paused; }
+[data-signal="lost"] .pet-signal-orbit i { opacity: .12; box-shadow: none; }
+.pet-state-on-roll .pet-task-flare, [data-roll="true"] .pet-task-flare { animation: pet-completion-flare 1.4s ease-out 2; }
+.pet-panel, .pet-stage { transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; }
+.pet-panel:hover .pet-stage, .pet-stage:hover { box-shadow: inset 0 0 38px color-mix(in srgb, var(--pet-accent, var(--accent)) 10%, transparent); }
+@keyframes pet-orbit-drift { to { transform: rotate(360deg); } }
+@keyframes pet-packet-flow { from { transform: translateX(-34px); opacity: 0; } 18%, 75% { opacity: 1; } to { transform: translateX(104px); opacity: 0; } }
+@keyframes pet-completion-flare { 0% { opacity: 0; transform: scale(.72); } 35% { opacity: .75; } 100% { opacity: 0; transform: scale(1.38); } }
+.pet-stage { position: relative; padding-bottom: 76px; contain: layout paint style; }
+.pet-signal-orbit, .pet-work-stream i, .pet-task-flare { will-change: transform, opacity; }
+.pet-readout { position: absolute; z-index: 4; left: clamp(14px, 5%, 28px); right: clamp(14px, 5%, 28px); bottom: 17px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 10px; border-top: 1px solid color-mix(in srgb, var(--pet-accent) 24%, transparent); padding-top: 10px; }
+.pet-readout .pet-name, .pet-readout .pet-status { position: static; width: auto; max-width: 100%; transform: none; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-readout .pet-name { color: var(--text); font-size: 1rem; font-weight: 800; }
+.pet-readout .pet-status { color: var(--pet-accent); font-size: .76rem; text-align: right; }
+@media (max-width: 560px) { .pet-readout { grid-template-columns: 1fr; gap: 3px; } .pet-readout .pet-status { text-align: left; } }

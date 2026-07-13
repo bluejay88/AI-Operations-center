@@ -145,11 +145,53 @@ function petVariant() {
   return { mood, task, intensity, totalVariants: moods.length * tasks.length * intensities.length * 2 };
 }
 
+const TASK_MOTION_RULES = [
+  [/deploy|release|publish|ship/i, "shipping"],
+  [/test|audit|rubric|verify|validat/i, "testing"],
+  [/debug|repair|fix|incident|error/i, "debugging"],
+  [/research|source|market|grant|trend|scan/i, "researching"],
+  [/design|brand|creative|campaign|asset/i, "designing"],
+  [/report|brief|summary|document/i, "reporting"],
+  [/connect|ssh|network|diagnostic|pulse/i, "connecting"],
+  [/build|implement|develop|code/i, "building"],
+];
+
+function taskDrivenAnimation(personality, running) {
+  const activeTask = state.tasks.find((task) => task.status === "running");
+  const taskText = `${activeTask?.title || ""} ${activeTask?.description || ""}`;
+  const matched = TASK_MOTION_RULES.find(([pattern]) => pattern.test(taskText));
+  if (matched) return matched[1];
+  return running ? personality.animations[0] : "monitoring";
+}
+
+function ensurePetMotionRig(stage, pet) {
+  if (!stage || !pet) return;
+  if (!pet.querySelector(".pet-signal-orbit")) {
+    pet.insertAdjacentHTML("afterbegin", `
+      <span class="pet-signal-orbit"><i></i><i></i><i></i></span>
+      <span class="pet-work-stream"><i></i><i></i><i></i></span>
+      <span class="pet-task-flare"></span>`);
+  }
+  if (!stage.querySelector(".pet-readout")) {
+    const readout = document.createElement("div");
+    readout.className = "pet-readout";
+    readout.setAttribute("role", "status");
+    readout.setAttribute("aria-live", "polite");
+    readout.setAttribute("aria-atomic", "true");
+    const name = pet.querySelector(".pet-name");
+    const status = pet.querySelector(".pet-status");
+    if (name) readout.append(name);
+    if (status) readout.append(status);
+    stage.append(readout);
+  }
+}
+
 function renderPet() {
   const variant = petVariant();
   const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
   const totals = workloadTotals();
-  const running = totals.running > 0;
+  const runningCount = totals.running;
+  const running = runningCount > 0;
   const queued = totals.queued;
   const completed = totals.completed;
   const roll = completed >= state.completedSeen + 10;
@@ -159,15 +201,24 @@ function renderPet() {
   }
   const stage = $(".pet-stage");
   const pet = $(".pet");
+  ensurePetMotionRig(stage, pet);
   const machineState = String(currentMachine().state || "unknown").toLowerCase();
   const workerOnline = ["active", "online", "connected", "ready"].includes(machineState);
-  const stateClass = !state.apiConnected ? "pet-state-connecting" : !workerOnline ? "pet-state-idle" : roll ? "pet-state-on-roll" : running ? "pet-state-heavy" : "pet-state-online";
-  const animation = !state.apiConnected ? "connecting" : !workerOnline ? "idle" : roll ? "on-roll" : running ? variant.task : queued ? "queuing" : "monitoring";
+  const workerReachable = workerOnline || machineState.startsWith("reachable");
+  const sshOnline = (currentMachine().connections || []).some((connection) =>
+    ["ssh-22", "ssh-22-brain-to-laptop"].includes(connection.channel) && String(connection.status).toLowerCase() === "online");
+  const stateClass = !state.apiConnected ? "pet-state-connecting" : !workerReachable ? "pet-state-idle" : roll ? "pet-state-on-roll" : running ? "pet-state-heavy" : "pet-state-online";
+  const animation = !state.apiConnected ? "connecting" : !workerReachable ? "idle" : roll ? "on-roll" : running ? taskDrivenAnimation(personality, running) : queued ? "queuing" : "monitoring";
+  const workload = runningCount >= 3 || queued >= 8 ? "critical" : runningCount >= 1 || queued >= 3 ? "busy" : queued ? "ready" : "calm";
   stage.dataset.mood = variant.mood;
   stage.dataset.task = animation;
   stage.dataset.intensity = variant.intensity;
-  stage.dataset.offline = !state.apiConnected || !workerOnline;
+  stage.dataset.offline = !state.apiConnected || !workerReachable;
   stage.dataset.roll = roll ? "true" : "false";
+  stage.dataset.workload = workload;
+  stage.dataset.signal = !state.apiConnected ? "lost" : sshOnline ? "strong" : workerReachable ? "limited" : "lost";
+  stage.style.setProperty("--queue-load", String(Math.min(1, queued / 10)));
+  stage.style.setProperty("--run-load", String(Math.min(1, runningCount / 4)));
   stage.classList.remove("pet-state-online", "pet-state-connecting", "pet-state-heavy", "pet-state-on-roll", "pet-state-idle");
   stage.classList.add(stateClass);
   if (pet) {
@@ -177,9 +228,9 @@ function renderPet() {
       .concat(`anim-${animation}`)
       .join(" ");
   }
-  const phrase = personality.phrases[(state.animationTick + completed + queued) % personality.phrases.length];
+  const phrase = personality.phrases[(completed + queued + runningCount) % personality.phrases.length];
   $(".pet-name").textContent = personality.codename || state.pet;
-  $(".pet-status").textContent = running ? `${phrase}: ${animation}` : queued ? `${queued} queued / ${phrase}` : `${personality.specialty} ready`;
+  $(".pet-status").textContent = running ? `${runningCount} active / ${phrase}` : queued ? `${queued} queued / ${phrase}` : `${personality.specialty} ready`;
   $(".variant-count").textContent = `${variant.totalVariants}+ state combinations`;
 }
 

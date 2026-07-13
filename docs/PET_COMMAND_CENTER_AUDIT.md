@@ -1,60 +1,63 @@
 # PET Command Center Release Audit
 
 Date: 2026-07-13  
-Scope: Main AI Operations Center, Dev PET (Byte), Research PET (Nova), Business PET (Ledger), lifetime task accounting, live connectivity, and deployment.
+Scope: Main AI Operations Center, Dev PET (Byte), Research PET (Nova), Business PET (Ledger), queue execution, lifetime task accounting, live connectivity, and deployment.
 
-## Latest revalidation — 2026-07-13 17:16 CDT
+## Current release decision
 
-**DEPLOYMENT BLOCKED; CODE GATES PASS.** The queue lease/fencing scheduler, real model/diagnostic worker executors, completion pulses, speaker acknowledgement, peer-response path, and migration collision guard are implemented. The rebuilt deployment briefly reached healthy status with zero stalled tasks, but the final image recreate occurred while migration `002` had been reverted to a non-applied checksum. The local file is restored to the applied checksum `829a0d27...`; rebuilding/recreating the Docker services is still required.
+**CORE DEPLOYED / FLEET VALIDATION PARTIAL.** The API, Brain worker, PostgreSQL, dashboards, migration ledger, lifetime accounting, queue lease/fencing protocol, and read-only release gates are operational. All three laptops answer fresh Tailscale probes, but the Business and Research workers have not consumed their pinned diagnostic requests. Business accepts TCP/22 but rejects the Brain public key; Research blocks TCP/22. Those physical-laptop gates remain open and are not represented as passed.
 
-Current truth:
+## Current evidence
 
-- Disposable Python 3.12 test container: `30 passed`.
-- Critical Python modules compile; PowerShell diagnostic analyzer parses successfully; `git diff --check` reports no whitespace errors.
-- Database protocol guard is ready as migration `004`, but was not applied because elevated Docker actions became unavailable.
-- Brain API at `localhost:8088` is currently unreachable, so no Business or Research peer request was claimed as delivered.
-- Research is reachable over Tailscale at `100.90.219.88`, while TCP/22 is blocked and its worker heartbeat is stale.
-- Business previously claimed tasks through a legacy unfenced worker; migration `004` is designed to reject that unsafe protocol until the physical worker is upgraded.
-- Release decision remains blocked until the final image rebuild, migration `004` application, service health check, and correlated Business/Research response evidence complete.
-
-## Release decision
-
-**FAIL / DEPLOYMENT BLOCKED** — PostgreSQL is healthy, but the deployed API and worker image is stale and restart-looping on migration checksum validation. Business and Research also lack fresh, correlated machine-originated round-trip evidence. The earlier UI/accounting baseline remains useful evidence, but it is not a current production release pass.
+- Final pre-starvation build test baseline: `37 passed` with four FastAPI lifecycle deprecation warnings.
+- Added queue-starvation assertions pass inside the rebuilt image: portable stale work moves, the generation cap prevents ping-pong, and full fallback targets are skipped.
+- Docker services: API and Brain worker recreated from the final image; PostgreSQL healthy.
+- Migrations: `001` through `004` applied, zero pending, all checksums match. Migration `002` accepts only its known historical checksum; migration `004` enforces leased and fenced completion.
+- Live protocol audit: expired completion rejected, wrong-session completion rejected, valid fenced completion accepted, and the audit transaction rolled back.
+- Lifetime accounting at final release audit: 3,341 completed tasks; `/tasks`, readiness, NOC, and per-machine totals reconcile while the recent list remains independently limited.
+- Fresh network pulse: Dev 26 ms, Research 3 ms, Business 19 ms over Tailscale; all three targets reachable.
+- Worker activity gate: only 1 of 3 registered laptop workers was active during the final audit.
+- Business task `3794` and peer request `4`: queued/requested with no machine claim or response. Fresh direct SSH result: `Permission denied (publickey)`.
+- Research task `3795` and peer request `5`: queued/requested with no machine claim or response. Fresh TCP/22 result: blocked.
+- Brain execution probe task `3792`: completed once under a fenced claim with real hostname, platform, Python, and timestamp evidence.
+- Approval-hold probe task `3793`: remained queued with zero attempts, proving held work is not auto-claimed.
 
 ## Stage gates
 
 | Stage | Rubric | Evidence | Result |
 |---|---|---|---|
-| 1. Task accounting | Completed count is a lifetime database aggregate, independent of the recent-task list; global count equals the sum of machine counts | `/tasks?limit=3` returned 3 rows while retaining the full completed total; `completed_equals_machine_sum=true` | PASS |
-| 2. Real-time parity | REST, readiness, NOC, and SSE expose the same completed total | Final deployed audit reconciled 2,817 completed tasks across `/tasks`, readiness, NOC, and per-machine totals while the recent list remained limited to three rows | PASS |
-| 3. Connectivity truth | Stale reports cannot count as effectively online; browser presence cannot impersonate a worker heartbeat; reachability, worker activity, and direct control are separate | The scheduled monitor verifies three reachable targets. Business has a fresh worker heartbeat; Dev and Research are reachable with stale workers. Direct SSH currently warns `0/3` | PASS + 2 WARN |
-| 4. Main command center | Preserve controls, show authoritative totals, expose PET attributes and capability status, avoid desktop/mobile horizontal overflow | 23 baseline controls and 53 DOM targets preserved; Playwright at 1440x1000 and 390x844 reported no overflow, five PET cards, contained PET text, and 39 visible mobile buttons | PASS |
-| 5. Mini dashboards | Each node keeps identity, controls, feeds, task table, PET functions, and responsive containment | Byte/Nova/Ledger pages each retain 22 stable IDs, 6 controls, task table, three feeds, CSP-safe identity configuration, shared responsive breakpoints, and eight browser-audit hooks | PASS |
-| 6. Security/governance | Privileged browser/file actions remain approval-gated; inline configuration complies with CSP | Brain-governed controls remain separate from operational functions; inline config was removed after CSP browser audit and replaced with external-script-readable data attributes | PASS |
-| 7. Automated tests | Python contracts, configuration, accounting, freshness, availability, presence isolation, and invariants pass | Rebuilt Python 3.12 container: `14 passed` | PASS |
-| 8. Static quality | JavaScript parses, Python compiles, and patch has no whitespace errors | `node --check` for both bundles, `compileall`, and `git diff --check` passed | PASS |
-| 9. Deployment | Rebuilt services start, recover automatically, and expose application health | PostgreSQL is healthy; API and worker are restart-looping because the deployed image predates the narrowly scoped migration-002 compatibility fix. A fresh rebuild and 60-second stable-health observation are required. | FAIL / BLOCKED |
+| 1. Task accounting | Lifetime database aggregate; independent recent list; global count equals machine sum | 3,341 completed; accounting audit passed; `/tasks`, readiness, and NOC parity passed | PASS |
+| 2. Queue protocol | Claims are leased, completion is fenced, expired/wrong-session completion is rejected | Migration `004` plus rolled-back PostgreSQL protocol audit | PASS |
+| 3. Queue fallback | Eligible portable work cannot remain indefinitely on a heartbeat-only non-claiming source | 60-second starvation fallback, capacity-aware target selection, bounded generation cap; pinned and approval-held work excluded | PASS |
+| 4. Connectivity truth | Tailscale, worker heartbeat, TCP/22, and authenticated SSH remain separate signals | 3/3 Tailscale reachable; 1/3 laptop workers active; Business key rejected; Research port blocked | PASS WITH FLEET WARNINGS |
+| 5. Main command center | Preserve controls, authoritative totals, PET attributes/capabilities, and responsive containment | Main page HTTP 200 with self-only CSP; PET/release/status surfaces use authoritative summaries | PASS |
+| 6. Mini dashboards | Correct machine identity, responsive PET layout, controls, feeds, and task visibility | Dev, Research, and Business mini dashboards return HTTP 200 with the expected safe machine identity | PASS |
+| 7. Automated tests | Queue, accounting, connectivity, security, API, UI contracts, and routing pass | 37-test baseline passed; final queue-starvation image assertions passed | PASS |
+| 8. Deployment | Rebuilt services start and expose application health without migration drift | Final API/worker image deployed; health and migration endpoints pass | PASS |
+| 9. Business physical round trip | Business claims task, acknowledges speaker request, returns local evidence, and responds to peer request | Task `3794` unclaimed; peer `4` requested; SSH key rejected | FAIL / LAPTOP ACTION REQUIRED |
+| 10. Research recovery | Research publishes diagnostic artifact and classifies/fixes SSH blocker | Task `3795` unclaimed; peer `5` requested; TCP/22 blocked | FAIL / LAPTOP ACTION REQUIRED |
 
-## Defects found by rendered auditing
+## Corrective implementation completed
 
-1. The main SSE stream delivered an integrations object while the renderer expected an array. The stream normalization now extracts `providers`, and a fresh browser session reports zero console errors.
-2. Mini dashboards used inline identity scripts that the production Content Security Policy blocked. Identity is now supplied through per-page `data-*` attributes and consumed by the shared external script.
-3. The old completed widgets counted only the limited recent task list. All completed widgets now prefer the lifetime task summary, with readiness/factory/recent-list fallbacks.
-4. The workforce test and copy hard-coded 18 agents while configuration had expanded to 30. The test now enforces a minimum workforce and unique IDs; UI copy no longer publishes a stale fixed count.
-5. Mini dashboards posted a fabricated health score and their browser-presence request refreshed authoritative worker heartbeat tables. Browser presence is now stored only as a labeled observation; worker status and PET state derive from readiness and real task totals. A SQL-recording regression test proves the presence path cannot touch `machine_status_current` or `machine_heartbeats`.
-6. Release readiness was only implicit across several panels. The main dashboard now includes a live Release Assurance rail for accounting, lifetime totals, connectivity-contract freshness, readiness parity, and PET capability coverage.
-7. Freshness invariants could pass vacuously with zero online targets. The connection contract now has a separate availability rubric, and both the dashboard and release script require it for a connectivity pass.
-8. A non-elevated Tailscale CLI permission error was incorrectly published as a remote laptop outage. The scanner now falls back to raw ICMP, labels the probe method, reports unreachable results as unknown, and runs every 30 seconds.
+1. Completed counts now come from lifetime database aggregates and reconcile across the main dashboard, mini dashboards, readiness, NOC, and SSE payloads.
+2. Queue claims use claim tokens, leases, renewal heartbeats, retry backoff, dead-letter limits, and database-enforced fenced completion.
+3. Portable queued tasks are rebalanced from unavailable, overloaded, or non-claiming machines. Approval-held, pinned, no-failover, and local-resource tasks remain protected.
+4. The worker performs real connectivity or model execution and publishes a correlated completion listener event; canned completion output and pre-execution delay were removed.
+5. Speaker acknowledgements require the target machine identity. Receipt events no longer create new speaker messages, eliminating recursive `Received: Received:` loops.
+6. Peer responses require the addressed responder and can correlate to their task through `peer_request_id` metadata.
+7. The laptop diagnostic analyzer is read-only by default, acknowledges only its own diagnostic requests after running checks, reports blocked outcomes as non-success, and classifies SSH service/port/firewall/key blockers without exposing private keys.
+8. PET layouts retain existing controls while improving capability, attribute, workload, connectivity, and release-assurance presentation with responsive containment.
 
-## PET specification coverage
+## Required laptop actions
 
-- Main dashboard: five live PET profiles, attributes, operational capabilities, governed/planned capabilities, feature lanes, workload, health, connectivity, task totals, and motion states.
-- Mini dashboards: unique identities and traits for Byte, Nova, and Ledger; 12 role-specific operational functions per PET; live task/health state; Brain messages; approvals; remote operations; speech; refresh; and permission-gated assistance requests.
-- The source specification's 20 domains / 500 features remain the governed capability roadmap. Features requiring credentials, external services, financial authority, customer data, public sending, remote control, or destructive access remain approval-gated and are not represented as autonomously available.
+- Business laptop: authorize the approved Brain public key for the `jayla` account, start the current worker/listener loop, then allow task `3794` and peer request `4` to complete naturally.
+- Research laptop: run the provided diagnostic command locally with the required administrator permissions for OpenSSH/firewall setup, publish `diagnostics/research-laptop/latest.json`, start the current worker, then complete task `3795` and peer request `5`.
+- Do not mark either laptop gate passed until its machine-originated task result, speaker acknowledgement, fresh heartbeat, diagnostic artifact, and peer response are all correlated.
 
-## Audit artifacts
+## Repeatable audits
 
-- `output/playwright/main-desktop.png`
-- `output/playwright/main-mobile.png`
-- `output/playwright/mini-dev-desktop.png`
-- `docker/audit-live-release.ps1` (repeatable, read-only, 9-gate production audit)
+- `docker/audit-live-release.ps1` - read-only API, accounting, connectivity, CSP, and mini-dashboard release audit.
+- `docker/audit_queue_protocol.py` - transactional PostgreSQL lease/fencing audit that rolls back its temporary task.
+- `docker/run-laptop-diagnostics.ps1` - machine-local pulse and SSH blocker analyzer.
+
+Historical browser screenshots in `output/playwright/` are layout evidence only; live API and machine-originated evidence take precedence for release status.

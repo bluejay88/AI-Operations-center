@@ -36,6 +36,7 @@ from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
 from .codex_handoff import codex_handoff_packet
+from .codex_pipeline import codex_pipeline_snapshot, pipe_codex_request
 from .github_defaults import github_defaults_dict
 from .integrations import dispatch_to_provider, integration_status, provider_health
 from .llm_mesh import mesh_status, route_prompt, run_llm_request
@@ -63,7 +64,7 @@ from .ops2 import (
 from .operator_requests import create_operator_request, operator_request_snapshot
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
-from .pet_release import PET_RELEASE_RUBRIC, submit_pet_release_candidate
+from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, ingest_pet_performance_samples, record_pet_release_decision, submit_pet_release_candidate
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
 from .remote_ops import remote_operation_snapshot, request_remote_operation, update_remote_operation_from_approval
@@ -303,6 +304,8 @@ class ListenerEventRequest(BaseModel):
 class PetReleaseSubmissionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    submission_key: str = Field(min_length=8, max_length=160)
+    assignment_id: int | None = None
     machine_id: str = Field(min_length=2, max_length=80)
     agent_id: str = Field(min_length=2, max_length=80)
     pet_id: str = Field(min_length=2, max_length=120)
@@ -316,6 +319,37 @@ class PetReleaseSubmissionRequest(BaseModel):
     rollback_plan: str = Field(default="", max_length=4000)
     release_channel: str = Field(default="staged", pattern="^(staged|canary|production)$")
     priority: int = Field(default=85, ge=1, le=100)
+
+
+class PetFeatureAssignmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assignment_key: str = Field(min_length=8, max_length=160)
+    target_machine_id: str = Field(min_length=2, max_length=80)
+    assigned_agent_id: str = Field(min_length=2, max_length=80)
+    pet_id: str = Field(min_length=2, max_length=120)
+    task_id: int | None = None
+    feature_ids: list[str] = Field(min_length=1)
+    acceptance_rubric: dict = Field(default_factory=dict)
+    due_at: str | None = None
+    priority: int = Field(default=85, ge=1, le=100)
+    metadata: dict = Field(default_factory=dict)
+
+
+class PetPerformanceSample(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sample_key: str = Field(min_length=3, max_length=160)
+    captured_at: str = Field(min_length=10, max_length=80)
+    metrics: dict
+    tags: dict = Field(default_factory=dict)
+
+
+class PetPerformanceBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    samples: list[PetPerformanceSample] = Field(min_length=1, max_length=500)
 
 
 class SpeakerAckRequest(BaseModel):
@@ -399,6 +433,24 @@ class CodexHandoffRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     prompt: str = Field(default="Analyze the AI Operations Center state and decide the next best implementation steps.", min_length=3, max_length=4000)
+
+
+class CodexPipelineRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    title: str = Field(min_length=3, max_length=180)
+    body: str = Field(min_length=3, max_length=12000)
+    requester: str = Field(default="codex", min_length=2, max_length=120)
+    target_machines: list[str] = Field(default_factory=lambda: ["brain-gaming-pc", "dev-laptop"])
+    target_agent_id: str | None = Field(default=None, max_length=80)
+    project_id: str | None = Field(default=None, max_length=120)
+    thread_key: str | None = Field(default=None, max_length=160)
+    channel: str = Field(default="codex", min_length=2, max_length=80)
+    delivery_methods: list[str] = Field(default_factory=lambda: ["dashboard"])
+    due_at: str | None = None
+    priority: int = Field(default=90, ge=1, le=100)
+    create_peer_requests: bool = False
+    metadata: dict = Field(default_factory=dict)
 
 
 class IntegrationDispatchRequest(BaseModel):
@@ -616,6 +668,8 @@ def endpoint_contract() -> dict:
         {"name": "Connections", "method": "POST", "path": "/connections", "purpose": "Report Tailscale, SSH, API, listener, speaker, and worker connectivity."},
         {"name": "Tasks", "method": "GET", "path": "/tasks", "purpose": "Read assigned and global queue items."},
         {"name": "Task intake", "method": "POST", "path": "/tasks/intake", "purpose": "Submit chat/request work for Brain routing."},
+        {"name": "Codex pipeline", "method": "POST", "path": "/codex/pipeline", "purpose": "Pipe Codex chat requests into dashboard-visible operator requests, task queues, team room, speaker feeds, and optional laptop peer requests."},
+        {"name": "Codex pipeline snapshot", "method": "GET", "path": "/codex/pipeline", "purpose": "Read recent Codex-piped work and the contract for laptop feedback into Brain/team/dashboards."},
         {"name": "Listener events", "method": "POST", "path": "/listener/events", "purpose": "Publish laptop progress, logs, errors, recommendations, and requests to the Brain."},
         {"name": "Listener snapshot", "method": "GET", "path": "/listener/events", "purpose": "Read recent inbound workstation and workflow events."},
         {"name": "Speaker feed", "method": "GET", "path": "/speaker/feed/{machine_id}", "purpose": "Pull Brain assignments, approvals, feedback, and package install instructions."},
@@ -773,6 +827,7 @@ async def stream() -> StreamingResponse:
                 "listener": {"events": listener_snapshot(limit=20)},
                 "speaker": speaker_feed("brain-gaming-pc"),
                 "team_chat": team_chat_digest(limit=30),
+                "codex_pipeline": codex_pipeline_snapshot(limit=20),
                 "collaboration": collaboration_snapshot(limit=20),
                 "integrations": integration_status(),
                 "model_solutions": model_solution_snapshot(limit=10),
@@ -1013,6 +1068,14 @@ def approval(request_id: int) -> dict:
 @app.post("/approvals/{request_id}/review")
 def review_approval(request_id: int, request: ApprovalReviewRequest) -> dict:
     reviewed = review_approval_request(request_id, request.decision, request.feedback, request.actor, request.metadata)
+    if reviewed.get("request_type") == "pet_release_candidate":
+        record_pet_release_decision(
+            approval_request_id=request_id,
+            decision=request.decision,
+            actor=request.actor,
+            feedback=request.feedback,
+            evidence=request.metadata,
+        )
     approval_metadata = dict(reviewed.get("metadata") or {})
     remote_operation_id = approval_metadata.get("remote_operation_request_id")
     if remote_operation_id:
@@ -1060,6 +1123,20 @@ def pet_release_rubric() -> dict:
 @app.post("/pet-releases/submissions")
 def pet_release_submission(request: PetReleaseSubmissionRequest) -> dict:
     return submit_pet_release_candidate(request.model_dump())
+
+
+@app.post("/pet-releases/assignments")
+def pet_feature_assignment(request: PetFeatureAssignmentRequest) -> dict:
+    return create_pet_feature_assignment(request.model_dump())
+
+
+@app.post("/pet-releases/submissions/{submission_id}/performance")
+def pet_performance_batch(submission_id: int, request: PetPerformanceBatchRequest) -> dict:
+    return ingest_pet_performance_samples(
+        submission_id=submission_id,
+        machine_id=request.machine_id,
+        samples=[sample.model_dump() for sample in request.samples],
+    )
 
 
 @app.get("/speaker/feed/{target_id}")
@@ -1218,6 +1295,16 @@ def codex_handoff() -> dict:
 @app.post("/codex/handoff")
 def create_codex_handoff(request: CodexHandoffRequest) -> dict:
     return codex_handoff_packet(prompt=request.prompt)
+
+
+@app.get("/codex/pipeline")
+def codex_pipeline(limit: int = Query(default=50, ge=1, le=500)) -> dict:
+    return codex_pipeline_snapshot(limit=limit)
+
+
+@app.post("/codex/pipeline")
+def create_codex_pipeline(request: CodexPipelineRequest) -> dict:
+    return pipe_codex_request(request.model_dump())
 
 
 @app.get("/integrations/health")

@@ -373,6 +373,16 @@ main {
   margin: 0.1rem 0 0;
 }
 
+.roll-meter {
+  margin: 0 0 0.7rem;
+  border: 1px solid rgba(73, 211, 166, 0.35);
+  border-radius: 999px;
+  padding: 0.35rem 0.55rem;
+  color: #d8fff6;
+  background: rgba(73, 211, 166, 0.08);
+  font-size: 0.76rem;
+}
+
 .animation-bank {
   margin-top: 0.9rem;
   display: flex;
@@ -402,6 +412,8 @@ main {
 .pet-security .pet { --pet-accent: #ff6464; --pet-accent-2: #ffd4d4; --pet-dark: #301515; }
 
 .pet-aura,
+.pet-fx,
+.pet-roll-burst,
 .pet-halo,
 .pet-siren,
 .pet-screenplate,
@@ -417,6 +429,79 @@ main {
 .pet-port {
   position: absolute;
   display: block;
+}
+
+.pet-fx {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, transparent 45%, var(--pet-accent) 45% 55%, transparent 55%),
+    linear-gradient(transparent 45%, var(--pet-accent) 45% 55%, transparent 55%);
+  filter: drop-shadow(0 0 8px var(--pet-accent));
+}
+
+.pet-fx-left {
+  left: 8px;
+  top: 9px;
+}
+
+.pet-fx-right {
+  right: 8px;
+  top: 9px;
+}
+
+.pet-roll-burst {
+  inset: 0;
+  opacity: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 22%, #fff 0 2px, transparent 3px),
+    radial-gradient(circle at 72% 18%, var(--pet-accent-2) 0 3px, transparent 4px),
+    radial-gradient(circle at 20% 74%, var(--pet-accent) 0 3px, transparent 4px),
+    radial-gradient(circle at 80% 68%, #fff 0 2px, transparent 3px);
+}
+
+.pet-state-online .pet-fx-left {
+  opacity: 0.55;
+  animation: fx-spark 1.4s ease-in-out infinite;
+}
+
+.pet-state-online .pet-fx-right {
+  opacity: 0.55;
+  animation: fx-spark 1.4s ease-in-out infinite reverse;
+}
+
+.pet-state-connecting .pet-ear,
+.pet-state-connecting .pet-halo {
+  animation: connect-pulse 900ms ease-in-out infinite;
+}
+
+.pet-state-connecting .pet-fx-left,
+.pet-state-connecting .pet-fx-right {
+  opacity: 1;
+  animation: connect-wave 1s ease-in-out infinite;
+}
+
+.pet-state-heavy .pet-screenplate,
+.pet-state-heavy .pet-keyboard {
+  animation: heavy-glow 850ms ease-in-out infinite;
+}
+
+.pet-state-heavy .pet-fx-left,
+.pet-state-heavy .pet-fx-right {
+  opacity: 1;
+  animation: heavy-sparks 620ms steps(3) infinite;
+}
+
+.pet-state-on-roll .pet-roll-burst {
+  opacity: 1;
+  animation: roll-burst 1.15s ease-out infinite;
+}
+
+.pet-state-on-roll .pet-base {
+  animation: roll-base 900ms ease-in-out infinite;
 }
 
 .pet-siren {
@@ -774,6 +859,9 @@ main {
 .anim-profiling { animation-name: pet-profiling; }
 .anim-validating { animation-name: pet-validating; }
 .anim-archiving { animation-name: pet-archiving; }
+.anim-connecting { animation-name: pet-connecting; }
+.anim-on-roll { animation-name: pet-on-roll; }
+.anim-heavy-work { animation-name: pet-heavy-work; }
 
 @keyframes pet-idle { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @keyframes pet-sleeping { 0%,100% { transform: translateY(4px) scale(.96); opacity:.72; } 50% { transform: translateY(2px) scale(.94); opacity:.62; } }
@@ -835,6 +923,9 @@ main {
 @keyframes pet-profiling { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(1.12); } }
 @keyframes pet-validating { 0%,100% { transform: translateY(0); filter: brightness(1); } 50% { transform: translateY(-4px); filter: brightness(1.25); } }
 @keyframes pet-archiving { 0%,100% { transform: scale(1); opacity:1; } 50% { transform: scale(.9); opacity:.75; } }
+@keyframes pet-connecting { 0%,100% { transform: translateX(-3px); filter: saturate(.8); } 50% { transform: translateX(3px); filter: saturate(1.35); } }
+@keyframes pet-on-roll { 0%,100% { transform: translateY(0) scale(1); } 30% { transform: translateY(-9px) scale(1.06) rotate(-3deg); } 70% { transform: translateY(-5px) scale(1.03) rotate(3deg); } }
+@keyframes pet-heavy-work { 0%,100% { transform: translateY(0) scale(1); } 25% { transform: translateY(-4px) scale(1.02); } 50% { transform: translateY(1px) scale(.99); } 75% { transform: translateY(-3px) scale(1.01); } }
 
 @keyframes pet-scan {
   0% { transform: rotate(0deg) scale(1); opacity: .45; }
@@ -856,6 +947,43 @@ main {
 @keyframes siren-flash {
   0%,100% { opacity: .28; transform: scaleX(.92); }
   50% { opacity: 1; transform: scaleX(1.1); }
+}
+
+@keyframes fx-spark {
+  0%,100% { transform: translateY(0) rotate(0); opacity: .2; }
+  45% { transform: translateY(-8px) rotate(45deg); opacity: .85; }
+}
+
+@keyframes connect-pulse {
+  0%,100% { opacity: .42; filter: brightness(.8); }
+  50% { opacity: 1; filter: brightness(1.4); }
+}
+
+@keyframes connect-wave {
+  0%,100% { transform: scale(.65); opacity: .25; }
+  50% { transform: scale(1.35); opacity: .95; }
+}
+
+@keyframes heavy-glow {
+  0%,100% { box-shadow: inset 0 0 18px rgba(255,255,255,0.07), 0 0 24px color-mix(in srgb, var(--pet-accent) 24%, transparent); }
+  50% { box-shadow: inset 0 0 26px rgba(255,255,255,0.12), 0 0 34px color-mix(in srgb, var(--pet-accent) 58%, transparent); }
+}
+
+@keyframes heavy-sparks {
+  0% { transform: translate(0,0) rotate(0deg); }
+  50% { transform: translate(3px,-5px) rotate(90deg); }
+  100% { transform: translate(-2px,2px) rotate(180deg); }
+}
+
+@keyframes roll-burst {
+  0% { transform: scale(.55) rotate(0deg); opacity: 0; }
+  35% { opacity: 1; }
+  100% { transform: scale(1.35) rotate(80deg); opacity: 0; }
+}
+
+@keyframes roll-base {
+  0%,100% { transform: scaleX(.85); filter: brightness(1); }
+  50% { transform: scaleX(1.18); filter: brightness(1.6); }
 }
 
 .section-heading {

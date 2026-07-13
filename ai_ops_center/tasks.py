@@ -207,6 +207,25 @@ def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
             return [dict(row) for row in cur.fetchall()]
 
 
+def task_detail(task_id: int, local: bool = False) -> dict[str, Any] | None:
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                    t.id, t.title, t.agent_id, a.machine_id, t.category, t.priority,
+                    t.status, t.description, t.result, t.created_at, t.started_at,
+                    t.completed_at, t.updated_at
+                from tasks t
+                join agents a on a.id = t.agent_id
+                where t.id = %s
+                """,
+                (task_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
 def create_manual_task(
     title: str,
     agent_id: str,

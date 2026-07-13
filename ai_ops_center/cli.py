@@ -133,6 +133,7 @@ def main() -> None:
     worker_parser.add_argument("--machine", default=get_settings().worker_machine_id)
     worker_parser.add_argument("--once", action="store_true")
     worker_parser.add_argument("--sleep-seconds", type=int, default=get_settings().worker_sleep_seconds)
+    worker_parser.add_argument("--work-seconds", type=int, default=4)
 
     parser.add_argument("--local-db", action="store_true", help="Use LOCAL_DATABASE_URL instead of DATABASE_URL")
     args = parser.parse_args()
@@ -289,7 +290,7 @@ def main() -> None:
     elif args.command == "report":
         print(generate_report(args.type, local=args.local_db))
     elif args.command == "worker":
-        run_worker(args.machine, once=args.once, sleep_seconds=args.sleep_seconds, local=args.local_db)
+        run_worker(args.machine, once=args.once, sleep_seconds=args.sleep_seconds, work_seconds=args.work_seconds, local=args.local_db)
 
 
 if __name__ == "__main__":

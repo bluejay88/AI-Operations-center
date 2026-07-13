@@ -21,8 +21,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
     openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+    groq_model: str = "llama-3.1-8b-instant"
+    anthropic_model: str = "claude-3-haiku-20240307"
+    google_model: str = "gemini-2.0-flash"
     worker_machine_id: str = "brain-gaming-pc"
     worker_sleep_seconds: int = 10
+    worker_work_seconds: int = 4
     report_timezone: str = "America/Chicago"
     brain_host: str = "100.70.49.32"
     human_approval_required: bool = Field(default=True)

@@ -19,6 +19,7 @@ const state = {
     "indexing", "scraping", "summarizing", "forecasting", "budgeting", "invoicing", "posting", "designing",
     "packaging", "migrating", "securing", "encrypting", "auditing", "monitoring", "healing", "balancing",
     "queuing", "merging", "shipping", "documenting", "refactoring", "profiling", "validating", "archiving",
+    "connecting", "on-roll", "heavy-work",
   ],
   selectedReport: "hourly",
   stream: null,
@@ -472,15 +473,17 @@ function chooseAnimation(machine, readiness, taskCountsForMachine, telemetry) {
   const stateLabel = readiness?.state || "unknown";
   const temp = telemetry?.temperature_c;
   const health = telemetry?.health_score;
-  if (stateLabel.includes("stale") || stateLabel === "offline") return "sleeping";
+  if (stateLabel.includes("stale") || stateLabel === "offline" || stateLabel === "blocked" || stateLabel === "unknown") return "connecting";
   if (temp !== undefined && temp !== null && Number(temp) >= 85) return "cooling";
   if (health !== undefined && health !== null && Number(health) < 60) return "warning";
+  if ((taskCountsForMachine?.running || 0) >= 2) return "heavy-work";
   if ((taskCountsForMachine?.running || 0) > 0) {
     if (machine.id.includes("dev")) return "building";
     if (machine.id.includes("research")) return "researching";
     if (machine.id.includes("business")) return "emailing";
     return "routing";
   }
+  if ((taskCountsForMachine?.completed || 0) >= 10 && (taskCountsForMachine.completed % 10) <= 2) return "on-roll";
   if ((taskCountsForMachine?.queued || 0) > 4) return "queuing";
   return mascotForMachine(machine).baseAnimation;
 }
@@ -489,11 +492,12 @@ function renderPets() {
   const machines = state.registry?.machines || [];
   const readinessByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, machine]));
   const telemetryByMachine = Object.fromEntries((state.noc?.infrastructure?.telemetry || []).map((item) => [item.machine_id, item]));
-  const taskCountsByMachine = state.tasks.reduce((acc, task) => {
+  const taskCountsByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, { ...(machine.task_counts || {}) }]));
+  state.tasks.reduce((acc, task) => {
     const bucket = (acc[task.machine_id] ||= { queued: 0, running: 0, completed: 0 });
-    bucket[task.status] = (bucket[task.status] || 0) + 1;
+    bucket[task.status] = Math.max(bucket[task.status] || 0, (taskCountsByMachine[task.machine_id]?.[task.status] || 0) + 1);
     return acc;
-  }, {});
+  }, taskCountsByMachine);
   const securityAnimation = (state.noc?.security?.pending_approvals || 0) > 0 ? "reviewing" : "scanning";
 
   els.pets.innerHTML = [
@@ -503,13 +507,16 @@ function renderPets() {
       const counts = taskCountsByMachine[machine.id] || {};
       const telemetry = telemetryByMachine[machine.id] || {};
       const animation = chooseAnimation(machine, readiness, counts, telemetry);
+      const completedCluster = Math.floor((counts.completed || 0) / 10);
       return petMarkup({
         ...mascot,
         machineId: machine.id,
         animation,
+        stateClass: petStateClass(animation, readiness.state),
+        completedCluster,
         status: readiness.state || "unknown",
         primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
-        secondary: `Health ${telemetry.health_score ?? "n/a"} / Battery ${telemetry.battery_percent ?? "n/a"}% / Temp ${telemetry.temperature_c ?? "n/a"}C`,
+        secondary: `Done ${counts.completed || 0} / Roll x${completedCluster} / Health ${telemetry.health_score ?? "n/a"} / Battery ${telemetry.battery_percent ?? "n/a"}%`,
       });
     }),
     petMarkup({
@@ -518,6 +525,8 @@ function renderPets() {
       className: "pet-security",
       machineId: "security-monitor",
       animation: securityAnimation,
+      stateClass: "pet-state-scanning",
+      completedCluster: 0,
       status: `${state.noc?.security?.pending_approvals || 0} approvals`,
       primary: `${state.noc?.security?.events?.length || 0} recent events`,
       secondary: "Continuous audit and trust monitoring",
@@ -527,12 +536,23 @@ function renderPets() {
   els.animationBankCount.textContent = `${state.mascotAnimations.length} animations loaded`;
 }
 
+function petStateClass(animation, readinessState) {
+  if (animation === "connecting") return "pet-state-connecting";
+  if (animation === "on-roll") return "pet-state-on-roll";
+  if (animation === "heavy-work") return "pet-state-heavy";
+  if (readinessState === "online" || readinessState?.startsWith("reachable")) return "pet-state-online";
+  return "pet-state-idle";
+}
+
 function petMarkup(pet) {
   const animationClass = `anim-${pet.animation}`;
   return `
-    <article class="pet-panel ${escapeHtml(pet.className)}">
+    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}">
       <div class="pet-stage">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
+          <span class="pet-fx pet-fx-left"></span>
+          <span class="pet-fx pet-fx-right"></span>
+          <span class="pet-roll-burst"></span>
           <span class="pet-aura"></span>
           <span class="pet-halo"></span>
           <span class="pet-siren"><span></span><span></span></span>
@@ -565,6 +585,7 @@ function petMarkup(pet) {
           </div>
           <span class="pill online">${escapeHtml(pet.animation)}</span>
         </header>
+        ${pet.completedCluster ? `<div class="roll-meter">On a roll: ${escapeHtml(pet.completedCluster)} cluster${pet.completedCluster === 1 ? "" : "s"} of 10 completed</div>` : ""}
         <dl>
           <div><dt>Device</dt><dd>${escapeHtml(pet.machineId)}</dd></div>
           <div><dt>Status</dt><dd>${escapeHtml(pet.status)}</dd></div>
@@ -756,12 +777,18 @@ function applyRealtimePayload(payload) {
   state.factory = normalizeFactory(payload.factory || state.factory);
   state.approvals = normalizeApprovals(payload.approvals || state.approvals);
   state.noc = payload.noc || state.noc;
+  state.listenerEvents = payload.listener?.events || state.listenerEvents;
+  state.speakerFeed = payload.speaker || state.speakerFeed;
+  state.integrations = payload.integrations || state.integrations;
   safeRender("summary", renderSummary);
   safeRender("machines", renderMachines);
   safeRender("factory", renderFactory);
   safeRender("agents", renderAgents);
   safeRender("tasks", renderTasks);
   safeRender("approvals", renderApprovals);
+  safeRender("listener", renderListenerEvents);
+  safeRender("speaker", renderSpeakerFeed);
+  safeRender("integrations", renderIntegrations);
   safeRender("NOC", renderNoc);
   safeRender("pets", renderPets);
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;

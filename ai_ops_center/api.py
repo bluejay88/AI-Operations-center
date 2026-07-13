@@ -21,6 +21,7 @@ from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
 from .integrations import dispatch_to_provider, integration_status, provider_health
+from .model_workflows import run_external_model_workflow
 from .orchestrator import create_daily_priorities
 from .ops2 import (
     create_notification,
@@ -44,7 +45,7 @@ from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
 from .reports import generate_report
 from .settings import get_settings
-from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_snapshot
+from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_detail, task_snapshot
 
 settings = get_settings()
 docs_url = "/docs" if settings.expose_api_docs or settings.app_env != "production" else None
@@ -193,6 +194,18 @@ class IntegrationDispatchRequest(BaseModel):
     prompt: str = Field(min_length=3, max_length=12000)
     task_id: int | None = None
     approval_request_id: int | None = None
+    options: dict = Field(default_factory=dict)
+
+
+class ModelWorkflowRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    purpose: str = Field(min_length=3, max_length=180)
+    prompt: str = Field(min_length=3, max_length=12000)
+    target_id: str = Field(default="all", min_length=2, max_length=120)
+    providers: list[str] = Field(default_factory=list)
+    task_id: int | None = None
+    priority: int = Field(default=80, ge=1, le=100)
     options: dict = Field(default_factory=dict)
 
 
@@ -389,6 +402,9 @@ async def stream() -> StreamingResponse:
                 "connections": connection_snapshot(),
                 "factory": factory_snapshot(),
                 "approvals": approval_snapshot(limit=20),
+                "listener": {"events": listener_snapshot(limit=20)},
+                "speaker": speaker_feed("brain-gaming-pc"),
+                "integrations": integration_status(),
             }
             yield f"data: {json.dumps(payload, default=str)}\n\n"
             await asyncio.sleep(5)
@@ -417,6 +433,12 @@ def update_connection(request: ConnectionUpdateRequest) -> dict[str, str]:
 @app.get("/tasks")
 def tasks() -> dict:
     return {"tasks": task_snapshot()}
+
+
+@app.get("/tasks/{task_id}")
+def task_by_id(task_id: int) -> dict:
+    task = task_detail(task_id)
+    return {"task": task}
 
 
 @app.post("/tasks")
@@ -576,6 +598,19 @@ async def integrations_dispatch(request: IntegrationDispatchRequest) -> dict:
         prompt=request.prompt,
         task_id=request.task_id,
         approval_request_id=request.approval_request_id,
+        options=request.options,
+    )
+
+
+@app.post("/integrations/workflow")
+async def integrations_workflow(request: ModelWorkflowRequest) -> dict:
+    return await run_external_model_workflow(
+        purpose=request.purpose,
+        prompt=request.prompt,
+        target_id=request.target_id,
+        providers=request.providers or None,
+        task_id=request.task_id,
+        priority=request.priority,
         options=request.options,
     )
 

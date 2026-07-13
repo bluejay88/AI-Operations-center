@@ -53,6 +53,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "config/ai_factory.yaml",
         "prompts/AGENT_PROMPTS.md",
         "docker/publish-laptop-telemetry.ps1",
+        "docker/show-heavy-work-overlay.ps1",
+        "docker/start-laptop-operations.ps1",
     ]
     for rel in files:
         add(f"file exists: {rel}", (ROOT / rel).exists())
@@ -72,13 +74,19 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("dashboard factory payload normalizer present", "normalizeFactory" in app_js)
     add("dashboard task payload normalizer present", "normalizeTasks" in app_js)
     add("dashboard live connection banner present", "api-connection-status" in index_html)
-    add("dashboard asset cache bust present", "live-data-auth-20260713d" in index_html)
+    add("dashboard asset cache bust present", "pet-motion-workers-20260713e" in index_html)
     add("laptop pet keyboard present", "pet-keyboard" in app_js and "pet-keyboard" in styles)
     add("shield siren present", "pet-siren" in app_js and "siren-flash" in styles)
     add("shield no longer spins on scan", "@keyframes pet-scanning { 0% { transform: rotate" not in styles)
+    add("pet connecting animation present", "pet-state-connecting" in app_js and "connect-wave" in styles)
+    add("pet on-roll animation present", "pet-state-on-roll" in app_js and "roll-burst" in styles)
+    add("pet heavy-work animation present", "pet-state-heavy" in app_js and "heavy-glow" in styles)
+    add("worker visible duration configured", "work_seconds" in (ROOT / "ai_ops_center/worker.py").read_text(encoding="utf-8"))
+    add("laptop heavy overlay script configured", "Hey, don't use me right now" in (ROOT / "docker/show-heavy-work-overlay.ps1").read_text(encoding="utf-8"))
     add("API CORS configured", "CORSMiddleware" in api_py)
     add("API dashboard login configured", "/dashboard/login" in api_py)
     add("API chat task intake configured", "/tasks/intake" in api_py)
+    add("API external model workflow configured", "/integrations/workflow" in api_py)
     add("task intake splitter configured", "create_chat_task_intake" in tasks_py)
     add("task intake rubric configured", "INTAKE_RUBRIC" in tasks_py)
     add("security monitor agent configured", "security-monitor" in agents_yaml)
@@ -117,7 +125,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     html_detail = ""
     try:
         html = urllib.request.urlopen(f"{base_url}/dashboard/", timeout=10).read().decode()
-        html_ok = "dashboard-login-form" in html and "live-data-auth-20260713d" in html
+        html_ok = "dashboard-login-form" in html and "pet-motion-workers-20260713e" in html
         html_detail = "served"
     except Exception as exc:
         html_detail = repr(exc)

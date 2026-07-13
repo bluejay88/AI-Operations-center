@@ -36,6 +36,8 @@ def run_25_checks() -> dict:
         "sql/schema.sql",
         "docker/audit-laptop-unblock.ps1",
         "docker/publish-laptop-telemetry.ps1",
+        "docker/show-heavy-work-overlay.ps1",
+        "docker/start-laptop-operations.ps1",
     ]
     for rel in required_files:
         add(f"file exists: {rel}", (ROOT / rel).exists())
@@ -60,11 +62,13 @@ def run_25_checks() -> dict:
     add("dashboard uses laptop pet visuals", "pet-screenplate" in app_js and "pet-keyboard" in app_js)
     add("dashboard has password gate", "dashboard-login-form" in index_html and "/dashboard/login" in app_js)
     add("dashboard supports live API base", "DEFAULT_BRAIN_API" in app_js and "aiOpsApiBase" in app_js)
+    add("dashboard has dynamic pet motion states", "pet-state-connecting" in app_js and "pet-state-on-roll" in app_js and "pet-state-heavy" in app_js)
 
     api_py = (ROOT / "ai_ops_center/api.py").read_text(encoding="utf-8")
     add("api exposes failover evaluate", "/ops2/failover/evaluate" in api_py)
     add("api exposes stale worker failover", "/ops2/failover/stale-workers" in api_py)
     add("api exposes business launch seed", "/ops2/business-launches/seed" in api_py)
+    add("api exposes model workflow", "/integrations/workflow" in api_py)
 
     critical = _failover_recommendation("dev-laptop", 5, "online")
     healthy = _failover_recommendation("dev-laptop", 80, "online")

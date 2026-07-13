@@ -87,7 +87,7 @@ services:
     build: .
     env_file:
       - .env
-    command: ["python", "-m", "ai_ops_center.cli", "worker"]
+    command: ["python", "-m", "ai_ops_center.cli", "worker", "--machine", "${WORKER_MACHINE_ID:-brain-gaming-pc}", "--sleep-seconds", "${WORKER_SLEEP_SECONDS:-10}", "--work-seconds", "${WORKER_WORK_SECONDS:-4}"]
     depends_on:
       postgres:
         condition: service_healthy

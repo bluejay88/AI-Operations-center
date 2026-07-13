@@ -49,6 +49,33 @@ icacls $sshDir /grant "${UserName}:(OI)(CI)F" "Administrators:(OI)(CI)F" "SYSTEM
 icacls $authorizedKeys /inheritance:r | Out-Null
 icacls $authorizedKeys /grant "${UserName}:F" "Administrators:F" "SYSTEM:F" | Out-Null
 
+$adminGroup = Get-LocalGroupMember -Group "Administrators" -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match "\\$([regex]::Escape($UserName))$" -or $_.Name -eq $UserName
+}
+
+if ($adminGroup) {
+    $programDataSsh = Join-Path $env:ProgramData "ssh"
+    $adminAuthorizedKeys = Join-Path $programDataSsh "administrators_authorized_keys"
+
+    if (!(Test-Path $programDataSsh)) {
+        New-Item -ItemType Directory -Path $programDataSsh | Out-Null
+    }
+    if (!(Test-Path $adminAuthorizedKeys)) {
+        New-Item -ItemType File -Path $adminAuthorizedKeys | Out-Null
+    }
+
+    $adminExisting = Get-Content -Path $adminAuthorizedKeys -ErrorAction SilentlyContinue
+    if ($adminExisting -notcontains $PublicKey) {
+        Add-Content -Path $adminAuthorizedKeys -Value $PublicKey
+        Write-Host "Added public key to $adminAuthorizedKeys because $UserName is an Administrator."
+    } else {
+        Write-Host "Public key already exists in $adminAuthorizedKeys"
+    }
+
+    icacls $adminAuthorizedKeys /inheritance:r | Out-Null
+    icacls $adminAuthorizedKeys /grant "Administrators:F" "SYSTEM:F" | Out-Null
+}
+
 Restart-Service sshd
 
 Write-Host "Authorized key installed for $UserName."

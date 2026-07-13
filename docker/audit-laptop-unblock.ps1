@@ -5,7 +5,8 @@ param(
 
     [string]$BrainHost = "100.70.49.32",
     [string]$BrainUser = "jayla",
-    [string]$AgentId = "orchestrator"
+    [string]$AgentId = "orchestrator",
+    [string]$IdentityFile = ""
 )
 
 $ErrorActionPreference = "Continue"
@@ -24,6 +25,36 @@ function Write-Check {
 Write-Host "AI Operations Center laptop unblock audit"
 Write-Host "MachineId=$MachineId BrainHost=$BrainHost BrainUser=$BrainUser AgentId=$AgentId"
 Write-Host ""
+
+function Resolve-IdentityFile {
+    param([string]$RequestedPath)
+
+    if ($RequestedPath -and (Test-Path $RequestedPath)) {
+        return (Resolve-Path $RequestedPath).Path
+    }
+
+    $candidates = @(
+        (Join-Path $env:USERPROFILE ".ssh\ai_ops_brain_ed25519"),
+        (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "AI-Ops-SSH\ai_ops_brain_ed25519"),
+        (Join-Path $env:LOCALAPPDATA "AI-Ops-SSH\ai_ops_brain_ed25519"),
+        (Join-Path $env:TEMP "AI-Ops-SSH\ai_ops_brain_ed25519")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    return ""
+}
+
+$resolvedIdentityFile = Resolve-IdentityFile -RequestedPath $IdentityFile
+if ($resolvedIdentityFile) {
+    Write-Check "SSH identity file" $true $resolvedIdentityFile
+} else {
+    Write-Check "SSH identity file" $false "No ai_ops_brain_ed25519 key found in .ssh, Documents, LocalAppData, or Temp fallback folders."
+}
 
 $gitOk = $false
 try {
@@ -76,7 +107,12 @@ try {
 $sshOk = $false
 $sshAuthState = "unknown"
 try {
-    $sshOutput = ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 "$BrainUser@$BrainHost" hostname 2>&1
+    $sshArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=8")
+    if ($resolvedIdentityFile) {
+        $sshArgs += @("-i", $resolvedIdentityFile)
+    }
+    $sshArgs += @("$BrainUser@$BrainHost", "hostname")
+    $sshOutput = ssh @sshArgs 2>&1
     $sshOk = $LASTEXITCODE -eq 0
     $sshAuthState = if ($sshOk) { "noninteractive_ready" } elseif ($portOk) { "interactive_login_required" } else { "blocked" }
     Write-Check "SSH key/noninteractive login" $sshOk ($sshOutput -join "`n")
@@ -100,6 +136,7 @@ try {
             ssh_noninteractive = $sshOk
             ssh_auth_state = $sshAuthState
             brain_ssh_user = $BrainUser
+            ssh_identity_file = $resolvedIdentityFile
             tailscale = $tailscaleOk
             git = $gitOk
         }
@@ -134,7 +171,11 @@ Write-Host "SSHAuthState=$sshAuthState"
 Write-Host ""
 if ($apiOk -and $portOk -and -not $sshOk) {
     Write-Host "SSH network is unblocked, but noninteractive SSH login is not configured yet. Try interactive login:"
-    Write-Host "ssh $BrainUser@$BrainHost hostname"
+    if ($resolvedIdentityFile) {
+        Write-Host "ssh -i `"$resolvedIdentityFile`" $BrainUser@$BrainHost hostname"
+    } else {
+        Write-Host "ssh $BrainUser@$BrainHost hostname"
+    }
 }
 if (-not $portOk) {
     Write-Host "Port 22 is blocked from this laptop. Re-run docker\setup-brain-openssh-admin.ps1 on the Brain PC as Administrator."

@@ -33,23 +33,21 @@ Write-Host "sshd service status: $($service.Status)"
 $ruleName = "AI-Ops-Brain-OpenSSH-Tailscale"
 $existing = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
 if ($existing) {
-    Set-NetFirewallRule -Name $ruleName -Enabled True -Direction Inbound -Action Allow -Profile Any
-    Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $existing | Set-NetFirewallAddressFilter -RemoteAddress "100.64.0.0/10"
-    Get-NetFirewallPortFilter -AssociatedNetFirewallRule $existing | Set-NetFirewallPortFilter -Protocol TCP -LocalPort $Port
-    Write-Host "Updated firewall rule: $ruleName"
-} else {
-    New-NetFirewallRule `
-        -Name $ruleName `
-        -DisplayName "AI Ops Brain OpenSSH over Tailscale" `
-        -Enabled True `
-        -Direction Inbound `
-        -Action Allow `
-        -Protocol TCP `
-        -LocalPort $Port `
-        -RemoteAddress "100.64.0.0/10" `
-        -Profile Any | Out-Null
-    Write-Host "Created firewall rule: $ruleName on TCP $Port for Tailscale CGNAT only."
+    Remove-NetFirewallRule -Name $ruleName
+    Write-Host "Removed existing firewall rule so it can be recreated cleanly: $ruleName"
 }
+
+New-NetFirewallRule `
+    -Name $ruleName `
+    -DisplayName "AI Ops Brain OpenSSH over Tailscale" `
+    -Enabled True `
+    -Direction Inbound `
+    -Action Allow `
+    -Protocol TCP `
+    -LocalPort $Port `
+    -RemoteAddress "100.64.0.0/10" `
+    -Profile Any | Out-Null
+Write-Host "Created firewall rule: $ruleName on TCP $Port for Tailscale CGNAT only."
 
 Write-Host "Brain OpenSSH setup complete."
 Write-Host "Test from a laptop with: ssh $env:USERNAME@100.70.49.32 hostname"

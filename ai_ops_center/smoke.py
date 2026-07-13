@@ -56,7 +56,7 @@ def run_25_checks() -> dict:
     add("dashboard has 400 seed button handler", "ops2SeedExpansion" in app_js)
     add("dashboard has 5 business launcher", "ops2SeedBusinesses" in app_js)
     add("dashboard has operator request form", "operatorRequestForm" in app_js)
-    add("dashboard uses circuit pet visuals", "pet-screen" in app_js and "pet-chip" in app_js)
+    add("dashboard uses laptop pet visuals", "pet-screenplate" in app_js and "pet-keyboard" in app_js)
 
     api_py = (ROOT / "ai_ops_center/api.py").read_text(encoding="utf-8")
     add("api exposes failover evaluate", "/ops2/failover/evaluate" in api_py)

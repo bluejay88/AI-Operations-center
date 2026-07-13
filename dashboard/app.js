@@ -452,18 +452,24 @@ function petMarkup(pet) {
       <div class="pet-stage">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
           <span class="pet-aura"></span>
-          <span class="pet-signal left"></span>
-          <span class="pet-signal right"></span>
-          <span class="pet-screen">
+          <span class="pet-halo"></span>
+          <span class="pet-ear left"></span>
+          <span class="pet-ear right"></span>
+          <span class="pet-screenplate">
+            <span class="pet-gridlines"></span>
             <span class="pet-scanline"></span>
-            <span class="pet-circuit one"></span>
-            <span class="pet-circuit two"></span>
+            <span class="pet-badge"></span>
             <span class="pet-eye left"></span>
             <span class="pet-eye right"></span>
             <span class="pet-mouth"></span>
           </span>
-          <span class="pet-chip"></span>
-          <span class="pet-dock"></span>
+          <span class="pet-keyboard">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          <span class="pet-trackpad"></span>
+          <span class="pet-base"></span>
+          <span class="pet-port left"></span>
+          <span class="pet-port right"></span>
           <span class="pet-status-light"></span>
           <span class="pet-tool"></span>
         </div>

@@ -123,6 +123,20 @@ try {
 
 $sendOk = $false
 try {
+    $recommendations = New-Object System.Collections.ArrayList
+    if ($apiOk -and $portOk -and -not $sshOk) {
+        [void]$recommendations.Add(@{
+            type = "ssh_authentication"
+            priority = 90
+            summary = "$MachineId SSH network is unblocked but noninteractive login is not configured."
+            rationale = "Complete one interactive login or install SSH keys for automation-safe Brain operations."
+            metadata = @{
+                brain_user = $BrainUser
+                ssh_auth_state = $sshAuthState
+            }
+        })
+    }
+
     $payload = @{
         machine_id = $MachineId
         agent_id = $AgentId
@@ -140,28 +154,17 @@ try {
             tailscale = $tailscaleOk
             git = $gitOk
         }
-        recommendations = if ($apiOk -and $portOk -and -not $sshOk) {
-            @(
-                @{
-                    type = "ssh_authentication"
-                    priority = 90
-                    summary = "$MachineId SSH network is unblocked but noninteractive login is not configured."
-                    rationale = "Complete one interactive login or install SSH keys for automation-safe Brain operations."
-                    metadata = @{
-                        brain_user = $BrainUser
-                        ssh_auth_state = $sshAuthState
-                    }
-                }
-            )
-        } else {
-            @()
-        }
+        recommendations = @($recommendations)
     } | ConvertTo-Json -Depth 5
     $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/workstation-updates" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
     $sendOk = $null -ne $result.update
     Write-Check "Publish audit to Brain" $sendOk "update_id=$($result.update.id)"
 } catch {
-    Write-Check "Publish audit to Brain" $false $_.Exception.Message
+    $detail = $_.Exception.Message
+    if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+        $detail = "$detail`n$($_.ErrorDetails.Message)"
+    }
+    Write-Check "Publish audit to Brain" $false $detail
 }
 
 Write-Host ""

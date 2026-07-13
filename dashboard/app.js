@@ -802,9 +802,10 @@ function unlockDashboard() {
 async function submitDashboardLogin(password) {
   const data = await api("/dashboard/login", {
     method: "POST",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password: String(password || "").trim() }),
   });
   if (!data.ok) throw new Error(data.message || "Invalid dashboard password");
+  els.loginMessage.textContent = data.message || "Dashboard unlocked";
   unlockDashboard();
 }
 
@@ -824,7 +825,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   try {
     await submitDashboardLogin(password);
   } catch (error) {
-    els.loginMessage.textContent = error.message;
+    els.loginMessage.textContent = `${error.message}. Check that this page is using Brain API ${API_BASE || window.location.origin}.`;
     toast(error.message);
   }
 });

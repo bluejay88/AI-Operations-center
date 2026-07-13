@@ -335,9 +335,10 @@ def health() -> dict[str, str]:
 @app.post("/dashboard/login")
 def dashboard_login(request: DashboardLoginRequest) -> dict[str, str | bool]:
     expected = settings.dashboard_password
-    if expected and not hmac.compare_digest(request.password, expected):
+    submitted = request.password.strip()
+    if expected and not hmac.compare_digest(submitted, expected.strip()):
         return {"ok": False, "message": "Invalid dashboard password"}
-    return {"ok": True, "token": "dashboard-session"}
+    return {"ok": True, "token": "dashboard-session", "message": "Dashboard unlocked"}
 
 
 @app.get("/status")

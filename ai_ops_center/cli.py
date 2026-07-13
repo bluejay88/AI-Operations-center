@@ -6,6 +6,7 @@ import json
 from .approvals import approval_snapshot, create_approval_request, review_approval_request
 from .benchmark import benchmark_report, run_benchmark
 from .brain_bus import listener_snapshot, speaker_feed, submit_listener_event
+from .business_os import business_os_snapshot, enterprise_org_snapshot, laptop_setup_prompt, seed_autonomous_business_os, seed_enterprise_departments
 from .db import init_db
 from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
@@ -50,6 +51,12 @@ def main() -> None:
     subparsers.add_parser("github-defaults")
     subparsers.add_parser("remote-ops")
     subparsers.add_parser("security-guardian")
+    subparsers.add_parser("business-os")
+    subparsers.add_parser("business-os-seed")
+    subparsers.add_parser("enterprise-org")
+    subparsers.add_parser("enterprise-org-seed")
+    laptop_setup_parser = subparsers.add_parser("business-os-laptop-setup")
+    laptop_setup_parser.add_argument("machine", choices=["brain-gaming-pc", "dev-laptop", "research-laptop", "business-laptop"])
     codex_parser = subparsers.add_parser("codex-handoff")
     codex_parser.add_argument("--prompt", default="Analyze the AI Operations Center state and decide the next best implementation steps.")
 
@@ -235,6 +242,16 @@ def main() -> None:
         print(json.dumps({"requests": remote_operation_snapshot(local=args.local_db)}, indent=2, default=str))
     elif args.command == "security-guardian":
         print(json.dumps(security_guardian_audit(local=args.local_db), indent=2, default=str))
+    elif args.command == "business-os":
+        print(json.dumps(business_os_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "business-os-seed":
+        print(json.dumps(seed_autonomous_business_os(local=args.local_db), indent=2, default=str))
+    elif args.command == "enterprise-org":
+        print(json.dumps(enterprise_org_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "enterprise-org-seed":
+        print(json.dumps(seed_enterprise_departments(local=args.local_db), indent=2, default=str))
+    elif args.command == "business-os-laptop-setup":
+        print(laptop_setup_prompt(args.machine))
     elif args.command == "remote-op":
         print(
             json.dumps(

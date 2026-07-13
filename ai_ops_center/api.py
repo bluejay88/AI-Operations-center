@@ -15,6 +15,7 @@ from starlette.responses import Response
 
 from .approvals import approval_detail, approval_snapshot, create_approval_request, review_approval_request
 from .brain_bus import acknowledge_speaker_message, create_speaker_message, listener_snapshot, speaker_feed, submit_listener_event
+from .business_os import business_os_snapshot, enterprise_org_snapshot, laptop_setup_prompt, seed_autonomous_business_os, seed_enterprise_departments
 from .connectivity import connection_snapshot, record_connection
 from .factory import factory_snapshot, redistribute_business_queue
 from .flowise import healthcheck as flowise_healthcheck
@@ -254,6 +255,14 @@ class LaptopPackageDispatchRequest(BaseModel):
     machine_ids: list[str] = Field(default_factory=lambda: ["dev-laptop", "research-laptop", "business-laptop"])
     brain_host: str = Field(default="100.70.49.32", min_length=3, max_length=120)
     priority: int = Field(default=92, ge=1, le=100)
+
+
+class BusinessOsModelSprintRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    purpose: str = Field(default="Improve the autonomous zero-budget business launch system", min_length=3, max_length=180)
+    providers: list[str] = Field(default_factory=lambda: ["openai", "groq"])
+    priority: int = Field(default=88, ge=1, le=100)
 
 
 class ProjectSplitRequest(BaseModel):
@@ -760,6 +769,53 @@ def dispatch_laptop_packages(request: LaptopPackageDispatchRequest) -> dict:
         )
         messages.append({"machine_id": machine_id, "speaker_message_id": message_id, "install_command": install_command})
     return {"dispatched": messages}
+
+
+@app.get("/business-os")
+def business_os() -> dict:
+    return business_os_snapshot()
+
+
+@app.post("/business-os/seed")
+def business_os_seed() -> dict:
+    business = seed_autonomous_business_os()
+    departments = seed_enterprise_departments()
+    return {"business_os": business, "enterprise_org": departments}
+
+
+@app.get("/business-os/laptop-setup/{machine_id}")
+def business_os_laptop_setup(machine_id: str) -> dict:
+    return {"machine_id": machine_id, "prompt": laptop_setup_prompt(machine_id)}
+
+
+@app.get("/enterprise-org")
+def enterprise_org() -> dict:
+    return enterprise_org_snapshot()
+
+
+@app.post("/enterprise-org/seed")
+def enterprise_org_seed() -> dict:
+    return seed_enterprise_departments()
+
+
+@app.post("/business-os/model-sprint")
+async def business_os_model_sprint(request: BusinessOsModelSprintRequest) -> dict:
+    prompt = (
+        "Review Jayla's Autonomous Business OS. Improve the zero-budget path to approved online businesses, "
+        "the CEO/department model, laptop division of labor, security guardrails, and 30-60 day profitability validation. "
+        "Do not recommend spending, legal filings, banking, public sending, or external deployment without Jayla approval."
+    )
+    return await submit_model_query(
+        purpose=request.purpose,
+        prompt=prompt,
+        requester="brain-gaming-pc",
+        target_id="brain-gaming-pc",
+        providers=request.providers,
+        priority=request.priority,
+        auto_create_tasks=False,
+        require_approval=False,
+        options={"max_tokens": 500},
+    )
 
 
 @app.get("/ops2/noc")

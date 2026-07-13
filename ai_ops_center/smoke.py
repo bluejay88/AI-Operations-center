@@ -71,6 +71,8 @@ def run_25_checks() -> dict:
     add("api exposes model workflow", "/integrations/workflow" in api_py)
     add("api exposes governed model query", "/models/query" in api_py)
     add("api exposes laptop package dispatch", "/laptop-packages/dispatch" in api_py)
+    add("api exposes business os seed", "/business-os/seed" in api_py)
+    add("api exposes enterprise org", "/enterprise-org" in api_py)
     add("api exposes security guardian", "/security/guardian" in api_py)
     add("schema has model solution packets", "create table if not exists model_solution_packets" in schema)
 

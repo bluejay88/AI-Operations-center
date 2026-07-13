@@ -660,6 +660,22 @@ def publish_workstation_update(payload: dict[str, Any], local: bool = False) -> 
                     ),
                 )
             metrics = payload.get("metrics", {})
+            if payload.get("update_type") == "laptop_unblock_audit" and metrics.get("ssh_noninteractive"):
+                cur.execute(
+                    """
+                    update resource_recommendations
+                    set status = 'resolved',
+                        updated_at = now(),
+                        metadata = metadata || %s::jsonb
+                    where machine_id = %s
+                      and recommendation_type = 'ssh_authentication'
+                      and status = 'open'
+                    """,
+                    (
+                        _json({"resolved_by_update_id": update["id"], "resolved_reason": "ssh_noninteractive_ready"}),
+                        payload["machine_id"],
+                    ),
+                )
             if payload.get("update_type") == "laptop_unblock_audit" and metrics.get("brain_ssh_port") and not metrics.get("ssh_noninteractive"):
                 cur.execute(
                     """

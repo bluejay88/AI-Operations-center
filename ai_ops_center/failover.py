@@ -72,12 +72,13 @@ def evaluate_failover(
                 select t.*, a.machine_id as assigned_machine_id
                 from tasks t
                 join agents a on a.id = t.agent_id
-                where a.machine_id = %s
-                  and t.status in ('queued', 'running')
+                where coalesce(t.execution_machine_id, a.machine_id) = %s
+                  and t.status = 'queued'
                 order by
                     case t.status when 'running' then 0 else 1 end,
                     t.priority desc,
                     t.updated_at asc
+                for update of t skip locked
                 limit 50
                 """,
                 (machine_id,),
@@ -87,10 +88,15 @@ def evaluate_failover(
             reassigned = []
             for task in tasks:
                 fallback_agent = _choose_fallback_agent(cur, machine_id, task["agent_id"])
+                if not fallback_agent:
+                    continue
+                cur.execute("select machine_id from agents where id = %s", (fallback_agent,))
+                fallback_machine = cur.fetchone()["machine_id"]
                 cur.execute(
                     """
                     update tasks
                     set agent_id = %s,
+                        execution_machine_id = %s,
                         status = 'queued',
                         metadata = metadata || %s::jsonb,
                         updated_at = now()
@@ -99,6 +105,7 @@ def evaluate_failover(
                     """,
                     (
                         fallback_agent,
+                        fallback_machine,
                         json.dumps(
                             {
                                 "failover": {
@@ -135,7 +142,8 @@ def evaluate_failover(
                     }
                 )
 
-            _record_failover_artifacts(cur, machine_id, recommendation, reassigned)
+            if reassigned:
+                _record_failover_artifacts(cur, machine_id, recommendation, reassigned)
         conn.commit()
 
     return {"triggered": True, "recommendation": recommendation, "reassigned": reassigned}
@@ -163,7 +171,7 @@ def evaluate_stale_workers(local: bool = False, stale_after_minutes: int = STALE
     return {"evaluated": len(results), "results": results}
 
 
-def _choose_fallback_agent(cur: Any, source_machine_id: str, source_agent_id: str) -> str:
+def _choose_fallback_agent(cur: Any, source_machine_id: str, source_agent_id: str) -> str | None:
     preferred = FALLBACK_BY_AGENT.get(source_agent_id)
     candidates = []
     if preferred:
@@ -190,10 +198,21 @@ def _choose_fallback_agent(cur: Any, source_machine_id: str, source_agent_id: st
         )
         candidates.extend(row["id"] for row in cur.fetchall())
     for agent_id in candidates:
-        cur.execute("select id from agents where id = %s and status = 'active'", (agent_id,))
+        cur.execute(
+            """
+            select a.id
+            from agents a
+            join machine_status_current ms on ms.machine_id = a.machine_id
+            where a.id = %s and a.status = 'active'
+              and a.machine_id <> %s
+              and ms.status = 'online'
+              and ms.last_seen_at >= now() - interval '60 seconds'
+            """,
+            (agent_id, source_machine_id),
+        )
         if cur.fetchone():
             return agent_id
-    return "orchestrator"
+    return None
 
 
 def _record_failover_artifacts(cur: Any, machine_id: str, recommendation: dict[str, Any], reassigned: list[dict[str, Any]]) -> None:

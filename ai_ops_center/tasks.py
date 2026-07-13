@@ -189,9 +189,11 @@ def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
             cur.execute(
                 """
                 select
-                    t.id, t.title, t.agent_id, a.machine_id, t.category, t.priority,
+                    t.id, t.title, t.agent_id, coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.category, t.priority,
                     t.status, t.description, t.result, t.created_at, t.started_at,
-                    t.completed_at, t.updated_at
+                    t.completed_at, t.updated_at, t.execution_machine_id,
+                    t.claimed_by_machine, t.lease_expires_at, t.attempt_count,
+                    t.max_attempts, t.next_attempt_at, t.assignment_generation, t.last_error
                 from tasks t
                 join agents a on a.id = t.agent_id
                 order by
@@ -216,11 +218,11 @@ def task_summary(local: bool = False) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select a.machine_id, t.status, count(*) as count
+                select coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.status, count(*) as count
                 from tasks t
                 left join agents a on a.id = t.agent_id
-                group by a.machine_id, t.status
-                order by a.machine_id, t.status
+                group by coalesce(t.execution_machine_id, a.machine_id), t.status
+                order by coalesce(t.execution_machine_id, a.machine_id), t.status
                 """
             )
             rows = [dict(row) for row in cur.fetchall()]
@@ -299,9 +301,12 @@ def task_detail(task_id: int, local: bool = False) -> dict[str, Any] | None:
             cur.execute(
                 """
                 select
-                    t.id, t.title, t.agent_id, a.machine_id, t.category, t.priority,
+                    t.id, t.title, t.agent_id, coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.category, t.priority,
                     t.status, t.description, t.result, t.created_at, t.started_at,
-                    t.completed_at, t.updated_at
+                    t.completed_at, t.updated_at, t.execution_machine_id,
+                    t.claimed_by_machine, t.claim_token, t.lease_expires_at,
+                    t.attempt_count, t.max_attempts, t.next_attempt_at,
+                    t.assignment_generation, t.last_error
                 from tasks t
                 join agents a on a.id = t.agent_id
                 where t.id = %s

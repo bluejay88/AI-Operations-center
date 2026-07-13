@@ -15,6 +15,7 @@ from .codex_handoff import codex_handoff_packet
 from .github_defaults import github_defaults_dict
 from .integrations import integration_status
 from .model_router import model_solution_snapshot
+from .migrations import apply_migrations, migration_status
 from .orchestrator import create_daily_priorities
 from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_improvement_backlog, seed_laptop_work_batches, seed_operations_2, split_project
 from .failover import evaluate_failover, evaluate_stale_workers
@@ -40,6 +41,8 @@ def main() -> None:
     subparsers.add_parser("business-continuity")
     subparsers.add_parser("redistribute-business")
     subparsers.add_parser("status")
+    subparsers.add_parser("migration-status")
+    subparsers.add_parser("migrate")
     subparsers.add_parser("readiness")
     subparsers.add_parser("factory")
     subparsers.add_parser("phoenix-status")
@@ -188,6 +191,10 @@ def main() -> None:
         print(json.dumps({"reassigned": reassigned}, indent=2, default=str))
     elif args.command == "status":
         print(machine_status(local=args.local_db))
+    elif args.command == "migration-status":
+        print(json.dumps(migration_status(local=args.local_db), indent=2, default=str))
+    elif args.command == "migrate":
+        print(json.dumps(apply_migrations(local=args.local_db), indent=2, default=str))
     elif args.command == "readiness":
         print(readiness_report(local=args.local_db))
     elif args.command == "factory":

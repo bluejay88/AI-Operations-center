@@ -55,6 +55,7 @@ def test_sse_carries_lifetime_summary_beside_limited_rows(monkeypatch):
     monkeypatch.setattr(api, "collaboration_snapshot", lambda limit=20: {"peer_requests": []})
     monkeypatch.setattr(api, "integration_status", lambda: {})
     monkeypatch.setattr(api, "model_solution_snapshot", lambda limit=10: [])
+    monkeypatch.setattr(api, "queue_health", lambda: {"queued": 0, "running": 0, "stalled_running": 0})
 
     async def read_one_event():
         response = await api.stream()

@@ -27,16 +27,16 @@ def factory_snapshot(local: bool = False) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select a.machine_id, t.status, count(*) as count
+                select coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.status, count(*) as count
                 from tasks t
                 join agents a on a.id = t.agent_id
-                group by a.machine_id, t.status
+                group by coalesce(t.execution_machine_id, a.machine_id), t.status
                 """
             )
             task_counts = cur.fetchall()
             cur.execute(
                 """
-                select t.id, t.title, t.agent_id, a.machine_id, t.category, t.priority, t.status, t.updated_at
+                select t.id, t.title, t.agent_id, coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.category, t.priority, t.status, t.updated_at
                 from tasks t
                 join agents a on a.id = t.agent_id
                 where t.status in ('queued', 'running')

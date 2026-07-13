@@ -56,11 +56,11 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
 
             cur.execute(
                 """
-                select a.machine_id, t.status, count(*) as count
+                select coalesce(t.execution_machine_id, a.machine_id) as machine_id, t.status, count(*) as count
                 from tasks t
                 join agents a on a.id = t.agent_id
-                group by a.machine_id, t.status
-                order by a.machine_id, t.status
+                group by coalesce(t.execution_machine_id, a.machine_id), t.status
+                order by coalesce(t.execution_machine_id, a.machine_id), t.status
                 """
             )
             task_rows = cur.fetchall()

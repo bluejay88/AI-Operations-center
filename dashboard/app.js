@@ -4,6 +4,7 @@ const state = {
   tasks: [],
   taskSummary: null,
   taskAccountingAudit: null,
+  queueHealth: null,
   connections: [],
   connectionSummary: null,
   factory: null,
@@ -332,6 +333,12 @@ function renderReleaseAssurance() {
     .map((connection) => connection.target_machine_id)
     .filter((machineId) => laptopIds.has(machineId)));
   const petCards = els.pets?.querySelectorAll("[data-pet-id][data-capability-status='mixed']").length || 0;
+  const queueStalled = Number(state.queueHealth?.stalled_running || 0);
+  const queueBacklog = Number(state.queueHealth?.queued || 0);
+  const queueIdleHealthy = state.queueHealth?.idle_healthy_machines || [];
+  const queueFlowStatus = !state.queueHealth
+    ? "pending"
+    : queueStalled > 0 ? "failed" : queueBacklog > 0 && queueIdleHealthy.length > 0 ? "pending" : "passed";
   const petProfilesComplete = Object.values(PET_CAPABILITY_PROFILES).every((profile) =>
     profile.attributes.length && profile.operational.length && profile.governed.length && profile.featureLanes.length === 5
   );
@@ -351,6 +358,14 @@ function renderReleaseAssurance() {
       detail: taskContract.scope
         ? `${taskContract.scope} / ${taskContract.source || "unknown source"}`
         : "contract pending",
+    },
+    {
+      id: "queue-flow",
+      label: "Queue flow",
+      status: queueFlowStatus,
+      detail: state.queueHealth
+        ? `${state.queueHealth.running ?? 0} running / ${queueBacklog} queued / ${queueStalled} stalled`
+        : "queue steward pending",
     },
     {
       id: "connectivity",
@@ -1089,6 +1104,7 @@ async function refresh() {
   state.tasks = normalizeTasks(tasks);
   state.taskSummary = tasks?.task_summary || state.taskSummary;
   state.taskAccountingAudit = tasks?.task_accounting_audit || state.taskAccountingAudit;
+  state.queueHealth = tasks?.queue_health || state.queueHealth;
   state.connections = normalizeConnections(connections);
   state.connectionSummary = connections?.connection_summary || state.connectionSummary;
   state.factory = normalizeFactory(factory);
@@ -1123,6 +1139,7 @@ function applyRealtimePayload(payload) {
   if (payload.tasks) state.tasks = normalizeTasks(payload.tasks);
   if (payload.task_summary) state.taskSummary = payload.task_summary;
   if (payload.task_accounting_audit) state.taskAccountingAudit = payload.task_accounting_audit;
+  if (payload.queue_health) state.queueHealth = payload.queue_health;
   if (payload.connections) state.connections = normalizeConnections(payload.connections);
   if (payload.connection_summary) state.connectionSummary = payload.connection_summary;
   state.factory = normalizeFactory(payload.factory || state.factory);

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+import os
 from pathlib import Path
 import hmac
 from typing import Any
@@ -36,6 +40,7 @@ from .github_defaults import github_defaults_dict
 from .integrations import dispatch_to_provider, integration_status, provider_health
 from .model_router import model_solution_snapshot, submit_model_query
 from .model_workflows import run_external_model_workflow
+from .migrations import apply_migrations, migration_status
 from .node_mesh import node_mesh_snapshot
 from .orchestrator import create_daily_priorities
 from .ops2 import (
@@ -56,6 +61,7 @@ from .ops2 import (
 from .operator_requests import create_operator_request, operator_request_snapshot
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
+from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
 from .remote_ops import remote_operation_snapshot, request_remote_operation, update_remote_operation_from_approval
 from .registry import registry_snapshot
@@ -76,6 +82,8 @@ app = FastAPI(
     redoc_url=redoc_url,
     openapi_url=openapi_url,
 )
+logger = logging.getLogger(__name__)
+_queue_steward_task: asyncio.Task | None = None
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_DIR = ROOT / "dashboard"
 LAPTOP_PACKAGES_DIR = ROOT / "laptop_packages"
@@ -104,6 +112,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
         )
         return response
+
+
+async def _queue_steward_loop() -> None:
+    interval = max(2, int(os.getenv("AI_OPS_QUEUE_STEWARD_SECONDS", "5")))
+    while True:
+        try:
+            await asyncio.to_thread(steward_queue)
+        except Exception:
+            logger.exception("Queue steward sweep failed")
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def start_queue_steward() -> None:
+    global _queue_steward_task
+    await asyncio.to_thread(apply_migrations)
+    if os.getenv("AI_OPS_QUEUE_STEWARD_ENABLED", "true").strip().lower() not in {"0", "false", "no"}:
+        _queue_steward_task = asyncio.create_task(_queue_steward_loop())
+
+
+@app.on_event("shutdown")
+async def stop_queue_steward() -> None:
+    global _queue_steward_task
+    if _queue_steward_task:
+        _queue_steward_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _queue_steward_task
+        _queue_steward_task = None
 
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -517,6 +553,8 @@ def endpoint_contract() -> dict:
         {"name": "Peer request", "method": "POST", "path": "/collaboration/peer-requests", "purpose": "Route laptop-to-laptop asks for research, assets, QA, security review, stats, diagnostics, and handoff help through the Brain bus."},
         {"name": "Peer response", "method": "POST", "path": "/collaboration/peer-requests/{request_id}/respond", "purpose": "Return peer work, artifacts, quality score, and status back to the requesting laptop through the speaker/listener bus."},
         {"name": "Node mesh contract", "method": "GET", "path": "/node-mesh", "purpose": "Read Brain Mesh node roles, peer permissions, message channels, task states, and the standard handoff envelope."},
+        {"name": "Migration status", "method": "GET", "path": "/migrations", "purpose": "Read applied and pending database migrations before an update."},
+        {"name": "Apply migrations", "method": "POST", "path": "/migrations/apply", "purpose": "Apply pending versioned migrations with checksums after Git updates."},
         {"name": "Laptop model session", "method": "POST", "path": "/collaboration/model-session", "purpose": "Ask a laptop team to consult configured models and report back."},
         {"name": "Model query", "method": "POST", "path": "/models/query", "purpose": "Pipe prompts into configured model mesh for recommendations and task routing."},
         {"name": "Model workflow", "method": "POST", "path": "/integrations/workflow", "purpose": "Run external model workflow and publish results to listener/speaker."},
@@ -551,6 +589,16 @@ def factory() -> dict:
 @app.get("/node-mesh")
 def node_mesh() -> dict:
     return node_mesh_snapshot()
+
+
+@app.get("/migrations")
+def migrations() -> dict:
+    return migration_status()
+
+
+@app.post("/migrations/apply")
+def migrations_apply() -> dict:
+    return apply_migrations()
 
 
 @app.get("/phoenix/status")
@@ -599,6 +647,7 @@ async def stream() -> StreamingResponse:
                     recent_returned=len(recent_tasks),
                     readiness_summary=live_readiness["task_summary"],
                 ),
+                "queue_health": queue_health(),
                 "task_list": {"limit": 50, "returned": len(recent_tasks), "scope": "recent_prioritized"},
                 "connections": live_connections,
                 "connection_summary": connection_summary(live_connections),
@@ -643,8 +692,19 @@ def tasks(limit: int = Query(default=50, ge=1, le=500)) -> dict:
         "tasks": recent_tasks,
         "task_summary": lifetime_tasks,
         "task_accounting_audit": task_accounting_audit(lifetime_tasks, recent_returned=len(recent_tasks)),
+        "queue_health": queue_health(),
         "list": {"limit": limit, "returned": len(recent_tasks), "scope": "recent_prioritized"},
     }
+
+
+@app.get("/queue/health")
+def queue_health_endpoint() -> dict:
+    return queue_health()
+
+
+@app.post("/queue/steward")
+def queue_steward_endpoint(max_moves: int = Query(default=50, ge=1, le=500)) -> dict:
+    return steward_queue(max_moves=max_moves)
 
 
 @app.get("/tasks/{task_id}")

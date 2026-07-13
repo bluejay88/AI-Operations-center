@@ -2,7 +2,10 @@ const state = {
   registry: null,
   readiness: null,
   tasks: [],
+  taskSummary: null,
+  taskAccountingAudit: null,
   connections: [],
+  connectionSummary: null,
   factory: null,
   phoenixBriefing: "",
   approvals: [],
@@ -10,6 +13,9 @@ const state = {
   speakerFeed: null,
   integrations: [],
   endpoints: null,
+  collaboration: null,
+  enterpriseFeatures: null,
+  nodeMesh: null,
   operatorRequests: [],
   noc: null,
   mascotAnimations: [
@@ -26,6 +32,39 @@ const state = {
   stream: null,
   refreshTimer: null,
   unlocked: false,
+};
+
+const PET_CAPABILITY_PROFILES = {
+  "brain-gaming-pc": {
+    attributes: ["orchestration", "approval-aware", "real-time telemetry"],
+    operational: ["work routing", "status synthesis", "voice briefing", "event streaming"],
+    governed: ["predictive remediation", "capacity balancing", "autonomous recovery"],
+    featureLanes: ["Observe", "Reason", "Coordinate", "Govern", "Recover"],
+  },
+  "dev-laptop": {
+    attributes: ["builder", "test-driven", "deployment-ready"],
+    operational: ["code tasks", "test execution", "build reporting", "deployment handoff"],
+    governed: ["visual regression", "dependency healing", "release rollback"],
+    featureLanes: ["Build", "Test", "Review", "Ship", "Maintain"],
+  },
+  "research-laptop": {
+    attributes: ["evidence-led", "source-aware", "opportunity-focused"],
+    operational: ["research queues", "grant scouting", "structured synthesis", "source reporting"],
+    governed: ["claim verification", "trend forecasting", "source reputation scoring"],
+    featureLanes: ["Discover", "Verify", "Synthesize", "Forecast", "Archive"],
+  },
+  "business-laptop": {
+    attributes: ["creative", "brand-aware", "revenue-focused"],
+    operational: ["brand assets", "campaigns", "business tasking", "customer deliverables"],
+    governed: ["CRM automation", "campaign optimization", "asset approval routing"],
+    featureLanes: ["Create", "Brand", "Market", "Package", "Retain"],
+  },
+  "security-monitor": {
+    attributes: ["least-privilege", "audit-first", "human-governed"],
+    operational: ["approval review", "security events", "trust monitoring", "audit evidence"],
+    governed: ["threat correlation", "automated containment", "policy simulation"],
+    featureLanes: ["Detect", "Assess", "Approve", "Protect", "Audit"],
+  },
 };
 
 const DEFAULT_BRAIN_API = "http://100.70.49.32:8088";
@@ -52,6 +91,10 @@ const els = {
   loginMessage: document.querySelector("#dashboard-login-message"),
   apiConnectionStatus: document.querySelector("#api-connection-status"),
   summary: document.querySelector("#summary-strip"),
+  releaseAssurance: document.querySelector("#release-assurance"),
+  releaseAssuranceStatus: document.querySelector("#release-assurance-status"),
+  releaseAssuranceGates: document.querySelector("#release-assurance-gates"),
+  releaseAssuranceUpdated: document.querySelector("#release-assurance-updated"),
   machines: document.querySelector("#machine-grid"),
   factory: document.querySelector("#factory-grid"),
   factoryGates: document.querySelector("#factory-gates"),
@@ -72,6 +115,7 @@ const els = {
   nocNotifications: document.querySelector("#noc-notifications"),
   nocCollaboration: document.querySelector("#noc-collaboration"),
   pets: document.querySelector("#pet-grid"),
+  petCapabilityOverview: document.querySelector("#pet-capability-overview"),
   animationBankCount: document.querySelector("#animation-bank-count"),
   ops2Seed: document.querySelector("#ops2-seed"),
   ops2SeedLaptopWork: document.querySelector("#ops2-seed-laptop-work"),
@@ -86,6 +130,13 @@ const els = {
   refreshListener: document.querySelector("#refresh-listener"),
   refreshIntegrations: document.querySelector("#refresh-integrations"),
   refreshEndpoints: document.querySelector("#refresh-endpoints"),
+  refreshCollaboration: document.querySelector("#refresh-collaboration"),
+  peerRequests: document.querySelector("#peer-request-list"),
+  enterpriseFeatures: document.querySelector("#enterprise-feature-list"),
+  seedEnterpriseFeatures: document.querySelector("#seed-enterprise-features"),
+  enterpriseFeatureSeed: document.querySelector("#enterprise-feature-seed"),
+  refreshNodeMesh: document.querySelector("#refresh-node-mesh"),
+  nodeMesh: document.querySelector("#node-mesh-list"),
   processApprovals: document.querySelector("#process-approvals"),
   endpoints: document.querySelector("#endpoint-list"),
   agents: document.querySelector("#agent-matrix"),
@@ -174,13 +225,33 @@ function setConnectionStatus(message, tone = "") {
 }
 
 function taskCounts() {
-  return state.tasks.reduce(
+  const recent = state.tasks.reduce(
     (acc, task) => {
       acc[task.status] = (acc[task.status] || 0) + 1;
       return acc;
     },
     { queued: 0, running: 0, completed: 0 }
   );
+  const authoritative = state.taskSummary?.status_counts || {};
+  return {
+    queued: Number(authoritative.queued ?? recent.queued ?? 0),
+    running: Number(authoritative.running ?? recent.running ?? 0),
+    completed: Number(state.taskSummary?.completed_total ?? authoritative.completed ?? recent.completed ?? 0),
+  };
+}
+
+function taskCountsForMachine(machineId, readiness = {}) {
+  const authoritative = state.taskSummary?.by_machine?.[machineId] || {};
+  const readinessCounts = readiness.task_counts || {};
+  const factoryCounts = (state.factory?.machines || []).find((machine) => machine.id === machineId)?.live_task_counts || {};
+  const recent = state.tasks.reduce((counts, task) => {
+    if (task.machine_id === machineId) counts[task.status] = (counts[task.status] || 0) + 1;
+    return counts;
+  }, {});
+  const value = (status) => Number(
+    authoritative[status] ?? readinessCounts[status] ?? factoryCounts[status] ?? recent[status] ?? 0
+  );
+  return { queued: value("queued"), running: value("running"), completed: value("completed") };
 }
 
 function isLaptop(machine) {
@@ -199,32 +270,134 @@ function isActive(machine) {
 
 function renderSummary() {
   const laptops = (state.readiness?.machines || []).filter(isLaptop);
-  const connected = laptops.filter(isConnected).length;
-  const active = laptops.filter(isActive).length;
+  const liveSummary = state.readiness?.summary || state.noc?.infrastructure?.machine_summary || {};
+  const connected = Number(liveSummary.connected_laptops ?? laptops.filter(isConnected).length);
+  const active = Number(liveSummary.active_laptops ?? laptops.filter(isActive).length);
   const employedMachineIds = new Set(
     state.tasks
       .filter((task) => ["queued", "running"].includes(task.status) && task.machine_id)
       .map((task) => task.machine_id)
   );
-  const employed = laptops.filter((machine) => {
+  const employed = Number(liveSummary.employed_laptops ?? laptops.filter((machine) => {
     return String(machine.workforce_status || machine.employment_status || "").toLowerCase() === "employed";
-  }).length;
-  const assigned = laptops.filter((machine) => {
+  }).length);
+  const assigned = Number(liveSummary.assigned_laptops ?? laptops.filter((machine) => {
     const counts = machine.task_counts || {};
     return employedMachineIds.has(machine.id) || Number(counts.running || 0) + Number(counts.queued || 0) > 0;
-  }).length;
+  }).length);
   const counts = taskCounts();
   const metrics = [
     ["Connected laptops", connected, `${laptops.length} registered`],
     ["Active laptops", active, "fresh worker heartbeat"],
     ["Employed laptops", employed, "configured workforce assignment"],
     ["Assigned laptops", assigned, "queued/running work"],
-    ["Running jobs", counts.running || 0, `${counts.queued || 0} queued`],
+    ["Running jobs", counts.running, `${counts.queued} queued / ${counts.completed} completed`],
   ];
 
   els.summary.innerHTML = metrics
     .map(([label, value, hint]) => `<div class="metric"><strong>${value}</strong><span>${label} / ${hint}</span></div>`)
     .join("");
+}
+
+function booleanContractStatus(invariants) {
+  const checks = Object.values(invariants || {}).filter((value) => typeof value === "boolean");
+  if (!checks.length) return "pending";
+  return checks.every(Boolean) ? "passed" : "failed";
+}
+
+function renderReleaseAssurance() {
+  if (!els.releaseAssuranceGates) return;
+  const taskContract = state.taskSummary?.contract || {};
+  const readinessTasks = state.readiness?.task_summary || {};
+  const connectionContract = state.connectionSummary?.contract || {};
+  const taskContractStatus = booleanContractStatus(taskContract.invariants);
+  const readinessContractStatus = booleanContractStatus(
+    readinessTasks.contract?.invariants || readinessTasks.contract
+  );
+  const readinessSummary = state.readiness?.summary || {};
+  const registeredLaptops = Number(readinessSummary.registered_laptops || 0);
+  const activeLaptops = Number(readinessSummary.active_laptops || 0);
+  const readinessFleetStatus = readinessContractStatus === "failed"
+    ? "failed"
+    : readinessContractStatus === "passed" && registeredLaptops > 0 && activeLaptops === registeredLaptops ? "passed" : "pending";
+  const connectionContractStatus = booleanContractStatus(connectionContract.invariants);
+  const connectionAvailabilityStatus = state.connectionSummary?.availability?.status || "pending";
+  const laptopIds = new Set((state.readiness?.machines || []).filter((machine) => machine.role !== "brain").map((machine) => machine.id));
+  const networkReachableTargets = new Set((state.connections || [])
+    .filter((connection) => connection.is_online && !connection.is_stale)
+    .map((connection) => connection.target_machine_id)
+    .filter((machineId) => laptopIds.has(machineId)));
+  const directControlTargets = new Set((state.connections || [])
+    .filter((connection) => connection.channel === "ssh-22-brain-to-laptop" && connection.is_online && !connection.is_stale)
+    .map((connection) => connection.target_machine_id)
+    .filter((machineId) => laptopIds.has(machineId)));
+  const petCards = els.pets?.querySelectorAll("[data-pet-id][data-capability-status='mixed']").length || 0;
+  const petProfilesComplete = Object.values(PET_CAPABILITY_PROFILES).every((profile) =>
+    profile.attributes.length && profile.operational.length && profile.governed.length && profile.featureLanes.length === 5
+  );
+  const gates = [
+    {
+      id: "task-accounting",
+      label: "Task accounting",
+      status: state.taskAccountingAudit?.status || "pending",
+      detail: state.taskAccountingAudit
+        ? `${state.taskAccountingAudit.evidence?.completed_total ?? 0} completed / ${state.taskAccountingAudit.evidence?.machine_count ?? 0} machines`
+        : "audit pending",
+    },
+    {
+      id: "task-summary",
+      label: "Lifetime totals",
+      status: taskContractStatus,
+      detail: taskContract.scope
+        ? `${taskContract.scope} / ${taskContract.source || "unknown source"}`
+        : "contract pending",
+    },
+    {
+      id: "connectivity",
+      label: "Live network channels",
+      status: connectionContractStatus === "failed" || connectionAvailabilityStatus === "failed"
+        ? "failed"
+        : connectionContractStatus === "passed" && connectionAvailabilityStatus === "passed" && laptopIds.size > 0 && networkReachableTargets.size === laptopIds.size ? "passed" : "pending",
+      detail: state.connectionSummary
+        ? `${networkReachableTargets.size}/${laptopIds.size || 0} laptops reachable / ${state.connectionSummary.stale_records ?? 0} stale records`
+        : "summary pending",
+    },
+    {
+      id: "readiness",
+      label: "Worker fleet activity",
+      status: readinessFleetStatus,
+      detail: state.readiness?.summary
+        ? `${state.readiness.summary.active_laptops ?? 0} active / ${state.readiness.summary.registered_laptops ?? 0} registered`
+        : "summary pending",
+    },
+    {
+      id: "direct-control",
+      label: "Direct laptop control",
+      status: laptopIds.size && directControlTargets.size === laptopIds.size ? "passed" : "pending",
+      detail: `${directControlTargets.size}/${laptopIds.size || 0} SSH control paths ready`,
+    },
+    {
+      id: "pet-ui",
+      label: "PET spec / UI",
+      status: petProfilesComplete && petCards >= Object.keys(PET_CAPABILITY_PROFILES).length ? "passed" : "pending",
+      detail: `${petCards}/${Object.keys(PET_CAPABILITY_PROFILES).length} profiles / responsive gates`,
+    },
+  ];
+  const failed = gates.filter((gate) => gate.status === "failed").length;
+  const pending = gates.filter((gate) => gate.status !== "passed" && gate.status !== "failed").length;
+  const overall = failed ? "failed" : pending ? "pending" : "passed";
+  const statusLabel = failed ? `${failed} gate${failed === 1 ? "" : "s"} need attention` : pending ? `${pending} gate${pending === 1 ? "" : "s"} waiting` : "Release assured";
+
+  els.releaseAssurance.dataset.releaseStage = overall;
+  els.releaseAssuranceStatus.className = `release-status ${overall}`;
+  els.releaseAssuranceStatus.textContent = statusLabel;
+  els.releaseAssuranceGates.innerHTML = gates.map((gate) => `
+    <div class="release-gate ${escapeHtml(gate.status)}" data-assurance-gate="${escapeHtml(gate.id)}" data-gate-status="${escapeHtml(gate.status)}">
+      <span class="release-gate-indicator" aria-hidden="true"></span>
+      <div><strong>${escapeHtml(gate.label)}</strong><span>${escapeHtml(gate.detail)}</span></div>
+    </div>
+  `).join("");
+  els.releaseAssuranceUpdated.textContent = `Contract snapshot ${new Date().toLocaleTimeString()} / stream + polling`;
 }
 
 function renderMachines() {
@@ -233,18 +406,13 @@ function renderMachines() {
     return;
   }
   const readinessByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, machine]));
-  const tasksByMachine = state.tasks.reduce((acc, task) => {
-    const bucket = (acc[task.machine_id] ||= { queued: 0, running: 0, completed: 0 });
-    bucket[task.status] = (bucket[task.status] || 0) + 1;
-    return acc;
-  }, {});
 
   els.machines.innerHTML = (state.registry?.machines || [])
     .map((machine) => {
       const readiness = readinessByMachine[machine.id] || {};
       const stateLabel = readiness.state || "unknown";
       const isOnline = stateLabel === "online" || stateLabel.startsWith("reachable");
-      const counts = tasksByMachine[machine.id] || {};
+      const counts = taskCountsForMachine(machine.id, readiness);
       const mesh = (readiness.connections || []).find((connection) => connection.channel === "tailscale-ping");
       const ssh = (readiness.connections || []).find((connection) => connection.channel === "ssh-22");
       return `
@@ -385,7 +553,7 @@ function renderNoc() {
     metricTile("Queue length", workforce.queue_length, "waiting"),
     metricTile("CPU score", workforce.cpu_usage, "latest benchmark"),
     metricTile("Memory usage", workforce.memory_usage ? `${workforce.memory_usage}%` : "n/a", "estimated"),
-    metricTile("Completed", workforce.completed_jobs, "all time"),
+    metricTile("Completed", state.taskSummary?.completed_total ?? workforce.completed_jobs ?? taskCounts().completed, "lifetime database total"),
   ].join("");
 
   els.nocProjects.innerHTML = (noc.projects || [])
@@ -486,11 +654,11 @@ function mascotForMachine(machine) {
       accent: "Intelligence Lead",
     },
     "business-laptop": {
-      name: "Ledger",
-      type: "Business operator",
+      name: "Prism",
+      type: "Creative workstation",
       className: "pet-business",
-      baseAnimation: "emailing",
-      accent: "Business Ops",
+      baseAnimation: "designing",
+      accent: "Creative Node",
     },
   };
   return map[machine.id] || {
@@ -525,19 +693,13 @@ function renderPets() {
   const machines = state.registry?.machines || [];
   const readinessByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, machine]));
   const telemetryByMachine = Object.fromEntries((state.noc?.infrastructure?.telemetry || []).map((item) => [item.machine_id, item]));
-  const taskCountsByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, { ...(machine.task_counts || {}) }]));
-  state.tasks.reduce((acc, task) => {
-    const bucket = (acc[task.machine_id] ||= { queued: 0, running: 0, completed: 0 });
-    bucket[task.status] = Math.max(bucket[task.status] || 0, (taskCountsByMachine[task.machine_id]?.[task.status] || 0) + 1);
-    return acc;
-  }, taskCountsByMachine);
   const securityAnimation = (state.noc?.security?.pending_approvals || 0) > 0 ? "reviewing" : "scanning";
 
   els.pets.innerHTML = [
     ...machines.map((machine) => {
       const mascot = mascotForMachine(machine);
       const readiness = readinessByMachine[machine.id] || {};
-      const counts = taskCountsByMachine[machine.id] || {};
+      const counts = taskCountsForMachine(machine.id, readiness);
       const telemetry = telemetryByMachine[machine.id] || {};
       const animation = chooseAnimation(machine, readiness, counts, telemetry);
       const completedCluster = Math.floor((counts.completed || 0) / 10);
@@ -550,6 +712,7 @@ function renderPets() {
         status: readiness.state || "unknown",
         primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
         secondary: `Done ${counts.completed || 0} / Roll x${completedCluster} / Health ${telemetry.health_score ?? "n/a"} / Battery ${telemetry.battery_percent ?? "n/a"}%`,
+        capabilities: PET_CAPABILITY_PROFILES[machine.id],
       });
     }),
     petMarkup({
@@ -564,9 +727,21 @@ function renderPets() {
       primary: `${state.noc?.security?.events?.length || 0} recent events`,
       secondary: "Continuous audit and trust monitoring",
       accent: "Security",
+      capabilities: PET_CAPABILITY_PROFILES["security-monitor"],
     }),
   ].join("");
   els.animationBankCount.textContent = `${state.mascotAnimations.length} animations loaded`;
+  if (els.petCapabilityOverview) {
+    const profiles = Object.values(PET_CAPABILITY_PROFILES);
+    const operational = profiles.reduce((total, profile) => total + profile.operational.length, 0);
+    const governed = profiles.reduce((total, profile) => total + profile.governed.length, 0);
+    els.petCapabilityOverview.innerHTML = `
+      <div><strong>500</strong><span>features governed by the PET specification</span></div>
+      <div><strong>${operational}</strong><span>operational capability signals shown live</span></div>
+      <div><strong>${governed}</strong><span>governed / planned capability groups</span></div>
+      <div><strong>${profiles.length * 5}</strong><span>feature lanes mapped across companions</span></div>
+    `;
+  }
 }
 
 function petStateClass(animation, readinessState) {
@@ -579,9 +754,11 @@ function petStateClass(animation, readinessState) {
 
 function petMarkup(pet) {
   const animationClass = `anim-${pet.animation}`;
+  const profile = pet.capabilities || { attributes: [], operational: [], governed: [], featureLanes: [] };
+  const petId = `pet-${String(pet.machineId).replace(/[^a-z0-9-]/gi, "-")}`;
   return `
-    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}">
-      <div class="pet-stage">
+    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}" id="${escapeHtml(petId)}" data-pet-id="${escapeHtml(pet.machineId)}" data-capability-status="mixed" aria-labelledby="${escapeHtml(petId)}-title">
+      <div class="pet-stage" aria-hidden="true">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
           <span class="pet-fx pet-fx-left"></span>
           <span class="pet-fx pet-fx-right"></span>
@@ -613,11 +790,14 @@ function petMarkup(pet) {
       <div class="pet-copy">
         <header>
           <div>
-            <h3>${escapeHtml(pet.name)}</h3>
+            <h3 id="${escapeHtml(petId)}-title">${escapeHtml(pet.name)}</h3>
             <span>${escapeHtml(pet.type)} / ${escapeHtml(pet.accent)}</span>
           </div>
-          <span class="pill online">${escapeHtml(pet.animation)}</span>
+          <span class="pill online" data-live-animation="${escapeHtml(pet.animation)}">${escapeHtml(pet.animation)}</span>
         </header>
+        <div class="pet-attributes" aria-label="PET attributes">
+          ${profile.attributes.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
         ${pet.completedCluster ? `<div class="roll-meter">On a roll: ${escapeHtml(pet.completedCluster)} cluster${pet.completedCluster === 1 ? "" : "s"} of 10 completed</div>` : ""}
         <dl>
           <div><dt>Device</dt><dd>${escapeHtml(pet.machineId)}</dd></div>
@@ -625,6 +805,20 @@ function petMarkup(pet) {
           <div><dt>Workload</dt><dd>${escapeHtml(pet.primary)}</dd></div>
           <div><dt>Signal</dt><dd>${escapeHtml(pet.secondary)}</dd></div>
         </dl>
+        <details class="pet-capabilities">
+          <summary>Capabilities and feature lanes</summary>
+          <div class="capability-section" data-capability-kind="operational">
+            <strong><span class="capability-dot operational"></span>Operational now</strong>
+            <div>${profile.operational.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+          </div>
+          <div class="capability-section" data-capability-kind="governed-planned">
+            <strong><span class="capability-dot governed"></span>Governed / planned</strong>
+            <div>${profile.governed.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+          </div>
+          <div class="feature-lanes" aria-label="500-feature specification lanes">
+            ${profile.featureLanes.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+          </div>
+        </details>
       </div>
     </article>
   `;
@@ -737,6 +931,65 @@ function renderEndpoints() {
   ].join("") || `<p class="muted">Endpoint contract unavailable.</p>`;
 }
 
+function renderCollaboration() {
+  if (!els.peerRequests) return;
+  const collaboration = state.collaboration || {};
+  els.peerRequests.innerHTML = (collaboration.peer_requests || [])
+    .slice(0, 14)
+    .map((item) => `
+      <article>
+        <strong>${escapeHtml(item.subject)}</strong>
+        <span>${escapeHtml(item.from_machine_id)} -> ${escapeHtml(item.to_machine_id)} / ${escapeHtml(item.status)} / ${escapeHtml(item.request_type)} / P${escapeHtml(item.priority)}</span>
+        <p>${escapeHtml(item.response_body || item.body || "")}</p>
+        <small>Score ${escapeHtml(item.quality_score ?? "pending")} / Project ${escapeHtml(item.project_id || "unassigned")} / Task ${escapeHtml(item.task_id || "n/a")}</small>
+      </article>
+    `)
+    .join("") || `<p class="muted">No peer requests yet.</p>`;
+}
+
+function renderEnterpriseFeatures() {
+  if (!els.enterpriseFeatures) return;
+  const catalog = state.enterpriseFeatures || {};
+  const domains = catalog.domains || [];
+  els.enterpriseFeatures.innerHTML = [
+    `<article>
+      <strong>${escapeHtml(catalog.total_features || 500)} Feature Roadmap</strong>
+      <span>${escapeHtml(catalog.domain_count || domains.length || 20)} domains / ${escapeHtml(catalog.features_per_domain || 25)} each</span>
+      <p>Backlog items are deduped, routed by owner laptop, and gated by low, medium, or high risk approval policy.</p>
+    </article>`,
+    ...domains.slice(0, 8).map((domain) => {
+      const highRisk = (domain.features || []).filter((feature) => String(feature.approval_policy || "").includes("high_risk")).length;
+      return `
+        <article>
+          <strong>${escapeHtml(domain.name)}</strong>
+          <span>${escapeHtml(domain.machine_id)} / ${escapeHtml(domain.agent_id)} / ${escapeHtml((domain.features || []).length)} items</span>
+          <p>${escapeHtml(highRisk)} high-risk gates require Jayla approval before sensitive execution.</p>
+        </article>
+      `;
+    }),
+  ].join("");
+}
+
+function renderNodeMesh() {
+  if (!els.nodeMesh) return;
+  const mesh = state.nodeMesh || {};
+  const nodes = Object.values(mesh.nodes || {});
+  els.nodeMesh.innerHTML = [
+    `<article>
+      <strong>${escapeHtml(mesh.cluster || "Brain Mesh")}</strong>
+      <span>${escapeHtml(mesh.transport || "Private mesh")} / ${escapeHtml(mesh.authority || "Brain authority")}</span>
+      <p>${escapeHtml((mesh.security_rules || []).slice(0, 2).join(" "))}</p>
+    </article>`,
+    ...nodes.map((node) => `
+      <article>
+        <strong>${escapeHtml(node.title || node.name)}</strong>
+        <span>${escapeHtml(node.node_id)} / ${escapeHtml(node.role)} / ${escapeHtml((node.channels || []).slice(0, 2).join(", "))}</span>
+        <p>${escapeHtml((node.capabilities || []).slice(0, 6).join(", "))}</p>
+      </article>
+    `),
+  ].join("");
+}
+
 function renderOperatorRequests() {
   els.operatorRequestList.innerHTML = (state.operatorRequests || [])
     .map((request) => {
@@ -795,6 +1048,21 @@ async function loadEndpoints() {
   renderEndpoints();
 }
 
+async function loadCollaboration() {
+  state.collaboration = await safeApi("/collaboration", { peer_requests: [], handoffs: [], model_sessions: [] }, "collaboration");
+  renderCollaboration();
+}
+
+async function loadEnterpriseFeatures() {
+  state.enterpriseFeatures = await safeApi("/enterprise-features", { domains: [], total_features: 500 }, "enterprise features");
+  renderEnterpriseFeatures();
+}
+
+async function loadNodeMesh() {
+  state.nodeMesh = await safeApi("/node-mesh", { nodes: {} }, "node mesh");
+  renderNodeMesh();
+}
+
 async function loadOperatorRequests() {
   const data = await safeApi("/operator-requests", { requests: [] }, "operator requests");
   state.operatorRequests = data.requests || [];
@@ -819,7 +1087,10 @@ async function refresh() {
   state.registry = registry;
   state.readiness = readiness;
   state.tasks = normalizeTasks(tasks);
+  state.taskSummary = tasks?.task_summary || state.taskSummary;
+  state.taskAccountingAudit = tasks?.task_accounting_audit || state.taskAccountingAudit;
   state.connections = normalizeConnections(connections);
+  state.connectionSummary = connections?.connection_summary || state.connectionSummary;
   state.factory = normalizeFactory(factory);
   state.noc = noc;
   safeRender("summary", renderSummary);
@@ -829,9 +1100,20 @@ async function refresh() {
   safeRender("tasks", renderTasks);
   safeRender("NOC", renderNoc);
   safeRender("pets", renderPets);
+  safeRender("release assurance", renderReleaseAssurance);
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
-  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations(), loadEndpoints(), loadOperatorRequests()]);
+  await Promise.all([
+    loadApprovals(),
+    loadListenerEvents(),
+    loadSpeakerFeed(),
+    loadIntegrations(),
+    loadEndpoints(),
+    loadCollaboration(),
+    loadEnterpriseFeatures(),
+    loadNodeMesh(),
+    loadOperatorRequests(),
+  ]);
   setConnectionStatus(`Connected to Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
@@ -839,13 +1121,21 @@ async function refresh() {
 function applyRealtimePayload(payload) {
   state.readiness = payload.readiness || state.readiness;
   if (payload.tasks) state.tasks = normalizeTasks(payload.tasks);
+  if (payload.task_summary) state.taskSummary = payload.task_summary;
+  if (payload.task_accounting_audit) state.taskAccountingAudit = payload.task_accounting_audit;
   if (payload.connections) state.connections = normalizeConnections(payload.connections);
+  if (payload.connection_summary) state.connectionSummary = payload.connection_summary;
   state.factory = normalizeFactory(payload.factory || state.factory);
   state.approvals = normalizeApprovals(payload.approvals || state.approvals);
   state.noc = payload.noc || state.noc;
   state.listenerEvents = payload.listener?.events || state.listenerEvents;
   state.speakerFeed = payload.speaker || state.speakerFeed;
-  state.integrations = payload.integrations || state.integrations;
+  state.collaboration = payload.collaboration || state.collaboration;
+  if (payload.integrations) {
+    state.integrations = Array.isArray(payload.integrations)
+      ? payload.integrations
+      : payload.integrations.providers || state.integrations;
+  }
   safeRender("summary", renderSummary);
   safeRender("machines", renderMachines);
   safeRender("factory", renderFactory);
@@ -855,8 +1145,12 @@ function applyRealtimePayload(payload) {
   safeRender("listener", renderListenerEvents);
   safeRender("speaker", renderSpeakerFeed);
   safeRender("integrations", renderIntegrations);
+  safeRender("collaboration", renderCollaboration);
+  safeRender("enterprise features", renderEnterpriseFeatures);
+  safeRender("node mesh", renderNodeMesh);
   safeRender("NOC", renderNoc);
   safeRender("pets", renderPets);
+  safeRender("release assurance", renderReleaseAssurance);
   setConnectionStatus(`Live with Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
@@ -941,6 +1235,8 @@ els.refreshApprovals.addEventListener("click", () => loadApprovals().catch((erro
 els.refreshListener.addEventListener("click", () => loadListenerEvents().catch((error) => toast(error.message)));
 els.refreshIntegrations.addEventListener("click", () => loadIntegrations().catch((error) => toast(error.message)));
 els.refreshEndpoints.addEventListener("click", () => loadEndpoints().catch((error) => toast(error.message)));
+els.refreshCollaboration?.addEventListener("click", () => loadCollaboration().catch((error) => toast(error.message)));
+els.refreshNodeMesh?.addEventListener("click", () => loadNodeMesh().catch((error) => toast(error.message)));
 els.refreshOperatorRequests.addEventListener("click", () => loadOperatorRequests().catch((error) => toast(error.message)));
 els.speakerTarget.addEventListener("change", () => loadSpeakerFeed().catch((error) => toast(error.message)));
 
@@ -1046,6 +1342,15 @@ els.ops2SeedBusinesses.addEventListener("click", async () => {
   toast(`Launched 5 business workstreams with ${data.total_tasks} new tasks`);
   await refresh();
 });
+
+async function seedEnterpriseFeatures() {
+  const data = await api("/enterprise-features/seed", { method: "POST" });
+  toast(`Brain 500 backlog: ${data.created} new / ${data.existing} existing`);
+  await refresh();
+}
+
+els.seedEnterpriseFeatures?.addEventListener("click", () => seedEnterpriseFeatures().catch((error) => toast(error.message)));
+els.enterpriseFeatureSeed?.addEventListener("click", () => seedEnterpriseFeatures().catch((error) => toast(error.message)));
 
 async function exportBundle(scope) {
   const data = await api(`/ops2/export?scope=${encodeURIComponent(scope)}`);

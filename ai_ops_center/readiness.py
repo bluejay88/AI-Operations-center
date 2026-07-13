@@ -87,8 +87,11 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
             active_agents = {row["machine_id"]: row["active_agent_count"] for row in cur.fetchall()}
 
     task_counts: dict[str, dict[str, int]] = {}
+    global_task_counts: dict[str, int] = {}
     for row in task_rows:
-        task_counts.setdefault(row["machine_id"], {})[row["status"]] = row["count"]
+        count = int(row["count"])
+        task_counts.setdefault(row["machine_id"], {})[row["status"]] = count
+        global_task_counts[row["status"]] = global_task_counts.get(row["status"], 0) + count
 
     connections = connection_snapshot(local=local)
     connections_by_target: dict[str, list[dict]] = {}
@@ -115,6 +118,8 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
             state = machine["current_status"] or "online"
         machine["state"] = state
         machine["task_counts"] = task_counts.get(machine["id"], {})
+        machine["lifetime_task_counts"] = dict(machine["task_counts"])
+        machine["completed_tasks_total"] = int(machine["task_counts"].get("completed", 0))
         machine["active_agent_count"] = active_agents.get(machine["id"], 0)
         machine["workforce_status"] = configured_machines.get(machine["id"], {}).get("workforce_status", "unassigned")
         machine["employment_status"] = machine["workforce_status"]
@@ -139,6 +144,18 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
                 int(machine["task_counts"].get("queued", 0)) + int(machine["task_counts"].get("running", 0)) > 0
                 for machine in laptops
             ),
+        },
+        "task_summary": {
+            "scope": "lifetime",
+            "status_counts": global_task_counts,
+            "completed_total": int(global_task_counts.get("completed", 0)),
+            "by_machine": task_counts,
+            "contract": {
+                "source": "database_aggregate",
+                "recent_list_independent": True,
+                "completed_equals_machine_sum": int(global_task_counts.get("completed", 0))
+                == sum(int(counts.get("completed", 0)) for counts in task_counts.values()),
+            },
         },
         "machines": machines,
         "next_gates": [

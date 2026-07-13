@@ -45,8 +45,8 @@ machines:
       - ai-ops-api
 
   - id: business-laptop
-    name: Laptop A Business AI
-    role: business
+    name: Laptop 2 Creative Node
+    role: creative
     workforce_status: employed
     live_status_enabled: true
     responsibilities:
@@ -56,13 +56,18 @@ machines:
       - customer-support-drafts
       - invoice-generation
       - social-scheduling
+      - graphic-design
+      - branding
+      - presentations
+      - creative-writing
+      - asset-library
       - accounting-reports
       - grant-searches
       - crm-updates
     capacity_weight: 2
 
   - id: research-laptop
-    name: Laptop B Research AI
+    name: Laptop 1 Research Node
     role: research
     workforce_status: employed
     live_status_enabled: true
@@ -79,7 +84,7 @@ machines:
     capacity_weight: 2
 
   - id: dev-laptop
-    name: Laptop C Development AI
+    name: Laptop 3 Development Node
     role: development
     workforce_status: employed
     live_status_enabled: true

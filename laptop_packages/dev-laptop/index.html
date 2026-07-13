@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dev Laptop Node Console</title>
-    <link rel="stylesheet" href="../shared/mini-dashboard.css">
+    <link rel="stylesheet" href="../shared/mini-dashboard.css?v=pet-command-20260713g">
   </head>
-  <body>
+  <body data-machine-id="dev-laptop" data-role="Lead Software Engineer Node" data-pet="Byte" data-specialty="websites, Python, React, apps, APIs, debugging" data-brain-host="100.70.49.32">
     <div class="shell">
       <aside class="side-rail">
         <div class="identity">
@@ -33,7 +33,7 @@
         <div class="status-grid">
           <div class="status-tile">
             <strong id="heartbeat-state" class="live-dot attention">checking</strong>
-            <span id="heartbeat-detail">Waiting for Brain pulse.</span>
+            <span id="heartbeat-detail">Checking Brain API connection.</span>
           </div>
           <div class="status-tile">
             <strong id="metric-ssh">checking</strong>
@@ -82,17 +82,15 @@
             </table>
           </div>
         </section>
+        <section id="capability-profile" class="panel panel-pad capability-profile" aria-label="Byte identity and capabilities"></section>
         <section class="feed-grid">
           <div class="panel panel-pad"><h2>Brain Messages</h2><div id="message-list" class="feed-list"></div></div>
           <div class="panel panel-pad"><h2>Approvals</h2><div id="approval-list" class="feed-list"></div></div>
           <div class="panel panel-pad"><h2>Remote Ops</h2><div id="remote-list" class="feed-list"></div></div>
-          <div class="panel panel-pad"><h2>Node Console</h2><p class="variant-count muted"></p></div>
+          <div class="panel panel-pad node-notes"><h2>Node Console</h2><p class="variant-count muted"></p><p class="muted">PET state reflects live workload and connectivity.</p></div>
         </section>
       </main>
     </div>
-    <script>
-      window.LAPTOP_PACKAGE = { machineId: "dev-laptop", role: "Lead Software Engineer Node", pet: "Byte", specialty: "websites, Python, React, apps, APIs, debugging", brainHost: "100.70.49.32" };
-    </script>
-    <script src="../shared/mini-dashboard.js"></script>
+    <script src="../shared/mini-dashboard.js?v=pet-command-20260713h"></script>
   </body>
 </html>

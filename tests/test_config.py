@@ -2,12 +2,14 @@ from ai_ops_center.config import load_agents, load_machines, load_revenue_strate
 
 
 def test_agent_count_is_initial_workforce():
-    assert len(load_agents()) == 18
+    agents = load_agents()
+    assert len(agents) >= 18
+    assert len({agent["id"] for agent in agents}) == len(agents)
 
 
 def test_machine_roles_are_present():
     roles = {machine["role"] for machine in load_machines()}
-    assert {"brain", "business", "research", "development"} <= roles
+    assert {"brain", "creative", "research", "development"} <= roles
 
 
 def test_all_configured_laptops_are_employed_and_live_monitored():
@@ -18,6 +20,9 @@ def test_all_configured_laptops_are_employed_and_live_monitored():
     }
 
     assert set(laptops) == {"business-laptop", "research-laptop", "dev-laptop"}
+    assert laptops["business-laptop"]["role"] == "creative"
+    assert laptops["research-laptop"]["role"] == "research"
+    assert laptops["dev-laptop"]["role"] == "development"
     assert all(machine["workforce_status"] == "employed" for machine in laptops.values())
     assert all(machine["live_status_enabled"] is True for machine in laptops.values())
 

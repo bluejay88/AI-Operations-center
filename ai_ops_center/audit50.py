@@ -35,6 +35,11 @@ def _post_json(url: str, payload: dict[str, Any], timeout: int = 10) -> tuple[bo
         return False, None, repr(exc)
 
 
+def _read_text(rel: str) -> str:
+    path = ROOT / rel
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     base_url = base_url.rstrip("/")
     checks: list[dict[str, Any]] = []
@@ -47,6 +52,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "dashboard/app.js",
         "dashboard/styles.css",
         "ai_ops_center/api.py",
+        "ai_ops_center/node_mesh.py",
+        "ai_ops_center/enterprise_features.py",
         "ai_ops_center/approval_processor.py",
         "ai_ops_center/tasks.py",
         "ai_ops_center/settings.py",
@@ -75,7 +82,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("dashboard factory payload normalizer present", "normalizeFactory" in app_js)
     add("dashboard task payload normalizer present", "normalizeTasks" in app_js)
     add("dashboard live connection banner present", "api-connection-status" in index_html)
-    add("dashboard asset cache bust present", "pet-motion-workers-20260713e" in index_html)
+    add("dashboard asset cache bust present", "command-center-pets-20260713h" in index_html)
     add("laptop pet keyboard present", "pet-keyboard" in app_js and "pet-keyboard" in styles)
     add("shield siren present", "pet-siren" in app_js and "siren-flash" in styles)
     add("shield no longer spins on scan", "@keyframes pet-scanning { 0% { transform: rotate" not in styles)
@@ -83,25 +90,30 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("pet on-roll animation present", "pet-state-on-roll" in app_js and "roll-burst" in styles)
     add("pet heavy-work animation present", "pet-state-heavy" in app_js and "heavy-glow" in styles)
     add("worker visible duration configured", "work_seconds" in (ROOT / "ai_ops_center/worker.py").read_text(encoding="utf-8"))
-    add("laptop heavy overlay script configured", "Hey, don't use me right now" in (ROOT / "docker/show-heavy-work-overlay.ps1").read_text(encoding="utf-8"))
+    add("laptop heavy overlay script configured", "Hey, don't use me right now" in _read_text("docker/show-heavy-work-overlay.ps1"))
     add("API CORS configured", "CORSMiddleware" in api_py)
     add("API dashboard login configured", "/dashboard/login" in api_py)
     add("API chat task intake configured", "/tasks/intake" in api_py)
     add("API external model workflow configured", "/integrations/workflow" in api_py)
     add("API governed model query configured", "/models/query" in api_py)
+    add("API Brain Mesh configured", "/node-mesh" in api_py)
+    add("API peer requests configured", "/collaboration/peer-requests" in api_py)
+    add("API enterprise features configured", "/enterprise-features" in api_py)
     add("API laptop package dispatch configured", "/laptop-packages/dispatch" in api_py)
     add("API business os configured", "/business-os/seed" in api_py)
     add("API enterprise org configured", "/enterprise-org" in api_py)
     add("model solution packet schema configured", "model_solution_packets" in (ROOT / "sql/schema.sql").read_text(encoding="utf-8"))
     add("API security guardian configured", "/security/guardian" in api_py)
     add("API approval processor configured", "/approvals/process" in api_py)
-    add("approval processor routes needs changes", "process_approval_queue" in (ROOT / "ai_ops_center/approval_processor.py").read_text(encoding="utf-8"))
+    add("approval processor routes needs changes", "process_approval_queue" in _read_text("ai_ops_center/approval_processor.py"))
     add("task intake splitter configured", "create_chat_task_intake" in tasks_py)
     add("task intake rubric configured", "INTAKE_RUBRIC" in tasks_py)
     add("security monitor agent configured", "security-monitor" in agents_yaml)
     add("rubric auditor agent configured", "rubric-auditor" in agents_yaml)
     add("market intelligence agent configured", "market-intelligence" in agents_yaml)
     add("deployment prechecker agent configured", "deployment-prechecker" in agents_yaml)
+    add("business laptop configured as Creative Node", "role: creative" in _read_text("config/machines.yaml"))
+    add("Prism Creative PET configured", "Prism" in _read_text("laptop_packages/business-laptop/index.html"))
     add("agent roster at least 30", agents_yaml.count("- id: ") >= 30, agents_yaml.count("- id: "))
     add("factory has precheck rubrics", "precheck_rubric" in factory_yaml)
     add("factory has Brain evaluation gates", "handoff_gates" in factory_yaml)
@@ -112,6 +124,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("readiness endpoint", "/readiness.json"),
         ("tasks endpoint", "/tasks"),
         ("connections endpoint", "/connections"),
+        ("node mesh endpoint", "/node-mesh"),
         ("factory endpoint", "/factory"),
         ("NOC endpoint", "/ops2/noc"),
         ("approvals endpoint", "/approvals"),
@@ -121,6 +134,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("model solutions endpoint", "/models/solutions"),
         ("business os endpoint", "/business-os"),
         ("enterprise org endpoint", "/enterprise-org"),
+        ("enterprise features endpoint", "/enterprise-features"),
+        ("collaboration endpoint", "/collaboration"),
         ("security guardian endpoint", "/security/guardian"),
         ("Phoenix endpoint", "/phoenix/briefing"),
         ("hourly report endpoint", "/reports/hourly"),
@@ -138,7 +153,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     html_detail = ""
     try:
         html = urllib.request.urlopen(f"{base_url}/dashboard/", timeout=10).read().decode()
-        html_ok = "dashboard-login-form" in html and "pet-motion-workers-20260713e" in html
+        html_ok = "dashboard-login-form" in html and "command-center-pets-20260713h" in html
         html_detail = "served"
     except Exception as exc:
         html_detail = repr(exc)
@@ -169,7 +184,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     ssh_status = noc.get("ssh_status") or []
     ready_ssh = [s for s in ssh_status if s.get("ssh_noninteractive") is True or s.get("state") == "noninteractive_ready"]
     add("at least one laptop SSH noninteractive-ready", len(ready_ssh) >= 1, ready_ssh)
-    add("remote operations require approval path exists", "remote_operation_requests" in (ROOT / "sql/schema.sql").read_text(encoding="utf-8"))
+    add("remote operations require approval path exists", "remote_operation_requests" in _read_text("sql/schema.sql"))
 
     intake_ok, intake_payload, intake_detail = _post_json(
         f"{base_url}/tasks/intake",

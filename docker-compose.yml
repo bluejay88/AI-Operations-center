@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: aiops
       POSTGRES_PASSWORD: aiops
@@ -74,6 +75,7 @@ services:
 
   ai-ops-api:
     build: .
+    restart: unless-stopped
     env_file:
       - .env
     ports:
@@ -81,16 +83,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; response=httpx.get('http://localhost:8088/health', timeout=5); response.raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   worker:
     profiles: ["worker"]
     build: .
+    restart: unless-stopped
     env_file:
       - .env
     command: ["python", "-m", "ai_ops_center.cli", "worker", "--machine", "${WORKER_MACHINE_ID:-brain-gaming-pc}", "--sleep-seconds", "${WORKER_SLEEP_SECONDS:-10}", "--work-seconds", "${WORKER_WORK_SECONDS:-4}"]
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "ai_ops_center.cli", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres-data:

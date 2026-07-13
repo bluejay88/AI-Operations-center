@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI Operations Center</title>
-    <link rel="stylesheet" href="./styles.css?v=pet-motion-workers-20260713e" />
+    <link rel="stylesheet" href="./styles.css?v=command-center-pets-20260713g" />
   </head>
   <body>
+    <a class="skip-link" href="#command-workspace">Skip to command workspace</a>
     <section id="dashboard-lock" class="dashboard-lock" aria-labelledby="lock-title">
       <form id="dashboard-login-form" class="dashboard-login">
         <p class="eyebrow">Protected Mission Control</p>
@@ -22,22 +23,27 @@
     </section>
     <div class="app-shell">
       <aside class="sidebar">
-        <div>
-          <p class="eyebrow">Bleujay Brain</p>
-          <h1>AI Operations Center</h1>
+        <div class="sidebar-brand">
+          <span class="brand-mark" aria-hidden="true">B</span>
+          <div>
+            <p class="eyebrow">Bleujay Brain</p>
+            <h1>AI Operations Center</h1>
+          </div>
         </div>
         <nav aria-label="Dashboard sections">
-          <a href="#noc">NOC</a>
-          <a href="#device-pets">Device Pets</a>
-          <a href="#machines">Machines</a>
-          <a href="#factory">Factory</a>
-          <a href="#phoenix">Phoenix</a>
-          <a href="#operator-requests">Requests</a>
-          <a href="#brain-bus">Brain Bus</a>
-          <a href="#agents">Agents</a>
-          <a href="#tasks">Tasks</a>
-          <a href="#reports">Reports</a>
-          <a href="#actions">Actions</a>
+          <span class="nav-label">Monitor</span>
+          <a href="#noc"><span>01</span>NOC</a>
+          <a href="#device-pets"><span>02</span>Device Pets</a>
+          <a href="#machines"><span>03</span>Machines</a>
+          <a href="#factory"><span>04</span>Factory</a>
+          <span class="nav-label">Operate</span>
+          <a href="#phoenix"><span>05</span>Phoenix</a>
+          <a href="#operator-requests"><span>06</span>Requests</a>
+          <a href="#brain-bus"><span>07</span>Brain Bus</a>
+          <a href="#agents"><span>08</span>Agents</a>
+          <a href="#tasks"><span>09</span>Tasks</a>
+          <a href="#reports"><span>10</span>Reports</a>
+          <a href="#actions"><span>11</span>Actions</a>
         </nav>
         <div class="sidebar-footer">
           <span id="last-refresh">Waiting for data</span>
@@ -45,14 +51,28 @@
         </div>
       </aside>
 
-      <main>
+      <main id="command-workspace">
         <section class="topbar" aria-labelledby="overview-title">
           <div>
-            <p class="eyebrow">Live command view</p>
-            <h2 id="overview-title">Distributed workforce status</h2>
+            <p class="eyebrow live-eyebrow"><span aria-hidden="true"></span>Live command view</p>
+            <h2 id="overview-title">Workforce command center</h2>
             <p id="api-connection-status" class="connection-status">Waiting for dashboard unlock.</p>
           </div>
           <div class="status-strip" id="summary-strip"></div>
+        </section>
+
+        <section id="release-assurance" class="release-assurance" aria-labelledby="release-assurance-title" data-release-stage="waiting">
+          <div class="release-assurance-heading">
+            <div>
+              <p class="eyebrow">Release assurance</p>
+              <h2 id="release-assurance-title">Live contract gates</h2>
+            </div>
+            <span id="release-assurance-status" class="release-status pending" role="status">Waiting for live contracts</span>
+          </div>
+          <div id="release-assurance-gates" class="release-assurance-gates" aria-live="polite">
+            <span class="muted">Assurance gates initialize after dashboard unlock.</span>
+          </div>
+          <p id="release-assurance-updated" class="release-assurance-updated">No assurance snapshot yet.</p>
         </section>
 
         <section id="noc" class="workspace-section noc-section">
@@ -99,19 +119,30 @@
             <button id="ops2-seed-laptop-work" type="button">Seed 500 Tasks Per Laptop</button>
             <button id="ops2-seed-expansion" type="button">Seed 400 Improvements</button>
             <button id="ops2-seed-businesses" type="button">Launch 5 Businesses</button>
+            <button id="enterprise-feature-seed" type="button">Seed Brain 500 Features</button>
             <button id="ops2-export-all" type="button">Export Full Bundle</button>
             <button id="ops2-export-project" type="button">Export Project Context</button>
           </div>
         </section>
 
         <section id="device-pets" class="workspace-section">
-          <div class="section-heading">
-            <h2>Device Pets</h2>
-            <p>Animated workstation companions that show current role, workload, health, and security posture.</p>
+          <div class="section-heading pet-section-heading">
+            <div>
+              <p class="section-index">02 / Companion telemetry</p>
+              <h2>Device Pets</h2>
+            </div>
+            <div class="pet-heading-copy">
+              <p>Animated workstation companions showing live workload, health, attributes, and governed capability scope.</p>
+              <div class="capability-legend" aria-label="Capability status legend">
+                <span><i class="capability-dot operational"></i>Operational</span>
+                <span><i class="capability-dot governed"></i>Governed / planned</span>
+              </div>
+            </div>
           </div>
+          <div id="pet-capability-overview" class="pet-capability-overview" aria-label="PET capability overview"></div>
           <div class="pet-grid" id="pet-grid"></div>
           <div class="animation-bank">
-            <strong>Animation Bank</strong>
+            <strong>Motion state library</strong>
             <span id="animation-bank-count">0 loaded</span>
           </div>
         </section>
@@ -207,7 +238,7 @@
         <section id="agents" class="workspace-section">
           <div class="section-heading">
             <h2>AI Workforce</h2>
-            <p>All 18 assigned agents, grouped by the machine responsible for their work.</p>
+            <p>Assigned agents grouped by the machine responsible for their work.</p>
           </div>
           <div class="agent-matrix" id="agent-matrix"></div>
         </section>
@@ -253,6 +284,27 @@
                 <button id="refresh-integrations" type="button">Refresh</button>
               </header>
               <div id="integration-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel">
+              <header>
+                <h3>Peer Requests</h3>
+                <button id="refresh-collaboration" type="button">Refresh</button>
+              </header>
+              <div id="peer-request-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel">
+              <header>
+                <h3>Enterprise 500</h3>
+                <button id="seed-enterprise-features" type="button">Seed</button>
+              </header>
+              <div id="enterprise-feature-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel bus-panel-wide">
+              <header>
+                <h3>Brain Mesh</h3>
+                <button id="refresh-node-mesh" type="button">Refresh</button>
+              </header>
+              <div id="node-mesh-list" class="compact-list mesh-list"></div>
             </section>
             <section class="bus-panel bus-panel-wide">
               <header>
@@ -356,6 +408,6 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=pet-motion-workers-20260713e"></script>
+    <script src="./app.js?v=command-center-pets-20260713h"></script>
   </body>
 </html>

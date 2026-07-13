@@ -88,6 +88,43 @@ def connection_snapshot(
     return rows
 
 
+def connection_summary(connections: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize effective connectivity without treating stale reports as live."""
+    online = [row for row in connections if row.get("is_online")]
+    stale = [row for row in connections if row.get("is_stale")]
+    targets_online = {str(row["target_machine_id"]) for row in online if row.get("target_machine_id")}
+    targets_reported = {str(row["target_machine_id"]) for row in connections if row.get("target_machine_id")}
+    availability_checks = {
+        "at_least_one_online_record": len(online) > 0,
+        "at_least_one_online_target": len(targets_online) > 0,
+    }
+    return {
+        "records": len(connections),
+        "online_records": len(online),
+        "stale_records": len(stale),
+        "reported_targets": len(targets_reported),
+        "online_targets": len(targets_online),
+        "availability": {
+            "status": "passed" if all(availability_checks.values()) else "failed",
+            "rubric": availability_checks,
+        },
+        "contract": {
+            "version": 1,
+            "freshness_aware": True,
+            "effective_status_field": "status",
+            "raw_status_field": "reported_status",
+            "invariants": {
+                "online_records_are_fresh": all(not bool(row.get("is_stale")) for row in online),
+                "stale_online_reports_are_not_effectively_online": all(
+                    not bool(row.get("is_online"))
+                    for row in stale
+                    if row.get("reported_status") in ONLINE_STATUSES
+                ),
+            },
+        },
+    }
+
+
 def _json_metadata(metadata: dict[str, Any] | None) -> str:
     import json
 

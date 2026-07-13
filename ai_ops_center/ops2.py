@@ -7,6 +7,7 @@ from typing import Any
 from .config import load_machines, load_operations_2
 from .db import connect
 from .orchestrator import create_task
+from .tasks import task_accounting_audit, task_summary
 
 
 PROJECT_ID = "ai-operations-center-2"
@@ -856,6 +857,10 @@ def noc_snapshot(local: bool = False, stale_after_seconds: int = 60) -> dict[str
             cur.execute("select * from resource_recommendations where status='open' order by priority desc, created_at desc limit 20")
             recommendations = cur.fetchall()
     ssh_status = _ssh_status_snapshot(ssh_updates)
+    lifetime_tasks = task_summary(local=local)
+    jobs["completed_jobs"] = lifetime_tasks["completed_total"]
+    jobs["queue_length"] = lifetime_tasks["status_counts"].get("queued", 0)
+    jobs["active_jobs"] = lifetime_tasks["status_counts"].get("running", 0)
     observed_at = datetime.now(UTC)
     workforce_statuses = {
         machine["id"]: machine.get("workforce_status", "unassigned") for machine in load_machines()
@@ -865,7 +870,15 @@ def noc_snapshot(local: bool = False, stale_after_seconds: int = 60) -> dict[str
     )
     return {
         "generated_at": observed_at.isoformat(),
-        "ai_workforce": {**agents, **jobs, "gpu_usage": None, "cpu_usage": _average_cpu(benchmarks), "memory_usage": _memory_usage(benchmarks)},
+        "ai_workforce": {
+            **agents,
+            **jobs,
+            "task_summary": lifetime_tasks,
+            "task_accounting_audit": task_accounting_audit(lifetime_tasks),
+            "gpu_usage": None,
+            "cpu_usage": _average_cpu(benchmarks),
+            "memory_usage": _memory_usage(benchmarks),
+        },
         "projects": projects,
         "business": kpis,
         "infrastructure": {
@@ -891,7 +904,7 @@ def _freshen_machine_statuses(
     stale_after_seconds: int,
     observed_at: datetime,
     workforce_statuses: dict[str, str] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     cutoff = observed_at - timedelta(seconds=stale_after_seconds)
     freshened = [dict(machine) for machine in machines]
     for machine in freshened:
@@ -907,6 +920,8 @@ def _freshen_machine_statuses(
     laptops = [machine for machine in freshened if machine.get("role") != "brain"]
     summary = {
         "registered_laptops": len(laptops),
+        "connected_laptops": sum(bool(machine["is_online"]) for machine in laptops),
+        "worker_online_laptops": sum(bool(machine["is_online"]) for machine in laptops),
         "active_laptops": sum(
             bool(machine["is_online"]) and machine["workforce_status"] == "employed" for machine in laptops
         ),
@@ -914,6 +929,21 @@ def _freshen_machine_statuses(
         "stale_laptops": sum(bool(machine["is_stale"]) and machine.get("last_seen_at") is not None for machine in laptops),
         "never_seen_laptops": sum(machine.get("last_seen_at") is None for machine in laptops),
         "stale_after_seconds": stale_after_seconds,
+    }
+    summary["contract"] = {
+        "version": 1,
+        "active_definition": "fresh_online_and_employed",
+        "connected_definition": "fresh_online",
+        "employed_definition": "configured_workforce_assignment",
+        "invariants": {
+            "active_not_above_connected": summary["active_laptops"] <= summary["connected_laptops"],
+            "active_not_above_employed": summary["active_laptops"] <= summary["employed_laptops"],
+            "connected_not_above_registered": summary["connected_laptops"] <= summary["registered_laptops"],
+            "no_stale_laptop_is_active": all(
+                not (machine["is_stale"] and machine["is_online"] and machine["workforce_status"] == "employed")
+                for machine in laptops
+            ),
+        },
     }
     return freshened, summary
 
@@ -1062,6 +1092,11 @@ def _ssh_status_snapshot(ssh_updates: list[dict[str, Any]]) -> list[dict[str, An
     return statuses
 
 
+def _is_dashboard_presence(payload: dict[str, Any]) -> bool:
+    metadata = payload.get("metadata") or {}
+    return str(metadata.get("source") or "").strip().lower() == "browser-dashboard"
+
+
 def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> dict[str, Any]:
     with connect(local=local) as conn:
         with conn.cursor() as cur:
@@ -1102,8 +1137,9 @@ def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> di
                 ),
             )
             telemetry = dict(cur.fetchone())
-            reported_status = str(payload.get("network_status") or "online").strip().lower()
-            cur.execute(
+            if not _is_dashboard_presence(payload):
+                reported_status = str(payload.get("network_status") or "online").strip().lower()
+                cur.execute(
                 """
                 insert into machine_status_current (
                     machine_id, status, hostname, last_seen_at, metadata, updated_at
@@ -1122,15 +1158,15 @@ def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> di
                     payload.get("hostname"),
                     _json({"latest_health_score": payload.get("health_score"), "latest_temperature_c": payload.get("temperature_c")}),
                 ),
-            )
-            cur.execute(
+                )
+                cur.execute(
                 """
                 insert into machine_heartbeats (machine_id, status, metadata)
                 values (%s, %s, %s::jsonb)
                 """,
                 (payload["machine_id"], reported_status, _json({"source": "device_telemetry"})),
-            )
-            _create_health_recommendation(cur, payload)
+                )
+                _create_health_recommendation(cur, payload)
         conn.commit()
     failover = None
     battery = payload.get("battery_percent")

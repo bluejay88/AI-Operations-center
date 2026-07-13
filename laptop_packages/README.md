@@ -6,7 +6,7 @@ Packages:
 
 - `dev-laptop`: Development console, build/test queue, Byte PET, Shield monitor.
 - `research-laptop`: Research console, source queues, Nova PET, Shield monitor.
-- `business-laptop`: Business console, campaign/CRM queue, Ledger PET, Shield monitor.
+- `business-laptop`: Creative console, brand/campaign/customer-deliverable queue, Prism PET, Shield monitor.
 
 Install from each laptop after pulling the GitHub repo:
 

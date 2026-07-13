@@ -5,10 +5,16 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+$scannerPath = Join-Path $PSScriptRoot "scan-connectivity.ps1"
+$outputRoot = Join-Path (Split-Path $PSScriptRoot -Parent) "output"
+if (!(Test-Path $outputRoot)) {
+    New-Item -ItemType Directory -Path $outputRoot | Out-Null
+}
+Start-Transcript -Path (Join-Path $outputRoot "connectivity-monitor.log") -Append | Out-Null
 
 while ($true) {
     $timestamp = Get-Date -Format o
     Write-Host "[$timestamp] Scanning AI Operations laptop connectivity..."
-    .\docker\scan-connectivity.ps1 -BrainApi $BrainApi -SourceMachineId $SourceMachineId | Out-Host
+    & $scannerPath -BrainApi $BrainApi -SourceMachineId $SourceMachineId | Out-Host
     Start-Sleep -Seconds $IntervalSeconds
 }

@@ -1,5 +1,13 @@
 const params = new URLSearchParams(window.location.search);
-const config = window.LAPTOP_PACKAGE || {};
+const pageConfig = document.body?.dataset || {};
+const config = {
+  ...(window.LAPTOP_PACKAGE || {}),
+  machineId: pageConfig.machineId || window.LAPTOP_PACKAGE?.machineId,
+  role: pageConfig.role || window.LAPTOP_PACKAGE?.role,
+  pet: pageConfig.pet || window.LAPTOP_PACKAGE?.pet,
+  specialty: pageConfig.specialty || window.LAPTOP_PACKAGE?.specialty,
+  brainHost: pageConfig.brainHost || window.LAPTOP_PACKAGE?.brainHost,
+};
 const state = {
   brainHost: normalizeHost(params.get("brain") || localStorage.getItem("aiops.brainHost") || config.brainHost || "100.70.49.32"),
   machineId: config.machineId || "unknown-laptop",
@@ -13,6 +21,7 @@ const state = {
   readiness: null,
   noc: null,
   lastHeartbeat: null,
+  apiConnected: false,
   animationTick: 0,
   refreshInFlight: false,
   completedSeen: Number(localStorage.getItem(`aiops.${config.machineId}.completedSeen`) || 0),
@@ -22,20 +31,41 @@ const PERSONALITIES = {
   "dev-laptop": {
     codename: "Byte",
     specialty: "build/test/debug",
+    identity: "Lead software systems companion",
+    traits: ["precise", "curious", "resilient", "evidence-led"],
+    capabilityCategories: {
+      Build: ["Web apps", "APIs", "automation", "integrations"],
+      Quality: ["Unit tests", "debugging", "profiling", "code review"],
+      Delivery: ["Packaging", "documentation", "deploy readiness", "rollback plans"],
+    },
     phrases: ["Compiling the plan", "Checking the diff", "Running the rubric", "Packaging the fix"],
     animations: ["building", "testing", "debugging", "refactoring", "documenting", "shipping", "validating"],
   },
   "research-laptop": {
     codename: "Nova",
     specialty: "research/trends/deals",
+    identity: "Research intelligence companion",
+    traits: ["inquisitive", "skeptical", "methodical", "signal-aware"],
+    capabilityCategories: {
+      Discover: ["Grants", "market signals", "papers", "opportunity scans"],
+      Verify: ["Source checks", "cross-referencing", "ranking", "risk flags"],
+      Synthesize: ["Briefings", "datasets", "forecasts", "recommendations"],
+    },
     phrases: ["Scanning sources", "Mining signals", "Cross-checking evidence", "Ranking opportunities"],
     animations: ["researching", "scraping", "summarizing", "forecasting", "indexing", "reporting", "validating"],
   },
   "business-laptop": {
-    codename: "Ledger",
-    specialty: "ops/sales/finance",
-    phrases: ["Sorting pipeline", "Drafting the next move", "Checking cashflow", "Packaging a deliverable"],
-    animations: ["emailing", "budgeting", "invoicing", "posting", "planning", "reporting", "approving"],
+    codename: "Prism",
+    specialty: "creative/brand/campaigns",
+    identity: "Creative node companion",
+    traits: ["inventive", "polished", "campaign-aware", "outcome-focused"],
+    capabilityCategories: {
+      Create: ["Brand assets", "presentations", "layouts", "creative writing"],
+      Market: ["Social content", "ad concepts", "funnels", "campaign planning"],
+      Assure: ["Approval routing", "asset notes", "customer packaging", "handoffs"],
+    },
+    phrases: ["Polishing the concept", "Composing the campaign", "Preparing the brand kit", "Packaging a deliverable"],
+    animations: ["designing", "editing", "posting", "planning", "reporting", "approving", "on-roll"],
   },
 };
 
@@ -89,6 +119,19 @@ function currentMachine() {
   return (state.readiness?.machines || []).find((machine) => machine.id === state.machineId) || {};
 }
 
+function workloadTotals() {
+  const counts = currentMachine().task_counts || {};
+  const visible = state.tasks.reduce((totals, task) => {
+    if (Object.hasOwn(totals, task.status)) totals[task.status] += 1;
+    return totals;
+  }, { queued: 0, running: 0, completed: 0 });
+  const value = (key) => {
+    const canonical = Number(counts[key]);
+    return Number.isFinite(canonical) && canonical >= 0 ? canonical : visible[key];
+  };
+  return { queued: value("queued"), running: value("running"), completed: value("completed") };
+}
+
 function petVariant() {
   const moods = ["focused", "curious", "alert", "steady", "fast", "deep", "bright", "quiet", "scanning", "charging"];
   const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
@@ -105,9 +148,10 @@ function petVariant() {
 function renderPet() {
   const variant = petVariant();
   const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
-  const running = state.tasks.some((task) => task.status === "running");
-  const queued = state.tasks.filter((task) => task.status === "queued").length;
-  const completed = state.tasks.filter((task) => task.status === "completed").length;
+  const totals = workloadTotals();
+  const running = totals.running > 0;
+  const queued = totals.queued;
+  const completed = totals.completed;
   const roll = completed >= state.completedSeen + 10;
   if (roll) {
     state.completedSeen = completed;
@@ -115,13 +159,14 @@ function renderPet() {
   }
   const stage = $(".pet-stage");
   const pet = $(".pet");
-  const heartbeat = $("#heartbeat-state").textContent;
-  const stateClass = heartbeat !== "online" ? "pet-state-connecting" : roll ? "pet-state-on-roll" : running ? "pet-state-heavy" : "pet-state-online";
-  const animation = heartbeat !== "online" ? "connecting" : roll ? "on-roll" : running ? variant.task : queued ? "queuing" : "monitoring";
+  const machineState = String(currentMachine().state || "unknown").toLowerCase();
+  const workerOnline = ["active", "online", "connected", "ready"].includes(machineState);
+  const stateClass = !state.apiConnected ? "pet-state-connecting" : !workerOnline ? "pet-state-idle" : roll ? "pet-state-on-roll" : running ? "pet-state-heavy" : "pet-state-online";
+  const animation = !state.apiConnected ? "connecting" : !workerOnline ? "idle" : roll ? "on-roll" : running ? variant.task : queued ? "queuing" : "monitoring";
   stage.dataset.mood = variant.mood;
   stage.dataset.task = animation;
   stage.dataset.intensity = variant.intensity;
-  stage.dataset.offline = heartbeat !== "online";
+  stage.dataset.offline = !state.apiConnected || !workerOnline;
   stage.dataset.roll = roll ? "true" : "false";
   stage.classList.remove("pet-state-online", "pet-state-connecting", "pet-state-heavy", "pet-state-on-roll", "pet-state-idle");
   stage.classList.add(stateClass);
@@ -140,9 +185,7 @@ function renderPet() {
 
 function renderMetrics() {
   const machine = currentMachine();
-  const queued = state.tasks.filter((task) => task.status === "queued").length;
-  const running = state.tasks.filter((task) => task.status === "running").length;
-  const completed = state.tasks.filter((task) => task.status === "completed").length;
+  const { queued, running, completed } = workloadTotals();
   $("#metric-queue").textContent = queued;
   $("#metric-running").textContent = running;
   $("#metric-done").textContent = completed;
@@ -150,6 +193,30 @@ function renderMetrics() {
   $("#metric-health").textContent = machineState;
   $("#metric-latency").textContent = machine.latest_benchmark?.brain_latency_ms ? `${Number(machine.latest_benchmark.brain_latency_ms).toFixed(0)} ms` : "--";
   $("#metric-ssh").textContent = (machine.connections || []).some((conn) => ["ssh-22", "ssh-22-brain-to-laptop"].includes(conn.channel) && conn.status === "online") ? "ready" : "review";
+}
+
+function renderCapabilityProfile() {
+  const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
+  const target = $("#capability-profile");
+  if (!target) return;
+  target.innerHTML = `
+    <div class="pet-identity-copy">
+      <span class="eyebrow">PET identity</span>
+      <h2>${escapeHtml(personality.codename)}</h2>
+      <p>${escapeHtml(personality.identity)}</p>
+      <div class="trait-list">${personality.traits.map((trait) => `<span>${escapeHtml(trait)}</span>`).join("")}</div>
+    </div>
+    <div class="capability-functions">
+      <span class="eyebrow">Operational functions</span>
+      <div class="capability-groups" data-audit="operational-capabilities">
+        ${Object.entries(personality.capabilityCategories).map(([category, functions]) => `
+          <section class="capability-group">
+            <h3>${escapeHtml(category)}</h3>
+            <ul>${functions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+          </section>
+        `).join("")}
+      </div>
+    </div>`;
 }
 
 function renderTasks() {
@@ -206,24 +273,33 @@ function renderSecurity() {
 }
 
 function renderHeartbeat(ok, detail = "") {
-  state.lastHeartbeat = new Date();
-  $("#heartbeat-state").textContent = ok ? "online" : "attention";
+  state.apiConnected = ok;
+  if (ok) state.lastHeartbeat = new Date();
+  $("#heartbeat-state").textContent = ok ? "Brain API online" : "API attention";
   $("#heartbeat-state").className = ok ? "live-dot" : "live-dot attention";
-  $("#heartbeat-detail").textContent = ok ? `Last pulse ${state.lastHeartbeat.toLocaleTimeString()}` : detail;
+  $("#heartbeat-detail").textContent = ok
+    ? `Last pulse ${state.lastHeartbeat.toLocaleTimeString()}${detail ? ` · ${detail}` : ""}`
+    : detail || "Brain API is not responding.";
+  if (ok) {
+    $("#heartbeat-detail").textContent = `Dashboard connected ${state.lastHeartbeat.toLocaleTimeString()}${detail ? ` · ${detail}` : ""}`;
+  }
 }
 
-async function publishHeartbeat() {
+async function publishDashboardPresence() {
   const payload = {
     machine_id: state.machineId,
     device_name: state.role,
     hostname: location.hostname || state.machineId,
-    network_status: "online",
-    tailscale_status: "expected",
     current_ai_model: "AI Ops Node Console",
     active_projects: ["AI Operations Center"],
     current_tasks: state.tasks.slice(0, 5).map((task) => task.id),
-    health_score: 88,
-    metadata: { package: "node-console", pet: state.pet, specialty: state.specialty, source: "browser-dashboard" },
+    metadata: {
+      package: "node-console",
+      pet: state.pet,
+      specialty: state.specialty,
+      source: "browser-dashboard",
+      observation_kind: "dashboard_presence",
+    },
   };
   await postJson("/ops2/device-telemetry", payload);
 }
@@ -254,8 +330,8 @@ async function refreshAll() {
   state.refreshInFlight = true;
   $("#brain-host").value = state.brainHost;
   try {
-    await publishHeartbeat();
-    const results = await Promise.allSettled([
+    const [presence, ...results] = await Promise.allSettled([
+      publishDashboardPresence(),
       getJson("/tasks"),
       getJson(`/speaker/feed/${state.machineId}`),
       getJson("/ops2/noc"),
@@ -271,7 +347,11 @@ async function refreshAll() {
     if (readiness) state.readiness = readiness;
     if (approvals) state.approvals = approvals.approvals || [];
     if (remoteOps) state.remoteOps = remoteOps.requests || [];
-    renderHeartbeat(true);
+    const available = results.filter((result) => result.status === "fulfilled").length;
+    if (!available) throw results.find((result) => result.status === "rejected")?.reason || new Error("Brain API is not responding.");
+    const unavailable = results.length - available;
+    const presenceNote = presence.status === "rejected" ? " · presence observation unavailable" : "";
+    renderHeartbeat(true, `${unavailable ? `${unavailable} feed${unavailable === 1 ? "" : "s"} unavailable` : "all feeds current"}${presenceNote}`);
   } catch (error) {
     renderHeartbeat(false, error.message);
   } finally {
@@ -307,11 +387,24 @@ function bindControls() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.machineId = state.machineId;
+  document.body.dataset.auditReady = "true";
+  const auditHooks = [
+    [".side-rail", "node-connectivity"],
+    [".top-strip .panel-pad", "realtime-totals"],
+    [".pet-stage", "pet-identity"],
+    [".control-grid", "permission-gated-actions"],
+    ["#task-body", "task-feed"],
+    [".feed-grid", "brain-feeds"],
+    ["#capability-profile", "pet-capabilities"],
+  ];
+  auditHooks.forEach(([selector, name]) => $(selector)?.setAttribute("data-audit", name));
   $(".machine-name").textContent = state.machineId;
   $(".machine-role").textContent = state.role;
   $(".specialty").textContent = state.specialty;
   $("#brain-host").value = state.brainHost;
   bindControls();
+  renderCapabilityProfile();
   refreshAll();
   setInterval(refreshAll, 5000);
   document.addEventListener("visibilitychange", () => {

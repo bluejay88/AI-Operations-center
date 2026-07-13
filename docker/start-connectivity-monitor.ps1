@@ -4,13 +4,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$scriptPath = Join-Path (Get-Location) "docker\watch-connectivity.ps1"
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$scriptPath = Join-Path $PSScriptRoot "watch-connectivity.ps1"
 if (!(Test-Path $scriptPath)) {
-    throw "Cannot find $scriptPath. Run this from the AI Operations Center repository root."
+    throw "Cannot find $scriptPath."
 }
-
-Start-Process powershell.exe `
+$outputRoot = Join-Path $repoRoot "output"
+if (!(Test-Path $outputRoot)) {
+    New-Item -ItemType Directory -Path $outputRoot | Out-Null
+}
+$process = Start-Process powershell.exe `
     -WindowStyle Hidden `
-    -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -IntervalSeconds $IntervalSeconds"
+    -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"& '$scriptPath' -IntervalSeconds $IntervalSeconds`"" `
+    -PassThru
 
-Write-Host "Started AI Operations connectivity monitor. Interval: $IntervalSeconds seconds."
+Write-Host "Started AI Operations connectivity monitor. PID: $($process.Id). Interval: $IntervalSeconds seconds."
+Write-Host "Logs: $(Join-Path $outputRoot 'connectivity-monitor.log')"

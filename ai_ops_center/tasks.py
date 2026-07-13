@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from .db import connect
@@ -181,6 +182,8 @@ def create_chat_task_intake(
 
 
 def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
     with connect(local=local) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -205,6 +208,89 @@ def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
                 (limit,),
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+def task_summary(local: bool = False) -> dict[str, Any]:
+    """Return lifetime task totals independently of the recent-task list limit."""
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select a.machine_id, t.status, count(*) as count
+                from tasks t
+                left join agents a on a.id = t.agent_id
+                group by a.machine_id, t.status
+                order by a.machine_id, t.status
+                """
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+    return _build_task_summary(rows)
+
+
+def _build_task_summary(
+    rows: list[dict[str, Any]], generated_at: datetime | None = None
+) -> dict[str, Any]:
+    statuses = ("queued", "running", "completed", "failed", "cancelled")
+    status_counts = {status: 0 for status in statuses}
+    by_machine: dict[str, dict[str, int]] = {}
+    total = 0
+    for row in rows:
+        machine_id = str(row.get("machine_id") or "unassigned")
+        status = str(row.get("status") or "unknown")
+        count = int(row.get("count") or 0)
+        bucket = by_machine.setdefault(machine_id, {item: 0 for item in statuses})
+        bucket[status] = bucket.get(status, 0) + count
+        bucket["total"] = bucket.get("total", 0) + count
+        status_counts[status] = status_counts.get(status, 0) + count
+        total += count
+    completed_by_machine = sum(bucket.get("completed", 0) for bucket in by_machine.values())
+    status_total = sum(status_counts.values())
+    return {
+        "generated_at": (generated_at or datetime.now(UTC)).isoformat(),
+        "total": total,
+        "completed_total": status_counts["completed"],
+        "active_total": status_counts["queued"] + status_counts["running"],
+        "status_counts": status_counts,
+        "by_machine": by_machine,
+        "contract": {
+            "version": 1,
+            "scope": "lifetime",
+            "source": "database_aggregate",
+            "recent_list_independent": True,
+            "invariants": {
+                "completed_equals_machine_sum": status_counts["completed"] == completed_by_machine,
+                "total_equals_status_sum": total == status_total,
+            },
+        },
+    }
+
+
+def task_accounting_audit(
+    summary: dict[str, Any],
+    recent_returned: int | None = None,
+    readiness_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    invariants = summary.get("contract", {}).get("invariants", {})
+    rubric = {
+        "lifetime_scope": summary.get("contract", {}).get("scope") == "lifetime",
+        "database_aggregate_source": summary.get("contract", {}).get("source") == "database_aggregate",
+        "recent_list_independent": bool(summary.get("contract", {}).get("recent_list_independent")),
+        "global_per_machine_reconciled": bool(invariants.get("completed_equals_machine_sum")),
+        "all_statuses_reconciled": bool(invariants.get("total_equals_status_sum")),
+        "readiness_parity": readiness_summary is None
+        or int(readiness_summary.get("completed_total", -1)) == int(summary.get("completed_total", -2)),
+    }
+    return {
+        "contract_version": 1,
+        "stage": "completed_task_accounting",
+        "status": "passed" if all(rubric.values()) else "failed",
+        "rubric": rubric,
+        "evidence": {
+            "completed_total": int(summary.get("completed_total", 0)),
+            "machine_count": len(summary.get("by_machine", {})),
+            "recent_rows_returned": recent_returned,
+        },
+    }
 
 
 def task_detail(task_id: int, local: bool = False) -> dict[str, Any] | None:

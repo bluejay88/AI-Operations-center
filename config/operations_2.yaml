@@ -28,7 +28,7 @@ machines:
       - Goal tracking
       - Resource allocation
   dev-laptop:
-    title: Lead Software Engineer
+    title: Laptop 3 Development Node
     responsibilities:
       - Read project backlog
       - Pull Git repository
@@ -49,7 +49,7 @@ machines:
       - Build installers
       - Package releases
   research-laptop:
-    title: Research and Intelligence Lead
+    title: Laptop 1 Research Node
     responsibilities:
       - Market research
       - Patent research
@@ -65,8 +65,18 @@ machines:
       - Trend prediction
       - Risk analysis
   business-laptop:
-    title: Business Operations Lead
+    title: Laptop 2 Creative Node
     responsibilities:
+      - Graphic design
+      - Branding
+      - Logo design
+      - Presentations
+      - Video editing
+      - Social media
+      - Advertising
+      - Website design
+      - Creative writing
+      - Asset library management
       - CRM
       - Customer support drafts
       - Marketing campaigns

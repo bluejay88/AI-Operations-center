@@ -4,7 +4,7 @@ from pathlib import Path
 import hmac
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,9 +17,17 @@ from .approval_processor import process_approval_queue
 from .approvals import approval_detail, approval_snapshot, create_approval_request, review_approval_request
 from .brain_bus import acknowledge_speaker_message, create_speaker_message, listener_snapshot, speaker_feed, submit_listener_event
 from .business_os import business_os_snapshot, enterprise_org_snapshot, laptop_setup_prompt, seed_autonomous_business_os, seed_enterprise_departments
-from .collaboration import collaboration_snapshot, create_laptop_handoff, create_laptop_model_session, request_remote_assist
-from .connectivity import connection_snapshot, record_connection
+from .collaboration import (
+    collaboration_snapshot,
+    create_laptop_handoff,
+    create_laptop_model_session,
+    create_peer_request,
+    request_remote_assist,
+    respond_to_peer_request,
+)
+from .connectivity import connection_snapshot, connection_summary, record_connection
 from .factory import factory_snapshot, redistribute_business_queue
+from .enterprise_features import enterprise_feature_catalog, seed_enterprise_feature_backlog
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
@@ -28,6 +36,7 @@ from .github_defaults import github_defaults_dict
 from .integrations import dispatch_to_provider, integration_status, provider_health
 from .model_router import model_solution_snapshot, submit_model_query
 from .model_workflows import run_external_model_workflow
+from .node_mesh import node_mesh_snapshot
 from .orchestrator import create_daily_priorities
 from .ops2 import (
     create_notification,
@@ -53,7 +62,7 @@ from .registry import registry_snapshot
 from .reports import generate_report
 from .security_guardian import security_guardian_audit
 from .settings import get_settings
-from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_detail, task_snapshot
+from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_accounting_audit, task_detail, task_snapshot, task_summary
 
 settings = get_settings()
 docs_url = "/docs" if settings.expose_api_docs or settings.app_env != "production" else None
@@ -244,6 +253,33 @@ class RemoteAssistRequest(BaseModel):
     summary: str = Field(min_length=3, max_length=4000)
     requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
     priority: int = Field(default=88, ge=1, le=100)
+
+
+class PeerRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_machine_id: str = Field(min_length=2, max_length=80)
+    to_machine_id: str = Field(min_length=2, max_length=80)
+    request_type: str = Field(min_length=2, max_length=80)
+    subject: str = Field(min_length=3, max_length=180)
+    body: str = Field(min_length=3, max_length=8000)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    task_id: int | None = None
+    project_id: str | None = None
+    priority: int = Field(default=80, ge=1, le=100)
+    due_at: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class PeerRequestResponseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    responder_machine_id: str = Field(min_length=2, max_length=80)
+    response_body: str = Field(min_length=3, max_length=8000)
+    status: str = Field(default="fulfilled", pattern="^(in_progress|fulfilled|needs_clarification|rejected)$")
+    artifacts: list[str] = Field(default_factory=list)
+    quality_score: int | None = Field(default=None, ge=0, le=100)
+    metadata: dict = Field(default_factory=dict)
 
 
 class CodexHandoffRequest(BaseModel):
@@ -478,9 +514,14 @@ def endpoint_contract() -> dict:
         {"name": "Remote operations", "method": "POST", "path": "/remote-ops", "purpose": "Request approved remote actions such as opening dashboards, builds, tests, browser/file assist, or service restarts."},
         {"name": "Remote operations queue", "method": "GET", "path": "/remote-ops", "purpose": "Read approved, pending, queued, rejected, and completed remote requests."},
         {"name": "Collaboration handoff", "method": "POST", "path": "/collaboration/handoff", "purpose": "Pass approved work between laptops with evidence rubric."},
+        {"name": "Peer request", "method": "POST", "path": "/collaboration/peer-requests", "purpose": "Route laptop-to-laptop asks for research, assets, QA, security review, stats, diagnostics, and handoff help through the Brain bus."},
+        {"name": "Peer response", "method": "POST", "path": "/collaboration/peer-requests/{request_id}/respond", "purpose": "Return peer work, artifacts, quality score, and status back to the requesting laptop through the speaker/listener bus."},
+        {"name": "Node mesh contract", "method": "GET", "path": "/node-mesh", "purpose": "Read Brain Mesh node roles, peer permissions, message channels, task states, and the standard handoff envelope."},
         {"name": "Laptop model session", "method": "POST", "path": "/collaboration/model-session", "purpose": "Ask a laptop team to consult configured models and report back."},
         {"name": "Model query", "method": "POST", "path": "/models/query", "purpose": "Pipe prompts into configured model mesh for recommendations and task routing."},
         {"name": "Model workflow", "method": "POST", "path": "/integrations/workflow", "purpose": "Run external model workflow and publish results to listener/speaker."},
+        {"name": "Enterprise feature catalog", "method": "GET", "path": "/enterprise-features", "purpose": "Read the 500-feature Brain PC enterprise roadmap grouped by domain, owner, laptop, and approval policy."},
+        {"name": "Seed enterprise features", "method": "POST", "path": "/enterprise-features/seed", "purpose": "Create deduped backlog tasks for the 500 enterprise enhancements with audit records and approval gating."},
         {"name": "NOC", "method": "GET", "path": "/ops2/noc", "purpose": "Enterprise dashboard data for workforce, projects, infrastructure, AI metrics, security, reports, and KPIs."},
         {"name": "Laptop packages", "method": "GET", "path": "/laptop-packages", "purpose": "List laptop-specific AI Operations Center Node Console packages."},
         {"name": "Laptop package dispatch", "method": "POST", "path": "/laptop-packages/dispatch", "purpose": "Send install/update instructions to each laptop speaker feed."},
@@ -505,6 +546,11 @@ def registry() -> dict:
 @app.get("/factory")
 def factory() -> dict:
     return factory_snapshot()
+
+
+@app.get("/node-mesh")
+def node_mesh() -> dict:
+    return node_mesh_snapshot()
 
 
 @app.get("/phoenix/status")
@@ -534,14 +580,33 @@ async def stream() -> StreamingResponse:
 
     async def events():
         while True:
+            recent_tasks = task_snapshot()
+            lifetime_tasks = task_summary()
+            live_connections = connection_snapshot()
+            live_readiness = readiness_snapshot()
+            live_readiness["task_summary"] = lifetime_tasks
+            for machine in live_readiness.get("machines", []):
+                counts = dict(lifetime_tasks["by_machine"].get(machine.get("id"), {}))
+                machine["task_counts"] = counts
+                machine["lifetime_task_counts"] = counts
+                machine["completed_tasks_total"] = int(counts.get("completed", 0))
             payload = {
-                "readiness": readiness_snapshot(),
-                "tasks": task_snapshot(),
-                "connections": connection_snapshot(),
+                "readiness": live_readiness,
+                "tasks": recent_tasks,
+                "task_summary": lifetime_tasks,
+                "task_accounting_audit": task_accounting_audit(
+                    lifetime_tasks,
+                    recent_returned=len(recent_tasks),
+                    readiness_summary=live_readiness["task_summary"],
+                ),
+                "task_list": {"limit": 50, "returned": len(recent_tasks), "scope": "recent_prioritized"},
+                "connections": live_connections,
+                "connection_summary": connection_summary(live_connections),
                 "factory": factory_snapshot(),
                 "approvals": approval_snapshot(limit=20),
                 "listener": {"events": listener_snapshot(limit=20)},
                 "speaker": speaker_feed("brain-gaming-pc"),
+                "collaboration": collaboration_snapshot(limit=20),
                 "integrations": integration_status(),
                 "model_solutions": model_solution_snapshot(limit=10),
             }
@@ -553,7 +618,8 @@ async def stream() -> StreamingResponse:
 
 @app.get("/connections")
 def connections() -> dict:
-    return {"connections": connection_snapshot()}
+    snapshot = connection_snapshot()
+    return {"connections": snapshot, "connection_summary": connection_summary(snapshot)}
 
 
 @app.post("/connections")
@@ -570,8 +636,15 @@ def update_connection(request: ConnectionUpdateRequest) -> dict[str, str]:
 
 
 @app.get("/tasks")
-def tasks() -> dict:
-    return {"tasks": task_snapshot()}
+def tasks(limit: int = Query(default=50, ge=1, le=500)) -> dict:
+    recent_tasks = task_snapshot(limit=limit)
+    lifetime_tasks = task_summary()
+    return {
+        "tasks": recent_tasks,
+        "task_summary": lifetime_tasks,
+        "task_accounting_audit": task_accounting_audit(lifetime_tasks, recent_returned=len(recent_tasks)),
+        "list": {"limit": limit, "returned": len(recent_tasks), "scope": "recent_prioritized"},
+    }
 
 
 @app.get("/tasks/{task_id}")
@@ -713,6 +786,36 @@ def create_remote_ops(request: RemoteOperationRequest) -> dict:
 @app.get("/collaboration")
 def collaboration() -> dict:
     return collaboration_snapshot()
+
+
+@app.post("/collaboration/peer-requests")
+def collaboration_peer_request(request: PeerRequestCreateRequest) -> dict:
+    return create_peer_request(
+        from_machine_id=request.from_machine_id,
+        to_machine_id=request.to_machine_id,
+        request_type=request.request_type,
+        subject=request.subject,
+        body=request.body,
+        requested_by=request.requested_by,
+        task_id=request.task_id,
+        project_id=request.project_id,
+        priority=request.priority,
+        due_at=request.due_at,
+        metadata=request.metadata,
+    )
+
+
+@app.post("/collaboration/peer-requests/{request_id}/respond")
+def collaboration_peer_response(request_id: int, request: PeerRequestResponseRequest) -> dict:
+    return respond_to_peer_request(
+        request_id=request_id,
+        responder_machine_id=request.responder_machine_id,
+        response_body=request.response_body,
+        status=request.status,
+        artifacts=request.artifacts,
+        quality_score=request.quality_score,
+        metadata=request.metadata,
+    )
 
 
 @app.post("/collaboration/handoff")
@@ -928,6 +1031,16 @@ def enterprise_org() -> dict:
 @app.post("/enterprise-org/seed")
 def enterprise_org_seed() -> dict:
     return seed_enterprise_departments()
+
+
+@app.get("/enterprise-features")
+def enterprise_features() -> dict:
+    return enterprise_feature_catalog()
+
+
+@app.post("/enterprise-features/seed")
+def enterprise_features_seed() -> dict:
+    return seed_enterprise_feature_backlog()
 
 
 @app.post("/business-os/model-sprint")

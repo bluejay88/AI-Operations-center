@@ -9,6 +9,7 @@ COPY pyproject.toml README.md ./
 COPY ai_ops_center ./ai_ops_center
 COPY config ./config
 COPY dashboard ./dashboard
+COPY laptop_packages ./laptop_packages
 COPY instructions ./instructions
 COPY prompts ./prompts
 COPY sql ./sql

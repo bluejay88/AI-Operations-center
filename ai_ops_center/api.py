@@ -20,7 +20,10 @@ from .factory import factory_snapshot, redistribute_business_queue
 from .flowise import healthcheck as flowise_healthcheck
 from .flowise import predict as flowise_predict
 from .health import machine_status
+from .codex_handoff import codex_handoff_packet
+from .github_defaults import github_defaults_dict
 from .integrations import dispatch_to_provider, integration_status, provider_health
+from .model_router import model_solution_snapshot, submit_model_query
 from .model_workflows import run_external_model_workflow
 from .orchestrator import create_daily_priorities
 from .ops2 import (
@@ -42,8 +45,10 @@ from .operator_requests import create_operator_request, operator_request_snapsho
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
+from .remote_ops import remote_operation_snapshot, request_remote_operation
 from .registry import registry_snapshot
 from .reports import generate_report
+from .security_guardian import security_guardian_audit
 from .settings import get_settings
 from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_detail, task_snapshot
 
@@ -61,6 +66,7 @@ app = FastAPI(
 )
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_DIR = ROOT / "dashboard"
+LAPTOP_PACKAGES_DIR = ROOT / "laptop_packages"
 
 cors_origins = [origin.strip() for origin in settings.cors_allow_origins.split(",") if origin.strip()]
 app.add_middleware(
@@ -186,6 +192,23 @@ class SpeakerAckRequest(BaseModel):
     actor: str = Field(min_length=2, max_length=120)
 
 
+class RemoteOperationRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    operation_type: str = Field(min_length=2, max_length=80)
+    command_summary: str = Field(min_length=3, max_length=4000)
+    priority: int = Field(default=50, ge=1, le=100)
+    metadata: dict = Field(default_factory=dict)
+
+
+class CodexHandoffRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    prompt: str = Field(default="Analyze the AI Operations Center state and decide the next best implementation steps.", min_length=3, max_length=4000)
+
+
 class IntegrationDispatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -207,6 +230,30 @@ class ModelWorkflowRequest(BaseModel):
     task_id: int | None = None
     priority: int = Field(default=80, ge=1, le=100)
     options: dict = Field(default_factory=dict)
+
+
+class ModelQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    purpose: str = Field(min_length=3, max_length=180)
+    prompt: str = Field(min_length=3, max_length=12000)
+    requester: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    target_id: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    providers: list[str] = Field(default_factory=list)
+    project_id: str | None = None
+    task_id: int | None = None
+    priority: int = Field(default=80, ge=1, le=100)
+    auto_create_tasks: bool = False
+    require_approval: bool | None = None
+    options: dict = Field(default_factory=dict)
+
+
+class LaptopPackageDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_ids: list[str] = Field(default_factory=lambda: ["dev-laptop", "research-laptop", "business-laptop"])
+    brain_host: str = Field(default="100.70.49.32", min_length=3, max_length=120)
+    priority: int = Field(default=92, ge=1, le=100)
 
 
 class ProjectSplitRequest(BaseModel):
@@ -405,6 +452,7 @@ async def stream() -> StreamingResponse:
                 "listener": {"events": listener_snapshot(limit=20)},
                 "speaker": speaker_feed("brain-gaming-pc"),
                 "integrations": integration_status(),
+                "model_solutions": model_solution_snapshot(limit=10),
             }
             yield f"data: {json.dumps(payload, default=str)}\n\n"
             await asyncio.sleep(5)
@@ -545,6 +593,28 @@ def speaker_ack(message_id: int, request: SpeakerAckRequest) -> dict:
     return {"message": acknowledge_speaker_message(message_id, request.actor)}
 
 
+@app.get("/remote-ops")
+def remote_ops() -> dict:
+    return {"requests": remote_operation_snapshot()}
+
+
+@app.post("/remote-ops")
+def create_remote_ops(request: RemoteOperationRequest) -> dict:
+    return request_remote_operation(
+        machine_id=request.machine_id,
+        requested_by=request.requested_by,
+        operation_type=request.operation_type,
+        command_summary=request.command_summary,
+        priority=request.priority,
+        metadata=request.metadata,
+    )
+
+
+@app.get("/security/guardian")
+def security_guardian() -> dict:
+    return security_guardian_audit()
+
+
 @app.post("/orchestrator/daily-priorities")
 def daily_priorities() -> dict[str, list[int]]:
     return {"created_task_ids": create_daily_priorities()}
@@ -585,6 +655,21 @@ def integrations_status() -> dict:
     return integration_status()
 
 
+@app.get("/github/defaults")
+def github_defaults_api() -> dict[str, str]:
+    return github_defaults_dict()
+
+
+@app.get("/codex/handoff")
+def codex_handoff() -> dict:
+    return codex_handoff_packet()
+
+
+@app.post("/codex/handoff")
+def create_codex_handoff(request: CodexHandoffRequest) -> dict:
+    return codex_handoff_packet(prompt=request.prompt)
+
+
 @app.get("/integrations/health")
 async def integrations_health() -> dict:
     return await provider_health()
@@ -613,6 +698,68 @@ async def integrations_workflow(request: ModelWorkflowRequest) -> dict:
         priority=request.priority,
         options=request.options,
     )
+
+
+@app.get("/models/solutions")
+def model_solutions() -> dict:
+    return {"solutions": model_solution_snapshot()}
+
+
+@app.post("/models/query")
+async def models_query(request: ModelQueryRequest) -> dict:
+    return await submit_model_query(
+        purpose=request.purpose,
+        prompt=request.prompt,
+        requester=request.requester,
+        target_id=request.target_id,
+        providers=request.providers or None,
+        project_id=request.project_id,
+        task_id=request.task_id,
+        priority=request.priority,
+        auto_create_tasks=request.auto_create_tasks,
+        require_approval=request.require_approval,
+        options=request.options,
+    )
+
+
+@app.get("/laptop-packages")
+def laptop_packages() -> dict:
+    packages = []
+    if LAPTOP_PACKAGES_DIR.exists():
+        for package_dir in sorted(LAPTOP_PACKAGES_DIR.iterdir()):
+            if package_dir.is_dir() and (package_dir / "index.html").exists():
+                packages.append(
+                    {
+                        "machine_id": package_dir.name,
+                        "dashboard_url": f"/laptop-packages/{package_dir.name}/index.html",
+                        "install_script": f"laptop_packages\\{package_dir.name}\\install.ps1",
+                    }
+                )
+    return {"packages": packages}
+
+
+@app.post("/laptop-packages/dispatch")
+def dispatch_laptop_packages(request: LaptopPackageDispatchRequest) -> dict:
+    messages = []
+    for machine_id in request.machine_ids:
+        install_command = (
+            "git pull origin master; "
+            f"powershell -ExecutionPolicy Bypass -File .\\laptop_packages\\{machine_id}\\install.ps1 -BrainHost {request.brain_host}"
+        )
+        message_id = create_speaker_message(
+            target_id=machine_id,
+            message_type="laptop_package_install",
+            subject=f"Install Mini Phoenix package for {machine_id}",
+            body=(
+                "Pull the latest AI Operations Center repo, then run the laptop-specific Mini Phoenix dashboard package. "
+                "This opens the local dashboard, publishes heartbeat telemetry, reads the Brain speaker feed, and keeps Shield visible.\n\n"
+                f"Command:\n{install_command}"
+            ),
+            priority=request.priority,
+            metadata={"machine_id": machine_id, "brain_host": request.brain_host, "install_command": install_command},
+        )
+        messages.append({"machine_id": machine_id, "speaker_message_id": message_id, "install_command": install_command})
+    return {"dispatched": messages}
 
 
 @app.get("/ops2/noc")
@@ -703,3 +850,6 @@ def ops2_notification(request: NotificationRequest) -> dict:
 
 if DASHBOARD_DIR.exists():
     app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
+
+if LAPTOP_PACKAGES_DIR.exists():
+    app.mount("/laptop-packages", StaticFiles(directory=LAPTOP_PACKAGES_DIR, html=True), name="laptop-packages")

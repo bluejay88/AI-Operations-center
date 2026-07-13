@@ -684,6 +684,29 @@ create table if not exists ai_metrics (
 
 create index if not exists idx_ai_metrics_provider_time on ai_metrics(provider, created_at desc);
 
+create table if not exists model_solution_packets (
+    id bigserial primary key,
+    purpose text not null,
+    requester text not null default 'brain-gaming-pc',
+    target_id text not null default 'brain-gaming-pc',
+    project_id text references projects(id) on delete set null,
+    task_id bigint references tasks(id) on delete set null,
+    status text not null default 'created',
+    risk_level text not null default 'low',
+    prompt text not null,
+    provider_results jsonb not null default '[]',
+    synthesized_response text not null,
+    created_task_ids jsonb not null default '[]',
+    approval_request_id bigint references approval_requests(id) on delete set null,
+    listener_event_id bigint references listener_events(id) on delete set null,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_model_solution_packets_status_time on model_solution_packets(status, created_at desc);
+create index if not exists idx_model_solution_packets_project_time on model_solution_packets(project_id, created_at desc);
+
 create table if not exists backups (
     id bigserial primary key,
     backup_type text not null,

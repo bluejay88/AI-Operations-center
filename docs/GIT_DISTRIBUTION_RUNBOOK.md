@@ -23,6 +23,13 @@ Current GitHub repo:
 https://github.com/bluejay88/AI-Operations-center.git
 ```
 
+The AI Operations Center defaults to GitHub owner `bluejay88`, repo `AI-Operations-center`, and branch `master`.
+Agents and scripts can confirm the current defaults with:
+
+```powershell
+docker compose run --rm ai-ops-api python -m ai_ops_center.cli github-defaults
+```
+
 Recommended visibility: private.
 
 Do not commit local secrets. These are already ignored:

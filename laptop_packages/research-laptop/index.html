@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Research Laptop Mini Phoenix</title>
+    <link rel="stylesheet" href="../shared/mini-dashboard.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <h1 class="machine-name">research-laptop</h1>
+        <p class="machine-role muted">Research Intelligence Node</p>
+        <div class="toolbar">
+          <input id="brain-host" aria-label="Brain host">
+          <button id="save-brain">Save</button>
+          <button id="refresh">Refresh</button>
+          <button id="speak">Speak</button>
+        </div>
+        <div class="shield-row">
+          <div class="shield-pet"></div>
+          <div>
+            <h2>Shield</h2>
+            <p id="shield-state">Scanning</p>
+            <small>Database: <span id="db-state">checking</span></small>
+          </div>
+        </div>
+        <p><strong id="heartbeat-state">checking</strong></p>
+        <p id="heartbeat-detail" class="muted">Waiting for Brain pulse.</p>
+      </aside>
+      <main>
+        <section>
+          <h2>Research Workload</h2>
+          <table>
+            <thead><tr><th>ID</th><th>Task</th><th>Agent</th><th>Status</th><th>Priority</th></tr></thead>
+            <tbody id="task-body"></tbody>
+          </table>
+        </section>
+        <div class="panels">
+          <section><h2>Brain Messages</h2><div id="message-list"></div></section>
+          <section><h2>Mini Phoenix</h2><p class="variant-count muted"></p></section>
+        </div>
+        <div class="pet-shell"><div class="pet"><div class="pet-name">Scout Console</div><div class="pet-status">Booting</div></div></div>
+      </main>
+    </div>
+    <script>
+      window.LAPTOP_PACKAGE = { machineId: "research-laptop", role: "Research Intelligence Node", pet: "Scout Console", brainHost: "100.70.49.32" };
+    </script>
+    <script src="../shared/mini-dashboard.js"></script>
+  </body>
+</html>

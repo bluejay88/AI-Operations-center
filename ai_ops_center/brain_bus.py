@@ -28,7 +28,7 @@ def submit_listener_event(
                 values (%s, %s, %s, %s, %s, %s, %s::jsonb)
                 returning id
                 """,
-                (source_type, source_id, event_type, subject, body, priority, json.dumps(metadata)),
+                (source_type, source_id, event_type, subject, body, priority, json.dumps(metadata, default=str)),
             )
             event_id = int(cur.fetchone()["id"])
         conn.commit()
@@ -131,7 +131,7 @@ def create_speaker_message(
                 values (%s, %s, %s, %s, %s, %s, %s::jsonb)
                 returning id
                 """,
-                (target_type, target_id, message_type, subject, body, priority, json.dumps(metadata or {})),
+                (target_type, target_id, message_type, subject, body, priority, json.dumps(metadata or {}, default=str)),
             )
             message_id = int(cur.fetchone()["id"])
         conn.commit()
@@ -213,4 +213,3 @@ def apply_brain_logic(event_id: int, local: bool = False) -> list[dict[str, Any]
         actions.append({"type": "speaker_message_created", "message_id": message_id})
 
     return actions
-

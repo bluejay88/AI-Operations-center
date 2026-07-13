@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     worker_work_seconds: int = 4
     report_timezone: str = "America/Chicago"
     brain_host: str = "100.70.49.32"
+    github_owner: str = "bluejay88"
+    github_repo: str = "AI-Operations-center"
+    github_default_branch: str = "master"
+    github_repo_url: str = "https://github.com/bluejay88/AI-Operations-center.git"
     human_approval_required: bool = Field(default=True)
     expose_api_docs: bool = True
     dashboard_password: str = "BleujayBrain2026!"

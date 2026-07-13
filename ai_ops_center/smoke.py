@@ -69,6 +69,10 @@ def run_25_checks() -> dict:
     add("api exposes stale worker failover", "/ops2/failover/stale-workers" in api_py)
     add("api exposes business launch seed", "/ops2/business-launches/seed" in api_py)
     add("api exposes model workflow", "/integrations/workflow" in api_py)
+    add("api exposes governed model query", "/models/query" in api_py)
+    add("api exposes laptop package dispatch", "/laptop-packages/dispatch" in api_py)
+    add("api exposes security guardian", "/security/guardian" in api_py)
+    add("schema has model solution packets", "create table if not exists model_solution_packets" in schema)
 
     critical = _failover_recommendation("dev-laptop", 5, "online")
     healthy = _failover_recommendation("dev-laptop", 80, "online")

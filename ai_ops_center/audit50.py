@@ -87,6 +87,10 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("API dashboard login configured", "/dashboard/login" in api_py)
     add("API chat task intake configured", "/tasks/intake" in api_py)
     add("API external model workflow configured", "/integrations/workflow" in api_py)
+    add("API governed model query configured", "/models/query" in api_py)
+    add("API laptop package dispatch configured", "/laptop-packages/dispatch" in api_py)
+    add("model solution packet schema configured", "model_solution_packets" in (ROOT / "sql/schema.sql").read_text(encoding="utf-8"))
+    add("API security guardian configured", "/security/guardian" in api_py)
     add("task intake splitter configured", "create_chat_task_intake" in tasks_py)
     add("task intake rubric configured", "INTAKE_RUBRIC" in tasks_py)
     add("security monitor agent configured", "security-monitor" in agents_yaml)
@@ -109,6 +113,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("listener endpoint", "/listener/events"),
         ("operator requests endpoint", "/operator-requests"),
         ("integrations endpoint", "/integrations/status"),
+        ("model solutions endpoint", "/models/solutions"),
+        ("security guardian endpoint", "/security/guardian"),
         ("Phoenix endpoint", "/phoenix/briefing"),
         ("hourly report endpoint", "/reports/hourly"),
     ]

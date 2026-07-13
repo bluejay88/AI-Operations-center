@@ -9,14 +9,19 @@ from .brain_bus import listener_snapshot, speaker_feed, submit_listener_event
 from .db import init_db
 from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
+from .codex_handoff import codex_handoff_packet
+from .github_defaults import github_defaults_dict
 from .integrations import integration_status
+from .model_router import model_solution_snapshot
 from .orchestrator import create_daily_priorities
 from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_improvement_backlog, seed_laptop_work_batches, seed_operations_2, split_project
 from .failover import evaluate_failover, evaluate_stale_workers
 from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
+from .remote_ops import remote_operation_snapshot, request_remote_operation
 from .registry import seed_registry
 from .reports import generate_report
+from .security_guardian import security_guardian_audit
 from .settings import get_settings
 from .tasks import create_business_continuity, create_dev_kickoff
 from .worker import run_worker
@@ -41,6 +46,19 @@ def main() -> None:
     subparsers.add_parser("approvals")
     subparsers.add_parser("listener-events")
     subparsers.add_parser("integrations")
+    subparsers.add_parser("model-solutions")
+    subparsers.add_parser("github-defaults")
+    subparsers.add_parser("remote-ops")
+    subparsers.add_parser("security-guardian")
+    codex_parser = subparsers.add_parser("codex-handoff")
+    codex_parser.add_argument("--prompt", default="Analyze the AI Operations Center state and decide the next best implementation steps.")
+
+    remote_op_parser = subparsers.add_parser("remote-op")
+    remote_op_parser.add_argument("--machine-id", required=True)
+    remote_op_parser.add_argument("--requested-by", default="brain-gaming-pc")
+    remote_op_parser.add_argument("--operation-type", required=True)
+    remote_op_parser.add_argument("--summary", required=True)
+    remote_op_parser.add_argument("--priority", type=int, default=50)
     subparsers.add_parser("ops2-seed")
     subparsers.add_parser("ops2-seed-improvements")
     laptop_work_parser = subparsers.add_parser("ops2-seed-laptop-work")
@@ -209,6 +227,31 @@ def main() -> None:
         print(json.dumps(speaker_feed(args.target_id, local=args.local_db), indent=2, default=str))
     elif args.command == "integrations":
         print(json.dumps(integration_status(), indent=2, default=str))
+    elif args.command == "model-solutions":
+        print(json.dumps({"solutions": model_solution_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "github-defaults":
+        print(json.dumps(github_defaults_dict(), indent=2))
+    elif args.command == "remote-ops":
+        print(json.dumps({"requests": remote_operation_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "security-guardian":
+        print(json.dumps(security_guardian_audit(local=args.local_db), indent=2, default=str))
+    elif args.command == "remote-op":
+        print(
+            json.dumps(
+                request_remote_operation(
+                    machine_id=args.machine_id,
+                    requested_by=args.requested_by,
+                    operation_type=args.operation_type,
+                    command_summary=args.summary,
+                    priority=args.priority,
+                    local=args.local_db,
+                ),
+                indent=2,
+                default=str,
+            )
+        )
+    elif args.command == "codex-handoff":
+        print(json.dumps(codex_handoff_packet(prompt=args.prompt, local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-seed":
         print(json.dumps(seed_operations_2(local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-seed-improvements":

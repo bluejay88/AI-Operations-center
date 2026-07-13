@@ -7,6 +7,8 @@ param(
     [string]$BrainUser = "jayla",
     [string]$AgentId = "",
     [string]$Branch = "master",
+    [string]$ExpectedBrainKeyFingerprint = "",
+    [switch]$UpdateCode,
     [switch]$CommitReport,
     [switch]$SkipDocker,
     [switch]$StartWorker
@@ -92,8 +94,8 @@ try {
     Add-Check $checks "Git remote" $false $_.Exception.Message "Install Git, clone the repo, then run diagnostics from the repo root."
 }
 
-$pullOk = $false
-if ($gitOk) {
+$pullOk = -not $UpdateCode
+if ($gitOk -and $UpdateCode) {
     try {
         git fetch origin $Branch | Out-Host
         git pull --ff-only origin $Branch | Out-Host
@@ -145,21 +147,41 @@ try {
 }
 
 $speakerOk = $false
+$speakerAckCount = 0
+$peerRequestIds = New-Object System.Collections.ArrayList
+$diagnosticMessages = New-Object System.Collections.ArrayList
 try {
     $speaker = Invoke-Json -Uri "http://$BrainHost`:8088/speaker/feed/$MachineId"
     $speakerOk = $null -ne $speaker.instructions
-    Add-Check $checks "Brain speaker feed" $speakerOk "messages=$($speaker.messages.Count)" "Confirm the Brain API has /speaker/feed/$MachineId and laptop ID is correct."
+    foreach ($message in @($speaker.messages)) {
+        if ($message.target_id -ne $MachineId -or $message.status -eq "acknowledged") { continue }
+        if ($message.message_type -eq "peer_request" -and $message.metadata.request_type -eq "diagnostic" -and $message.metadata.peer_request_id) {
+            [void]$diagnosticMessages.Add($message)
+            [void]$peerRequestIds.Add([int]$message.metadata.peer_request_id)
+        }
+    }
+    Add-Check $checks "Brain speaker feed" $speakerOk "messages=$($speaker.messages.Count); acknowledged=$speakerAckCount" "Confirm the Brain API has /speaker/feed/$MachineId and laptop ID is correct."
 } catch {
     Add-Check $checks "Brain speaker feed" $false $_.Exception.Message "Check Brain API and machine ID spelling."
 }
 
 $localSshServiceOk = $false
+$sshServiceInstalled = $false
 try {
     $svc = Get-Service sshd -ErrorAction SilentlyContinue
+    $sshServiceInstalled = $null -ne $svc
     $localSshServiceOk = $svc -and $svc.Status -eq "Running"
     Add-Check $checks "Local OpenSSH server" $localSshServiceOk "status=$($svc.Status)" "Run PowerShell as Administrator: docker\setup-worker-openssh-tailscale-admin.ps1 -UserName $env:USERNAME"
 } catch {
     Add-Check $checks "Local OpenSSH server" $false $_.Exception.Message "Install OpenSSH Server and start sshd."
+}
+
+$localSshPortOk = $false
+try {
+    $localSshPortOk = Test-NetConnection -ComputerName "127.0.0.1" -Port 22 -InformationLevel Quiet -WarningAction SilentlyContinue
+    Add-Check $checks "Local SSH port 22" $localSshPortOk "localhost:22=$localSshPortOk" "Start sshd and verify its ListenAddress/Port configuration."
+} catch {
+    Add-Check $checks "Local SSH port 22" $false $_.Exception.Message "Start sshd and verify its ListenAddress/Port configuration."
 }
 
 $firewallOk = $false
@@ -169,6 +191,39 @@ try {
     Add-Check $checks "Tailscale-only SSH firewall rule" $firewallOk "rules=$($rules.Count)" "Run docker\setup-worker-openssh-tailscale-admin.ps1 as Administrator."
 } catch {
     Add-Check $checks "Tailscale-only SSH firewall rule" $false $_.Exception.Message "Run diagnostics in Windows PowerShell with NetSecurity available."
+}
+
+$authorizedKeysPaths = @(
+    (Join-Path $env:USERPROFILE ".ssh\authorized_keys"),
+    "$env:ProgramData\ssh\administrators_authorized_keys"
+)
+$authorizedKeyFiles = @($authorizedKeysPaths | Where-Object { Test-Path $_ })
+$authorizedKeysOk = $authorizedKeyFiles.Count -gt 0 -and (@($authorizedKeyFiles | Where-Object { (Get-Item $_).Length -gt 0 }).Count -gt 0)
+Add-Check $checks "SSH authorized keys" $authorizedKeysOk ($authorizedKeyFiles -join "; ") "Install the approved Brain public key only; never copy or report a private key."
+
+$fingerprintVerified = $false
+if ($authorizedKeysOk -and $ExpectedBrainKeyFingerprint) {
+    foreach ($keyFile in $authorizedKeyFiles) {
+        $fingerprints = (ssh-keygen -lf $keyFile 2>&1) -join "`n"
+        if ($fingerprints -match [regex]::Escape($ExpectedBrainKeyFingerprint)) { $fingerprintVerified = $true }
+    }
+}
+Add-Check $checks "Approved Brain SSH key fingerprint" $fingerprintVerified "expected=$ExpectedBrainKeyFingerprint" "Pass -ExpectedBrainKeyFingerprint with the approved Brain public-key fingerprint."
+
+$sshBlocker = if (-not $sshServiceInstalled) {
+    "service_missing"
+} elseif (-not $localSshServiceOk) {
+    "service_stopped"
+} elseif (-not $localSshPortOk) {
+    "port_not_listening"
+} elseif (-not $firewallOk) {
+    "firewall_missing"
+} elseif (-not $authorizedKeysOk) {
+    "auth_key_missing"
+} elseif (-not $fingerprintVerified) {
+    "auth_key_unverified"
+} else {
+    "ready_for_brain_auth_test"
 }
 
 $dockerOk = $false
@@ -238,10 +293,19 @@ try {
     Add-Check $checks "Publish telemetry" $false $_.Exception.Message "Fix Brain API connectivity and rerun."
 }
 
+foreach ($message in @($diagnosticMessages)) {
+    try {
+        $ack = Invoke-Json -Method "POST" -Uri "http://$BrainHost`:8088/speaker/messages/$($message.id)/ack" -Body @{ actor = $MachineId }
+        if ($ack.message.status -eq "acknowledged") { $speakerAckCount += 1 }
+    } catch {
+        Write-Host "Could not acknowledge diagnostic message $($message.id): $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 $durationMs = [int]((Get-Date) - $startedAt).TotalMilliseconds
 $passed = ($checks | Where-Object { $_.ok }).Count
 $total = $checks.Count
-$overall = if ($passed -eq $total) { "ready" } elseif ($apiOk -and $listenerOk -and $speakerOk) { "partial_worker_ready" } else { "blocked" }
+$overall = if ($passed -eq $total) { "ready" } elseif ($apiOk -and $listenerOk -and $speakerOk -and $workerRunning) { "connected_worker_attention" } else { "blocked" }
 
 $report = [ordered]@{
     machine_id = $MachineId
@@ -257,6 +321,24 @@ $report = [ordered]@{
     passed = $passed
     total = $total
     tailscale_ip = $tailscaleIp
+    pulse = @{
+        observed_at = (Get-Date).ToString("o")
+        api_reachable = $apiOk
+        listener_published = $listenerOk
+        speaker_read = $speakerOk
+        speaker_acknowledged = $speakerAckCount
+        worker_running = $workerRunning
+    }
+    ssh_diagnostic = @{
+        blocker = $sshBlocker
+        service_installed = $sshServiceInstalled
+        service_running = $localSshServiceOk
+        localhost_port_22 = $localSshPortOk
+        tailscale_firewall_rule = $firewallOk
+        authorized_keys_present = $authorizedKeysOk
+        expected_key_fingerprint_verified = $fingerprintVerified
+        authorized_key_files = $authorizedKeyFiles
+    }
     system = @{
         os = $os.Caption
         cpu = $cpu.Name
@@ -313,6 +395,23 @@ try {
     Write-Host "Could not publish diagnostic to Brain: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
+foreach ($requestId in @($peerRequestIds | Select-Object -Unique)) {
+    try {
+        $peerResponse = @{
+            responder_machine_id = $MachineId
+            response_body = "$MachineId diagnostic complete: $overall ($passed/$total). SSH blocker: $sshBlocker."
+            status = if ($overall -eq "ready") { "fulfilled" } else { "needs_clarification" }
+            artifacts = @("diagnostics/$MachineId/latest.json", "diagnostics/$MachineId/latest.txt")
+            quality_score = if ($overall -eq "ready") { 100 } else { 60 }
+            metadata = @{ machine_id = $MachineId; ssh_blocker = $sshBlocker; speaker_acknowledged = $speakerAckCount }
+        }
+        Invoke-Json -Method "POST" -Uri "http://$BrainHost`:8088/collaboration/peer-requests/$requestId/respond" -Body $peerResponse | Out-Null
+        Write-Host "Responded to peer diagnostic request $requestId"
+    } catch {
+        Write-Host "Could not respond to peer request $requestId`: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 if ($CommitReport) {
     try {
         git add "diagnostics/$MachineId/latest.json" "diagnostics/$MachineId/latest.txt"
@@ -327,3 +426,7 @@ if ($CommitReport) {
 Write-Host ""
 Write-Host "Next command for this laptop:"
 Write-Host "powershell -ExecutionPolicy Bypass -File .\docker\run-laptop-diagnostics.ps1 -MachineId $MachineId -BrainHost $BrainHost -BrainUser $BrainUser -StartWorker -CommitReport"
+
+if ($overall -eq "ready") { exit 0 }
+if ($overall -eq "connected_worker_attention") { exit 1 }
+exit 2

@@ -263,7 +263,7 @@ def respond_to_peer_request(
                     response_metadata = %s::jsonb,
                     responded_at = case when %s in ('fulfilled', 'rejected') then now() else responded_at end,
                     updated_at = now()
-                where id = %s
+                where id = %s and to_machine_id = %s
                 returning *
                 """,
                 (
@@ -275,11 +275,12 @@ def respond_to_peer_request(
                     json.dumps(metadata, default=str),
                     status,
                     request_id,
+                    responder_machine_id,
                 ),
             )
             row = cur.fetchone()
             if not row:
-                raise ValueError(f"peer request {request_id} not found")
+                raise ValueError(f"peer request {request_id} is not addressed to {responder_machine_id}")
             peer_request = dict(row)
         conn.commit()
 

@@ -1,12 +1,21 @@
 import pytest
 
 from ai_ops_center import worker
+from ai_ops_center.migrations import _checksum_matches
 from ai_ops_center.queue_manager import rank_fallback_targets, retry_delay_seconds, task_is_automatic_eligible
 
 
 def test_retry_delay_is_exponential_and_bounded():
     assert [retry_delay_seconds(value) for value in (0, 1, 2, 3)] == [5, 5, 10, 20]
     assert retry_delay_seconds(100) == 300
+
+
+def test_migration_checksum_compatibility_is_narrowly_scoped():
+    historical = "829a0d27a5f2f03b9b27d54bab911a720b2aff555e659e5713480262431a69ad"
+    current = "1457c0aaeb6836c565f4af1d2945eccb876836bfa9a55e3b6856ef489f1e6fe6"
+    assert _checksum_matches("002", historical, current) is True
+    assert _checksum_matches("002", "unexpected", current) is False
+    assert _checksum_matches("999", historical, current) is False
 
 
 @pytest.mark.parametrize(

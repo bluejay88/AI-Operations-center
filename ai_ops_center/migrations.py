@@ -8,6 +8,18 @@ from .db import ROOT, connect
 
 MIGRATIONS_DIR = ROOT / "sql" / "migrations"
 
+# Migration 002 was applied during the queue rollout with an extra idempotent
+# active_task_id ALTER that is also present in migration 003. The repository
+# version removes that duplicate statement. Accept only that exact historical
+# checksum; all other applied-file changes remain fatal.
+CHECKSUM_COMPATIBILITY: dict[str, set[str]] = {
+    "002": {"829a0d27a5f2f03b9b27d54bab911a720b2aff555e659e5713480262431a69ad"},
+}
+
+
+def _checksum_matches(version: str, applied_checksum: str, current_checksum: str) -> bool:
+    return applied_checksum == current_checksum or applied_checksum in CHECKSUM_COMPATIBILITY.get(version, set())
+
 
 def ensure_migration_table(local: bool = False) -> None:
     with connect(local=local) as conn:
@@ -42,7 +54,7 @@ def migration_status(local: bool = False) -> dict[str, Any]:
         item = {"version": version, "name": name, "path": str(path.relative_to(ROOT)), "checksum": checksum}
         if row:
             item["applied_at"] = row["applied_at"]
-            item["checksum_matches"] = row["checksum"] == checksum
+            item["checksum_matches"] = _checksum_matches(version, row["checksum"], checksum)
             applied_list.append(item)
         else:
             pending.append(item)
@@ -67,7 +79,7 @@ def apply_migrations(local: bool = False) -> dict[str, Any]:
                 version, name = _parse_migration_name(path)
                 checksum = _checksum(path)
                 if version in applied:
-                    if applied[version] != checksum:
+                    if not _checksum_matches(version, applied[version], checksum):
                         raise RuntimeError(f"Migration {version} checksum changed after it was applied.")
                     continue
                 sql = path.read_text(encoding="utf-8")

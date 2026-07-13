@@ -3,9 +3,23 @@
 Date: 2026-07-13  
 Scope: Main AI Operations Center, Dev PET (Byte), Research PET (Nova), Business PET (Ledger), lifetime task accounting, live connectivity, and deployment.
 
+## Latest revalidation — 2026-07-13 17:16 CDT
+
+**DEPLOYMENT BLOCKED; CODE GATES PASS.** The queue lease/fencing scheduler, real model/diagnostic worker executors, completion pulses, speaker acknowledgement, peer-response path, and migration collision guard are implemented. The rebuilt deployment briefly reached healthy status with zero stalled tasks, but the final image recreate occurred while migration `002` had been reverted to a non-applied checksum. The local file is restored to the applied checksum `829a0d27...`; rebuilding/recreating the Docker services is still required.
+
+Current truth:
+
+- Disposable Python 3.12 test container: `30 passed`.
+- Critical Python modules compile; PowerShell diagnostic analyzer parses successfully; `git diff --check` reports no whitespace errors.
+- Database protocol guard is ready as migration `004`, but was not applied because elevated Docker actions became unavailable.
+- Brain API at `localhost:8088` is currently unreachable, so no Business or Research peer request was claimed as delivered.
+- Research is reachable over Tailscale at `100.90.219.88`, while TCP/22 is blocked and its worker heartbeat is stale.
+- Business previously claimed tasks through a legacy unfenced worker; migration `004` is designed to reject that unsafe protocol until the physical worker is upgraded.
+- Release decision remains blocked until the final image rebuild, migration `004` application, service health check, and correlated Business/Research response evidence complete.
+
 ## Release decision
 
-**PASS WITH FLEET WARNINGS** — core application, task accounting, and live network reachability gates pass. Only one of three laptop workers currently has a fresh heartbeat, and direct Brain-to-laptop SSH remains pending until administrator setup is completed on each physical laptop. The UI reports both conditions separately instead of treating reachability, worker activity, and direct control as equivalent.
+**FAIL / DEPLOYMENT BLOCKED** — PostgreSQL is healthy, but the deployed API and worker image is stale and restart-looping on migration checksum validation. Business and Research also lack fresh, correlated machine-originated round-trip evidence. The earlier UI/accounting baseline remains useful evidence, but it is not a current production release pass.
 
 ## Stage gates
 
@@ -19,7 +33,7 @@ Scope: Main AI Operations Center, Dev PET (Byte), Research PET (Nova), Business 
 | 6. Security/governance | Privileged browser/file actions remain approval-gated; inline configuration complies with CSP | Brain-governed controls remain separate from operational functions; inline config was removed after CSP browser audit and replaced with external-script-readable data attributes | PASS |
 | 7. Automated tests | Python contracts, configuration, accounting, freshness, availability, presence isolation, and invariants pass | Rebuilt Python 3.12 container: `14 passed` | PASS |
 | 8. Static quality | JavaScript parses, Python compiles, and patch has no whitespace errors | `node --check` for both bundles, `compileall`, and `git diff --check` passed | PASS |
-| 9. Deployment | Rebuilt services start, recover automatically, and expose application health | PostgreSQL, API, and worker use restart policies; all three containers became healthy; the strict live audit passes core gates and separately warns on stale physical workers and unavailable direct SSH | PASS + WARN |
+| 9. Deployment | Rebuilt services start, recover automatically, and expose application health | PostgreSQL is healthy; API and worker are restart-looping because the deployed image predates the narrowly scoped migration-002 compatibility fix. A fresh rebuild and 60-second stable-health observation are required. | FAIL / BLOCKED |
 
 ## Defects found by rendered auditing
 

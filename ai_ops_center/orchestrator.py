@@ -149,6 +149,8 @@ def claim_next_task(machine_id: str, local: bool = False, lease_seconds: int = 1
 def complete_task(task_id: int, result: str, claim_token: str, machine_id: str, local: bool = False) -> bool:
     with connect(local=local) as conn:
         with conn.cursor() as cur:
+            cur.execute("select set_config('aiops.claim_token', %s, true)", (claim_token,))
+            cur.execute("select set_config('aiops.machine_id', %s, true)", (machine_id,))
             cur.execute(
                 """
                 update tasks
@@ -162,6 +164,7 @@ def complete_task(task_id: int, result: str, claim_token: str, machine_id: str, 
                   and status = 'running'
                   and claim_token = %s
                   and claimed_by_machine = %s
+                  and lease_expires_at > now()
                 returning id
                 """,
                 (result, task_id, claim_token, machine_id),
@@ -202,6 +205,7 @@ def renew_task_lease(
                 set lease_expires_at = now() + (%s * interval '1 second'), updated_at = now()
                 where id = %s and status = 'running'
                   and claim_token = %s and claimed_by_machine = %s
+                  and lease_expires_at > now()
                 returning id
                 """,
                 (lease_seconds, task_id, claim_token, machine_id),

@@ -102,13 +102,14 @@ def acknowledge_speaker_message(message_id: int, actor: str, local: bool = False
                     acknowledged_at = now(),
                     metadata = metadata || jsonb_build_object('acknowledged_by', %s::text)
                 where id = %s
+                  and target_id = %s
                 returning id, target_id, status, acknowledged_at
                 """,
-                (actor, message_id),
+                (actor, message_id, actor),
             )
             row = cur.fetchone()
             if not row:
-                raise ValueError(f"speaker message {message_id} not found")
+                raise ValueError(f"speaker message {message_id} is not addressed to {actor}")
         conn.commit()
     return dict(row)
 

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_worker(machine_id: str, once: bool = False, sleep_seconds: int = 15, work_seconds: int = 4, local: bool = False) -> None:
+    if work_seconds < 0:
+        raise ValueError("work_seconds cannot be negative")
     apply_migrations(local=local)
     last_steward_at = 0.0
     while True:
@@ -35,8 +37,6 @@ def run_worker(machine_id: str, once: bool = False, sleep_seconds: int = 15, wor
         if task:
             record_heartbeat(machine_id, active_task_id=task["id"], local=local)
             try:
-                if work_seconds > 0:
-                    time.sleep(work_seconds)
                 result = _execute_with_lease_heartbeats(machine_id, task, local=local)
                 completed = complete_task(task["id"], result, task["claim_token"], machine_id, local=local)
                 if completed:

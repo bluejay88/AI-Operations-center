@@ -139,7 +139,8 @@ def main() -> None:
 
     if args.command == "init-db":
         init_db(local=args.local_db)
-        print("Database initialized.")
+        seed_registry(local=args.local_db)
+        print("Database initialized and registry seeded.")
     elif args.command == "seed":
         seed_registry(local=args.local_db)
         print("Registry seeded.")

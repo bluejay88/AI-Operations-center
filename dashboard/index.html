@@ -4,9 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI Operations Center</title>
-    <link rel="stylesheet" href="./styles.css?v=pet-laptops-20260713b" />
+    <link rel="stylesheet" href="./styles.css?v=live-data-auth-20260713d" />
   </head>
   <body>
+    <section id="dashboard-lock" class="dashboard-lock" aria-labelledby="lock-title">
+      <form id="dashboard-login-form" class="dashboard-login">
+        <p class="eyebrow">Protected Mission Control</p>
+        <h1 id="lock-title">AI Operations Center</h1>
+        <p>Enter the dashboard password to connect to the Brain API and view live workstation data.</p>
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">Unlock Dashboard</button>
+        <small id="dashboard-login-message">Brain API will be detected automatically.</small>
+      </form>
+    </section>
     <div class="app-shell">
       <aside class="sidebar">
         <div>
@@ -37,6 +50,7 @@
           <div>
             <p class="eyebrow">Live command view</p>
             <h2 id="overview-title">Distributed workforce status</h2>
+            <p id="api-connection-status" class="connection-status">Waiting for dashboard unlock.</p>
           </div>
           <div class="status-strip" id="summary-strip"></div>
         </section>
@@ -332,6 +346,6 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=pet-laptops-20260713b"></script>
+    <script src="./app.js?v=live-data-auth-20260713d"></script>
   </body>
 </html>

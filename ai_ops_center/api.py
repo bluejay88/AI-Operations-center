@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hmac
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import StreamingResponse
@@ -42,7 +44,7 @@ from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
 from .reports import generate_report
 from .settings import get_settings
-from .tasks import create_business_continuity, create_dev_kickoff, create_manual_task, task_snapshot
+from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_snapshot
 
 settings = get_settings()
 docs_url = "/docs" if settings.expose_api_docs or settings.app_env != "production" else None
@@ -58,6 +60,16 @@ app = FastAPI(
 )
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_DIR = ROOT / "dashboard"
+
+cors_origins = [origin.strip() for origin in settings.cors_allow_origins.split(",") if origin.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_origin_regex=settings.cors_allow_origin_regex,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-AI-Ops-Dashboard-Token"],
+)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -84,6 +96,10 @@ class FlowisePredictionRequest(BaseModel):
     override_config: dict | None = None
 
 
+class DashboardLoginRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+
+
 class TaskCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -92,6 +108,15 @@ class TaskCreateRequest(BaseModel):
     category: str = Field(min_length=2, max_length=80)
     description: str = Field(min_length=3, max_length=4000)
     priority: int = Field(default=50, ge=1, le=100)
+
+
+class ChatTaskIntakeRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    title: str = Field(min_length=3, max_length=180)
+    body: str = Field(min_length=3, max_length=12000)
+    requester: str = Field(default="chat", min_length=2, max_length=80)
+    priority: int = Field(default=85, ge=1, le=100)
 
 
 class OperatorRequestCreateRequest(BaseModel):
@@ -307,6 +332,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/dashboard/login")
+def dashboard_login(request: DashboardLoginRequest) -> dict[str, str | bool]:
+    expected = settings.dashboard_password
+    if expected and not hmac.compare_digest(request.password, expected):
+        return {"ok": False, "message": "Invalid dashboard password"}
+    return {"ok": True, "token": "dashboard-session"}
+
+
 @app.get("/status")
 def status() -> dict[str, str]:
     return {"status": machine_status()}
@@ -395,6 +428,18 @@ def create_task(request: TaskCreateRequest) -> dict[str, int]:
         priority=request.priority,
     )
     return {"task_id": task_id}
+
+
+@app.post("/tasks/intake")
+def chat_task_intake(request: ChatTaskIntakeRequest) -> dict[str, list[int]]:
+    return {
+        "created_task_ids": create_chat_task_intake(
+            title=request.title,
+            body=request.body,
+            requester=request.requester,
+            priority=request.priority,
+        )
+    }
 
 
 @app.get("/operator-requests")

@@ -114,6 +114,72 @@ BUSINESS_CONTINUITY_TASKS = [
 ]
 
 
+INTAKE_AGENT_ROUTES = [
+    ("development", "programmer", "dev-laptop", ["code", "api", "react", "python", "deploy", "website", "app", "database"]),
+    ("research", "research-lead", "research-laptop", ["research", "market", "grant", "funding", "zillow", "reddit", "github", "academic"]),
+    ("business", "business-manager", "business-laptop", ["business", "crm", "invoice", "email", "sales", "bookkeeping", "llc"]),
+    ("revenue", "lead-generation", "business-laptop", ["lead", "client", "offer", "campaign", "marketing", "sales funnel"]),
+    ("content", "content-engine", "brain-gaming-pc", ["content", "blog", "video", "social", "youtube", "tiktok"]),
+    ("security", "security-monitor", "brain-gaming-pc", ["security", "audit", "password", "ssh", "token", "permission"]),
+]
+
+INTAKE_RUBRIC = [
+    "Market relevance: include target buyer, demand signal, competitor/context note, and revenue path.",
+    "Quality minimum: produce concrete deliverables, source notes, next action, blocker list, and confidence score.",
+    "Security minimum: do not send emails, spend money, deploy externally, or change sensitive settings without Brain/human approval.",
+    "Handoff minimum: include files changed or artifacts created, tests/checks run, and what another laptop can continue.",
+    "Brain review minimum: summarize risks, assumptions, due time, and approval request if needed.",
+]
+
+
+def create_chat_task_intake(
+    title: str,
+    body: str,
+    priority: int = 85,
+    requester: str = "chat",
+    local: bool = False,
+) -> list[int]:
+    text = f"{title}\n{body}".lower()
+    selected = []
+    for category, agent_id, machine_id, keywords in INTAKE_AGENT_ROUTES:
+        if any(keyword in text for keyword in keywords):
+            selected.append((category, agent_id, machine_id))
+    if not selected:
+        selected = [
+            ("operations", "project-coordinator", "brain-gaming-pc"),
+            ("research", "research-lead", "research-laptop"),
+            ("development", "programmer", "dev-laptop"),
+        ]
+
+    created: list[int] = []
+    for index, (category, agent_id, machine_id) in enumerate(selected, start=1):
+        task_title = f"Intake {index}: {title[:130]}"
+        description = (
+            f"Source request from {requester}:\n{body}\n\n"
+            f"Assigned lane: {category} on {machine_id}. Produce a rich, implementation-ready work product.\n\n"
+            "Required rubric:\n- " + "\n- ".join(INTAKE_RUBRIC)
+        )
+        created.append(
+            create_task(
+                title=task_title,
+                agent_id=agent_id,
+                category=category,
+                description=description,
+                priority=max(1, min(100, priority - index + 1)),
+                metadata={
+                    "created_by": "chat_task_intake",
+                    "requester": requester,
+                    "source_title": title,
+                    "target_machine_id": machine_id,
+                    "rubric": INTAKE_RUBRIC,
+                    "dedupe_hint": f"{requester}:{title}".lower(),
+                },
+                local=local,
+            )
+        )
+    return created
+
+
 def task_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:
     with connect(local=local) as conn:
         with conn.cursor() as cur:

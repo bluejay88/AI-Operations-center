@@ -53,10 +53,13 @@ def run_25_checks() -> dict:
     add("schema has remote operations", "create table if not exists remote_operation_requests" in schema)
 
     app_js = (ROOT / "dashboard/app.js").read_text(encoding="utf-8")
+    index_html = (ROOT / "dashboard/index.html").read_text(encoding="utf-8")
     add("dashboard has 400 seed button handler", "ops2SeedExpansion" in app_js)
     add("dashboard has 5 business launcher", "ops2SeedBusinesses" in app_js)
     add("dashboard has operator request form", "operatorRequestForm" in app_js)
     add("dashboard uses laptop pet visuals", "pet-screenplate" in app_js and "pet-keyboard" in app_js)
+    add("dashboard has password gate", "dashboard-login-form" in index_html and "/dashboard/login" in app_js)
+    add("dashboard supports live API base", "DEFAULT_BRAIN_API" in app_js and "aiOpsApiBase" in app_js)
 
     api_py = (ROOT / "ai_ops_center/api.py").read_text(encoding="utf-8")
     add("api exposes failover evaluate", "/ops2/failover/evaluate" in api_py)

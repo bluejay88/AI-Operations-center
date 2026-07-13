@@ -22,9 +22,32 @@ const state = {
   ],
   selectedReport: "hourly",
   stream: null,
+  unlocked: false,
 };
 
+const DEFAULT_BRAIN_API = "http://100.70.49.32:8088";
+const params = new URLSearchParams(window.location.search);
+const requestedApiBase = params.get("api");
+if (requestedApiBase) {
+  window.localStorage.setItem("aiOpsApiBase", requestedApiBase.replace(/\/$/, ""));
+}
+
+function resolveApiBase() {
+  const stored = window.localStorage.getItem("aiOpsApiBase");
+  if (stored) return stored.replace(/\/$/, "");
+  const host = window.location.hostname;
+  const sameOriginHosts = new Set(["localhost", "127.0.0.1", "100.70.49.32"]);
+  if (window.location.protocol === "file:" || !sameOriginHosts.has(host)) return DEFAULT_BRAIN_API;
+  return "";
+}
+
+const API_BASE = resolveApiBase();
+
 const els = {
+  lock: document.querySelector("#dashboard-lock"),
+  loginForm: document.querySelector("#dashboard-login-form"),
+  loginMessage: document.querySelector("#dashboard-login-message"),
+  apiConnectionStatus: document.querySelector("#api-connection-status"),
   summary: document.querySelector("#summary-strip"),
   machines: document.querySelector("#machine-grid"),
   factory: document.querySelector("#factory-grid"),
@@ -88,7 +111,8 @@ function escapeHtml(value) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -96,6 +120,51 @@ async function api(path, options = {}) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
+}
+
+async function safeApi(path, fallback, label, options = {}) {
+  try {
+    return await api(path, options);
+  } catch (error) {
+    console.error(`Failed to load ${label}`, error);
+    toast(`Live data warning: ${label} failed`);
+    return fallback;
+  }
+}
+
+function normalizeFactory(payload) {
+  return payload?.factory || payload || { machines: [], handoff_gates: [] };
+}
+
+function normalizeTasks(payload) {
+  return Array.isArray(payload) ? payload : payload?.tasks || [];
+}
+
+function normalizeConnections(payload) {
+  return Array.isArray(payload) ? payload : payload?.connections || [];
+}
+
+function normalizeApprovals(payload) {
+  return Array.isArray(payload) ? payload : payload?.approvals || [];
+}
+
+function fallbackPanel(title, detail = "Waiting for live data.") {
+  return `<article class="empty-state"><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></article>`;
+}
+
+function safeRender(label, renderFn) {
+  try {
+    renderFn();
+  } catch (error) {
+    console.error(`Render failed: ${label}`, error);
+    toast(`Dashboard panel warning: ${label}`);
+  }
+}
+
+function setConnectionStatus(message, tone = "") {
+  if (!els.apiConnectionStatus) return;
+  els.apiConnectionStatus.textContent = message;
+  els.apiConnectionStatus.className = `connection-status ${tone}`.trim();
 }
 
 function taskCounts() {
@@ -125,6 +194,10 @@ function renderSummary() {
 }
 
 function renderMachines() {
+  if (!(state.registry?.machines || []).length) {
+    els.machines.innerHTML = fallbackPanel("Machine registry unavailable", "The dashboard is waiting for /registry from the Brain API.");
+    return;
+  }
   const readinessByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, machine]));
   const tasksByMachine = state.tasks.reduce((acc, task) => {
     const bucket = (acc[task.machine_id] ||= { queued: 0, running: 0, completed: 0 });
@@ -149,7 +222,7 @@ function renderMachines() {
             </div>
             <span class="pill ${isOnline ? "online" : "offline"}">${escapeHtml(stateLabel)}</span>
           </header>
-          <p>${escapeHtml(machine.responsibilities.slice(0, 4).join(", "))}</p>
+          <p>${escapeHtml((machine.responsibilities || []).slice(0, 4).join(", "))}</p>
           <dl>
             <div><dt>Role</dt><dd>${escapeHtml(machine.role)}</dd></div>
             <div><dt>Heartbeat</dt><dd>${readiness.last_seen ? new Date(readiness.last_seen).toLocaleTimeString() : "never"}</dd></div>
@@ -177,6 +250,10 @@ function iconForRole(role) {
 function renderAgents() {
   const agents = state.registry?.agents || [];
   const machines = state.registry?.machines || [];
+  if (!machines.length) {
+    els.agents.innerHTML = fallbackPanel("Agent registry unavailable", "The dashboard is waiting for registered AI agents.");
+    return;
+  }
   els.agents.innerHTML = machines
     .map((machine) => {
       const assigned = agents.filter((agent) => agent.machine_id === machine.id);
@@ -209,6 +286,11 @@ function renderAgents() {
 
 function renderFactory() {
   const machines = state.factory?.machines || [];
+  if (!machines.length) {
+    els.factory.innerHTML = fallbackPanel("Factory data unavailable", "The dashboard is waiting for the Brain factory map.");
+    els.factoryGates.innerHTML = "";
+    return;
+  }
   els.factory.innerHTML = machines
     .map((machine) => {
       const counts = machine.live_task_counts || {};
@@ -225,13 +307,13 @@ function renderFactory() {
             <span>Done ${counts.completed || 0}</span>
           </div>
           <h4>Duties</h4>
-          <ul>${machine.active_duties.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+          <ul>${(machine.active_duties || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
           <h4>Subagents</h4>
-          <div class="tag-row">${machine.subagents.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+          <div class="tag-row">${(machine.subagents || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
           <h4>Precheck Rubric</h4>
-          <ul>${machine.precheck_rubric.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+          <ul>${(machine.precheck_rubric || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
           <h4>Due Windows</h4>
-          <dl class="due-list">${Object.entries(machine.due_windows).map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>
+          <dl class="due-list">${Object.entries(machine.due_windows || {}).map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>
         </article>
       `;
     })
@@ -453,6 +535,7 @@ function petMarkup(pet) {
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
           <span class="pet-aura"></span>
           <span class="pet-halo"></span>
+          <span class="pet-siren"><span></span><span></span></span>
           <span class="pet-ear left"></span>
           <span class="pet-ear right"></span>
           <span class="pet-screenplate">
@@ -591,100 +674,102 @@ function renderOperatorRequests() {
 
 async function loadReport(type = state.selectedReport) {
   state.selectedReport = type;
-  const data = await api(`/reports/${type}`);
+  const data = await safeApi(`/reports/${type}`, { report: "Report data is not available yet." }, `${type} report`);
   els.report.textContent = data.report;
 }
 
 async function loadPhoenixBriefing() {
-  const data = await api("/phoenix/briefing");
+  const data = await safeApi("/phoenix/briefing", { briefing: "Phoenix briefing is not available yet." }, "Phoenix briefing");
   state.phoenixBriefing = data.briefing;
   els.phoenixSummary.textContent = data.briefing;
 }
 
 async function loadApprovals() {
-  const data = await api("/approvals");
+  const data = await safeApi("/approvals", { approvals: [] }, "approvals");
   state.approvals = data.approvals || [];
   renderApprovals();
 }
 
 async function loadListenerEvents() {
-  const data = await api("/listener/events");
+  const data = await safeApi("/listener/events", { events: [] }, "listener events");
   state.listenerEvents = data.events || [];
   renderListenerEvents();
 }
 
 async function loadSpeakerFeed() {
   const target = els.speakerTarget.value;
-  state.speakerFeed = await api(`/speaker/feed/${encodeURIComponent(target)}`);
+  state.speakerFeed = await safeApi(`/speaker/feed/${encodeURIComponent(target)}`, { target_id: target, messages: [] }, "speaker feed");
   renderSpeakerFeed();
 }
 
 async function loadIntegrations() {
-  const data = await api("/integrations/status");
+  const data = await safeApi("/integrations/status", { providers: [] }, "integrations");
   state.integrations = data.providers || [];
   renderIntegrations();
 }
 
 async function loadOperatorRequests() {
-  const data = await api("/operator-requests");
+  const data = await safeApi("/operator-requests", { requests: [] }, "operator requests");
   state.operatorRequests = data.requests || [];
   renderOperatorRequests();
 }
 
 async function loadNoc() {
-  state.noc = await api("/ops2/noc");
+  state.noc = await safeApi("/ops2/noc", {}, "NOC");
   renderNoc();
 }
 
 async function refresh() {
+  setConnectionStatus(`Connecting to Brain API ${API_BASE || window.location.origin}`, "warning");
   const [registry, readiness, tasks, connections, factory, noc] = await Promise.all([
-    api("/registry"),
-    api("/readiness.json"),
-    api("/tasks"),
-    api("/connections"),
-    api("/factory"),
-    api("/ops2/noc"),
+    safeApi("/registry", { machines: [], agents: [] }, "registry"),
+    safeApi("/readiness.json", { machines: [] }, "readiness"),
+    safeApi("/tasks", { tasks: [] }, "tasks"),
+    safeApi("/connections", { connections: [] }, "connections"),
+    safeApi("/factory", { factory: { machines: [], handoff_gates: [] } }, "factory"),
+    safeApi("/ops2/noc", {}, "NOC"),
   ]);
   state.registry = registry;
   state.readiness = readiness;
-  state.tasks = tasks.tasks;
-  state.connections = connections.connections;
-  state.factory = factory;
+  state.tasks = normalizeTasks(tasks);
+  state.connections = normalizeConnections(connections);
+  state.factory = normalizeFactory(factory);
   state.noc = noc;
-  renderSummary();
-  renderMachines();
-  renderFactory();
-  renderAgents();
-  renderTasks();
-  renderNoc();
-  renderPets();
+  safeRender("summary", renderSummary);
+  safeRender("machines", renderMachines);
+  safeRender("factory", renderFactory);
+  safeRender("agents", renderAgents);
+  safeRender("tasks", renderTasks);
+  safeRender("NOC", renderNoc);
+  safeRender("pets", renderPets);
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
   await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations(), loadOperatorRequests()]);
+  setConnectionStatus(`Connected to Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
 
 function applyRealtimePayload(payload) {
   state.readiness = payload.readiness;
-  state.tasks = payload.tasks || [];
-  state.connections = payload.connections || [];
-  state.factory = payload.factory || state.factory;
-  state.approvals = payload.approvals || state.approvals;
+  state.tasks = normalizeTasks(payload.tasks);
+  state.connections = normalizeConnections(payload.connections);
+  state.factory = normalizeFactory(payload.factory || state.factory);
+  state.approvals = normalizeApprovals(payload.approvals || state.approvals);
   state.noc = payload.noc || state.noc;
-  renderSummary();
-  renderMachines();
-  renderFactory();
-  renderAgents();
-  renderTasks();
-  renderApprovals();
-  renderNoc();
-  renderPets();
+  safeRender("summary", renderSummary);
+  safeRender("machines", renderMachines);
+  safeRender("factory", renderFactory);
+  safeRender("agents", renderAgents);
+  safeRender("tasks", renderTasks);
+  safeRender("approvals", renderApprovals);
+  safeRender("NOC", renderNoc);
+  safeRender("pets", renderPets);
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
 
 function startStream() {
   if (!window.EventSource) return;
-  state.stream = new EventSource("/stream");
+  state.stream = new EventSource(`${API_BASE}/stream`);
   state.stream.onmessage = (event) => {
     const payload = JSON.parse(event.data);
     applyRealtimePayload(payload);
@@ -693,6 +778,56 @@ function startStream() {
     els.lastRefresh.textContent = "Live stream reconnecting";
   };
 }
+
+function lockDashboard() {
+  document.body.classList.add("locked");
+  els.lock?.classList.remove("hidden");
+  setConnectionStatus("Waiting for dashboard unlock.", "warning");
+}
+
+function unlockDashboard() {
+  state.unlocked = true;
+  document.body.classList.remove("locked");
+  els.lock?.classList.add("hidden");
+  window.sessionStorage.setItem(`aiOpsUnlocked:${API_BASE || "same-origin"}`, "true");
+  refresh().catch((error) => {
+    console.error(error);
+    setConnectionStatus(`Brain API connection failed: ${error.message}`, "warning");
+    toast(error.message);
+  });
+  startStream();
+  window.setInterval(() => refresh().catch(() => {}), 30000);
+}
+
+async function submitDashboardLogin(password) {
+  const data = await api("/dashboard/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+  if (!data.ok) throw new Error(data.message || "Invalid dashboard password");
+  unlockDashboard();
+}
+
+function initializeDashboardGate() {
+  lockDashboard();
+  els.loginMessage.textContent = `Brain API: ${API_BASE || window.location.origin}`;
+  if (window.sessionStorage.getItem(`aiOpsUnlocked:${API_BASE || "same-origin"}`) === "true") {
+    unlockDashboard();
+  }
+}
+
+els.loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const password = String(form.get("password") || "");
+  els.loginMessage.textContent = "Checking password...";
+  try {
+    await submitDashboardLogin(password);
+  } catch (error) {
+    els.loginMessage.textContent = error.message;
+    toast(error.message);
+  }
+});
 
 els.refresh.addEventListener("click", () => refresh().catch((error) => toast(error.message)));
 
@@ -811,6 +946,4 @@ els.operatorRequestForm.addEventListener("submit", async (event) => {
   await refresh();
 });
 
-refresh().catch((error) => toast(error.message));
-startStream();
-window.setInterval(() => refresh().catch(() => {}), 30000);
+initializeDashboardGate();

@@ -144,3 +144,101 @@ agents:
     mission: Convert ideas into projects, tasks, deadlines, owners, dependencies, and progress reports.
     cadence: hourly
     tools: [postgres, reports, calendar]
+
+  - id: security-monitor
+    name: Security Monitor AI
+    machine: brain-gaming-pc
+    category: security
+    mission: Watch authentication, SSH posture, dashboard access, remote operation approvals, audit logs, and risky workflow changes.
+    cadence: continuous
+    tools: [postgres, audit-logs, ssh, tailscale]
+    guardrails: [human-approval-for-destructive-actions, least-privilege]
+
+  - id: rubric-auditor
+    name: Rubric Auditor AI
+    machine: brain-gaming-pc
+    category: quality
+    mission: Check every major work product against market, quality, security, source, handoff, and Brain-review rubrics.
+    cadence: on-demand
+    tools: [postgres, reports, prompts]
+
+  - id: market-intelligence
+    name: Market Intelligence AI
+    machine: research-laptop
+    category: research
+    mission: Analyze market demand, competitor offers, pricing, niches, and buyer pain signals before revenue work is approved.
+    cadence: daily
+    tools: [browser, reports, postgres]
+
+  - id: grant-writer
+    name: Grant Writer AI
+    machine: research-laptop
+    category: funding
+    mission: Turn grant discoveries into eligibility notes, application outlines, narrative drafts, budget questions, and deadline plans.
+    cadence: on-demand
+    tools: [browser, documents, reports]
+
+  - id: data-miner
+    name: Data Mining AI
+    machine: research-laptop
+    category: research
+    mission: Build structured datasets from public sources, clean records, dedupe leads, and prepare data for Brain review.
+    cadence: daily
+    tools: [browser, postgres, spreadsheets]
+
+  - id: qa-prechecker
+    name: QA Prechecker AI
+    machine: dev-laptop
+    category: quality
+    mission: Validate builds, tests, accessibility, smoke checks, and user-facing workflows before the Brain approves delivery.
+    cadence: on-demand
+    tools: [pytest, npm, playwright, reports]
+
+  - id: deployment-prechecker
+    name: Deployment Prechecker AI
+    machine: dev-laptop
+    category: deployment
+    mission: Verify deployment steps, environment variables, rollback notes, Netlify readiness, and release packaging.
+    cadence: on-demand
+    tools: [git, docker, netlify, reports]
+
+  - id: database-optimizer
+    name: Database Optimizer AI
+    machine: dev-laptop
+    category: development
+    mission: Review schema, indexes, task routing queries, export/import safety, and long-term scalability for the Operations Center.
+    cadence: weekly
+    tools: [postgres, sql, reports]
+
+  - id: sales-funnel
+    name: Sales Funnel AI
+    machine: business-laptop
+    category: revenue
+    mission: Create landing-page offers, lead magnets, email nurture plans, call scripts, and proposal sequences for approved businesses.
+    cadence: daily
+    tools: [crm, content-calendar, reports]
+
+  - id: customer-success
+    name: Customer Success AI
+    machine: business-laptop
+    category: business
+    mission: Draft support replies, onboarding checklists, client status reports, renewal prompts, and satisfaction summaries.
+    cadence: daily
+    tools: [email, crm, reports]
+
+  - id: finance-auditor
+    name: Finance Auditor AI
+    machine: brain-gaming-pc
+    category: finance
+    mission: Check revenue metrics, cash-flow assumptions, expense categories, and financial reports for consistency before review.
+    cadence: weekly
+    tools: [postgres, spreadsheets, reports]
+    guardrails: [read-only-finance, human-approval-for-money]
+
+  - id: netlify-deployer
+    name: Netlify Deployment AI
+    machine: dev-laptop
+    category: deployment
+    mission: Prepare private dashboard/web deployments, verify build settings, deployment status, domain notes, and access-control requirements.
+    cadence: on-demand
+    tools: [netlify, git, npm, reports]

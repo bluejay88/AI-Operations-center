@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     brain_host: str = "100.70.49.32"
     human_approval_required: bool = Field(default=True)
     expose_api_docs: bool = True
+    dashboard_password: str = "BleujayBrain2026!"
+    cors_allow_origins: str = "http://localhost:8088,http://127.0.0.1:8088,http://100.70.49.32:8088,null"
+    cors_allow_origin_regex: str = r"^https://.*\.netlify\.app$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$|^http://100\.[0-9.]+(:\d+)?$"
 
 
 @lru_cache

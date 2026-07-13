@@ -14,6 +14,8 @@
           <h1>AI Operations Center</h1>
         </div>
         <nav aria-label="Dashboard sections">
+          <a href="#noc">NOC</a>
+          <a href="#device-pets">Device Pets</a>
           <a href="#machines">Machines</a>
           <a href="#factory">Factory</a>
           <a href="#phoenix">Phoenix</a>
@@ -36,6 +38,64 @@
             <h2 id="overview-title">Distributed workforce status</h2>
           </div>
           <div class="status-strip" id="summary-strip"></div>
+        </section>
+
+        <section id="noc" class="workspace-section noc-section">
+          <div class="section-heading">
+            <h2>Enterprise NOC</h2>
+            <p>Mission Control view for workforce, projects, infrastructure, AI usage, security, notifications, and KPIs.</p>
+          </div>
+          <div class="noc-grid">
+            <article class="noc-panel">
+              <header><h3>AI Workforce</h3><span id="noc-ai-updated" class="pill">live</span></header>
+              <div id="noc-workforce" class="noc-metrics"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Projects</h3><span class="pill">Brain split</span></header>
+              <div id="noc-projects" class="compact-list"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Business KPIs</h3><span class="pill">Revenue</span></header>
+              <div id="noc-business" class="noc-metrics"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Infrastructure</h3><span class="pill">Telemetry</span></header>
+              <div id="noc-infra" class="compact-list"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>AI Metrics</h3><span class="pill">Cost</span></header>
+              <div id="noc-ai-metrics" class="noc-metrics"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Security</h3><span class="pill">Audit</span></header>
+              <div id="noc-security" class="compact-list"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Notifications</h3><span class="pill">Ack / snooze</span></header>
+              <div id="noc-notifications" class="compact-list"></div>
+            </article>
+            <article class="noc-panel">
+              <header><h3>Collaboration</h3><span class="pill">Workstations</span></header>
+              <div id="noc-collaboration" class="compact-list"></div>
+            </article>
+          </div>
+          <div class="export-panel">
+            <button id="ops2-seed" type="button">Seed 2.0 Control Plane</button>
+            <button id="ops2-export-all" type="button">Export Full Bundle</button>
+            <button id="ops2-export-project" type="button">Export Project Context</button>
+          </div>
+        </section>
+
+        <section id="device-pets" class="workspace-section">
+          <div class="section-heading">
+            <h2>Device Pets</h2>
+            <p>Animated workstation companions that show current role, workload, health, and security posture.</p>
+          </div>
+          <div class="pet-grid" id="pet-grid"></div>
+          <div class="animation-bank">
+            <strong>Animation Bank</strong>
+            <span id="animation-bank-count">0 loaded</span>
+          </div>
         </section>
 
         <section id="machines" class="workspace-section">

@@ -9,6 +9,16 @@ const state = {
   listenerEvents: [],
   speakerFeed: null,
   integrations: [],
+  noc: null,
+  mascotAnimations: [
+    "sleeping", "working", "thinking", "running", "building", "editing", "researching", "emailing",
+    "scanning", "guarding", "deploying", "testing", "debugging", "planning", "syncing", "reporting",
+    "listening", "speaking", "approving", "reviewing", "learning", "optimizing", "backing-up", "warning",
+    "cooling", "charging", "idle", "celebrating", "blocked", "triaging", "routing", "benchmarking",
+    "indexing", "scraping", "summarizing", "forecasting", "budgeting", "invoicing", "posting", "designing",
+    "packaging", "migrating", "securing", "encrypting", "auditing", "monitoring", "healing", "balancing",
+    "queuing", "merging", "shipping", "documenting", "refactoring", "profiling", "validating", "archiving",
+  ],
   selectedReport: "hourly",
   stream: null,
 };
@@ -26,6 +36,19 @@ const els = {
   speakerList: document.querySelector("#speaker-list"),
   speakerTarget: document.querySelector("#speaker-target"),
   integrations: document.querySelector("#integration-list"),
+  nocWorkforce: document.querySelector("#noc-workforce"),
+  nocProjects: document.querySelector("#noc-projects"),
+  nocBusiness: document.querySelector("#noc-business"),
+  nocInfra: document.querySelector("#noc-infra"),
+  nocAiMetrics: document.querySelector("#noc-ai-metrics"),
+  nocSecurity: document.querySelector("#noc-security"),
+  nocNotifications: document.querySelector("#noc-notifications"),
+  nocCollaboration: document.querySelector("#noc-collaboration"),
+  pets: document.querySelector("#pet-grid"),
+  animationBankCount: document.querySelector("#animation-bank-count"),
+  ops2Seed: document.querySelector("#ops2-seed"),
+  ops2ExportAll: document.querySelector("#ops2-export-all"),
+  ops2ExportProject: document.querySelector("#ops2-export-project"),
   refreshApprovals: document.querySelector("#refresh-approvals"),
   refreshListener: document.querySelector("#refresh-listener"),
   refreshIntegrations: document.querySelector("#refresh-integrations"),
@@ -226,6 +249,223 @@ function renderFactory() {
   `;
 }
 
+function metricTile(label, value, hint = "") {
+  return `<div class="noc-metric"><strong>${escapeHtml(value ?? "n/a")}</strong><span>${escapeHtml(label)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ""}</div>`;
+}
+
+function renderNoc() {
+  const noc = state.noc || {};
+  const workforce = noc.ai_workforce || {};
+  els.nocWorkforce.innerHTML = [
+    metricTile("Online agents", workforce.active_agents, "registered active"),
+    metricTile("Active jobs", workforce.active_jobs, "running now"),
+    metricTile("Queue length", workforce.queue_length, "waiting"),
+    metricTile("CPU score", workforce.cpu_usage, "latest benchmark"),
+    metricTile("Memory usage", workforce.memory_usage ? `${workforce.memory_usage}%` : "n/a", "estimated"),
+    metricTile("Completed", workforce.completed_jobs, "all time"),
+  ].join("");
+
+  els.nocProjects.innerHTML = (noc.projects || [])
+    .map(
+      (project) => `
+        <article>
+          <strong>${escapeHtml(project.name)}</strong>
+          <span>${escapeHtml(project.status)} / owner ${escapeHtml(project.owner_machine_id)} / risk ${escapeHtml(project.risk_score)}</span>
+          <p>Progress ${escapeHtml(project.progress)}%, quality ${escapeHtml(project.quality_score)}, coverage ${escapeHtml(project.test_coverage)}%, target ${escapeHtml(project.revenue_target || 0)}</p>
+        </article>
+      `
+    )
+    .join("") || `<p class="muted">No projects seeded yet.</p>`;
+
+  els.nocBusiness.innerHTML = (noc.business || [])
+    .filter((metric) => metric.domain === "business")
+    .map((metric) => metricTile(metric.name, `${metric.value} ${metric.unit}`, metric.target ? `target ${metric.target}` : ""))
+    .join("") || metricTile("Business KPIs", "none", "seed 2.0");
+
+  const telemetryByMachine = Object.fromEntries((noc.infrastructure?.telemetry || []).map((item) => [item.machine_id, item]));
+  els.nocInfra.innerHTML = (noc.infrastructure?.machines || [])
+    .map((machine) => {
+      const tele = telemetryByMachine[machine.machine_id] || {};
+      return `
+        <article>
+          <strong>${escapeHtml(machine.machine_id)}</strong>
+          <span>${escapeHtml(machine.status)} / ${escapeHtml(machine.hostname || tele.hostname || "unknown host")}</span>
+          <p>Health ${escapeHtml(tele.health_score ?? "n/a")} / temp ${escapeHtml(tele.temperature_c ?? "n/a")}C / Tailscale ${escapeHtml(tele.tailscale_status || "unknown")}</p>
+        </article>
+      `;
+    })
+    .join("") || `<p class="muted">No telemetry yet.</p>`;
+
+  const ai = noc.ai_metrics || {};
+  els.nocAiMetrics.innerHTML = [
+    metricTile("Tokens consumed", ai.tokens_consumed),
+    metricTile("Inference time", ai.average_inference_ms, "avg ms"),
+    metricTile("Quality", ai.average_quality, "avg score"),
+    metricTile("Success", ai.successes),
+    metricTile("Failures", ai.failures),
+    metricTile("Cost estimate", ai.cost_estimate),
+  ].join("");
+
+  els.nocSecurity.innerHTML = `
+    <article>
+      <strong>Pending approvals</strong>
+      <span>${escapeHtml(noc.security?.pending_approvals || 0)} waiting for Brain review</span>
+    </article>
+    ${(noc.security?.events || [])
+      .slice(0, 8)
+      .map((event) => `<article><strong>${escapeHtml(event.subject)}</strong><span>${escapeHtml(event.severity)} / ${escapeHtml(event.event_type)}</span><p>${escapeHtml(event.body)}</p></article>`)
+      .join("") || `<p class="muted">No security events.</p>`}
+  `;
+
+  els.nocNotifications.innerHTML = (noc.notifications || [])
+    .map((item) => `<article><strong>${escapeHtml(item.subject)}</strong><span>${escapeHtml(item.category)} / P${escapeHtml(item.priority)} / ${escapeHtml(item.status)}</span><p>${escapeHtml(item.body)}</p></article>`)
+    .join("") || `<p class="muted">No notifications queued.</p>`;
+
+  const updates = noc.collaboration?.updates || [];
+  const recs = noc.collaboration?.recommendations || [];
+  els.nocCollaboration.innerHTML = [
+    ...updates.slice(0, 8).map((item) => `<article><strong>${escapeHtml(item.summary)}</strong><span>${escapeHtml(item.machine_id)} / ${escapeHtml(item.update_type)} / ${escapeHtml(item.outcome || "published")}</span><p>${escapeHtml(item.logs || "")}</p></article>`),
+    ...recs.slice(0, 5).map((item) => `<article><strong>${escapeHtml(item.summary)}</strong><span>Recommendation / P${escapeHtml(item.priority)} / ${escapeHtml(item.machine_id || "global")}</span><p>${escapeHtml(item.rationale)}</p></article>`),
+  ].join("") || `<p class="muted">No workstation updates yet.</p>`;
+}
+
+function mascotForMachine(machine) {
+  const map = {
+    "brain-gaming-pc": {
+      name: "Phoenix",
+      type: "Brain sentinel",
+      className: "pet-brain",
+      baseAnimation: "monitoring",
+      accent: "Mission Control",
+    },
+    "dev-laptop": {
+      name: "Byte",
+      type: "Code forge companion",
+      className: "pet-dev",
+      baseAnimation: "building",
+      accent: "Lead Software Engineer",
+    },
+    "research-laptop": {
+      name: "Nova",
+      type: "Research scout",
+      className: "pet-research",
+      baseAnimation: "researching",
+      accent: "Intelligence Lead",
+    },
+    "business-laptop": {
+      name: "Ledger",
+      type: "Business operator",
+      className: "pet-business",
+      baseAnimation: "emailing",
+      accent: "Business Ops",
+    },
+  };
+  return map[machine.id] || {
+    name: "Node",
+    type: "Managed workstation",
+    className: "pet-node",
+    baseAnimation: "syncing",
+    accent: machine.role || "Worker",
+  };
+}
+
+function chooseAnimation(machine, readiness, taskCountsForMachine, telemetry) {
+  const stateLabel = readiness?.state || "unknown";
+  const temp = telemetry?.temperature_c;
+  const health = telemetry?.health_score;
+  if (stateLabel.includes("stale") || stateLabel === "offline") return "sleeping";
+  if (temp !== undefined && temp !== null && Number(temp) >= 85) return "cooling";
+  if (health !== undefined && health !== null && Number(health) < 60) return "warning";
+  if ((taskCountsForMachine?.running || 0) > 0) {
+    if (machine.id.includes("dev")) return "building";
+    if (machine.id.includes("research")) return "researching";
+    if (machine.id.includes("business")) return "emailing";
+    return "routing";
+  }
+  if ((taskCountsForMachine?.queued || 0) > 4) return "queuing";
+  return mascotForMachine(machine).baseAnimation;
+}
+
+function renderPets() {
+  const machines = state.registry?.machines || [];
+  const readinessByMachine = Object.fromEntries((state.readiness?.machines || []).map((machine) => [machine.id, machine]));
+  const telemetryByMachine = Object.fromEntries((state.noc?.infrastructure?.telemetry || []).map((item) => [item.machine_id, item]));
+  const taskCountsByMachine = state.tasks.reduce((acc, task) => {
+    const bucket = (acc[task.machine_id] ||= { queued: 0, running: 0, completed: 0 });
+    bucket[task.status] = (bucket[task.status] || 0) + 1;
+    return acc;
+  }, {});
+  const securityAnimation = (state.noc?.security?.pending_approvals || 0) > 0 ? "reviewing" : "scanning";
+
+  els.pets.innerHTML = [
+    ...machines.map((machine) => {
+      const mascot = mascotForMachine(machine);
+      const readiness = readinessByMachine[machine.id] || {};
+      const counts = taskCountsByMachine[machine.id] || {};
+      const telemetry = telemetryByMachine[machine.id] || {};
+      const animation = chooseAnimation(machine, readiness, counts, telemetry);
+      return petMarkup({
+        ...mascot,
+        machineId: machine.id,
+        animation,
+        status: readiness.state || "unknown",
+        primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
+        secondary: `Health ${telemetry.health_score ?? "n/a"} / Temp ${telemetry.temperature_c ?? "n/a"}C`,
+      });
+    }),
+    petMarkup({
+      name: "Shield",
+      type: "Security scanner",
+      className: "pet-security",
+      machineId: "security-monitor",
+      animation: securityAnimation,
+      status: `${state.noc?.security?.pending_approvals || 0} approvals`,
+      primary: `${state.noc?.security?.events?.length || 0} recent events`,
+      secondary: "Continuous audit and trust monitoring",
+      accent: "Security",
+    }),
+  ].join("");
+  els.animationBankCount.textContent = `${state.mascotAnimations.length} animations loaded`;
+}
+
+function petMarkup(pet) {
+  const animationClass = `anim-${pet.animation}`;
+  return `
+    <article class="pet-panel ${escapeHtml(pet.className)}">
+      <div class="pet-stage">
+        <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
+          <span class="pet-aura"></span>
+          <span class="pet-ear left"></span>
+          <span class="pet-ear right"></span>
+          <span class="pet-head">
+            <span class="pet-eye left"></span>
+            <span class="pet-eye right"></span>
+            <span class="pet-mouth"></span>
+          </span>
+          <span class="pet-core"></span>
+          <span class="pet-tail"></span>
+          <span class="pet-tool"></span>
+        </div>
+      </div>
+      <div class="pet-copy">
+        <header>
+          <div>
+            <h3>${escapeHtml(pet.name)}</h3>
+            <span>${escapeHtml(pet.type)} / ${escapeHtml(pet.accent)}</span>
+          </div>
+          <span class="pill online">${escapeHtml(pet.animation)}</span>
+        </header>
+        <dl>
+          <div><dt>Device</dt><dd>${escapeHtml(pet.machineId)}</dd></div>
+          <div><dt>Status</dt><dd>${escapeHtml(pet.status)}</dd></div>
+          <div><dt>Workload</dt><dd>${escapeHtml(pet.primary)}</dd></div>
+          <div><dt>Signal</dt><dd>${escapeHtml(pet.secondary)}</dd></div>
+        </dl>
+      </div>
+    </article>
+  `;
+}
+
 function renderTasks() {
   els.tasks.innerHTML = state.tasks
     .map(
@@ -341,24 +581,33 @@ async function loadIntegrations() {
   renderIntegrations();
 }
 
+async function loadNoc() {
+  state.noc = await api("/ops2/noc");
+  renderNoc();
+}
+
 async function refresh() {
-  const [registry, readiness, tasks, connections, factory] = await Promise.all([
+  const [registry, readiness, tasks, connections, factory, noc] = await Promise.all([
     api("/registry"),
     api("/readiness.json"),
     api("/tasks"),
     api("/connections"),
     api("/factory"),
+    api("/ops2/noc"),
   ]);
   state.registry = registry;
   state.readiness = readiness;
   state.tasks = tasks.tasks;
   state.connections = connections.connections;
   state.factory = factory;
+  state.noc = noc;
   renderSummary();
   renderMachines();
   renderFactory();
   renderAgents();
   renderTasks();
+  renderNoc();
+  renderPets();
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
   await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations()]);
@@ -377,6 +626,7 @@ function applyRealtimePayload(payload) {
   renderAgents();
   renderTasks();
   renderApprovals();
+  renderPets();
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
 
@@ -442,6 +692,27 @@ els.redistributeBusiness.addEventListener("click", async () => {
   toast(`Reassigned ${data.reassigned.length} business tasks`);
   await refresh();
 });
+
+els.ops2Seed.addEventListener("click", async () => {
+  const data = await api("/ops2/seed", { method: "POST" });
+  toast(`Seeded 2.0: ${data.split.phase_count} phases`);
+  await refresh();
+});
+
+async function exportBundle(scope) {
+  const data = await api(`/ops2/export?scope=${encodeURIComponent(scope)}`);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `ai-ops-${scope}-bundle.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${scope} bundle`);
+}
+
+els.ops2ExportAll.addEventListener("click", () => exportBundle("all").catch((error) => toast(error.message)));
+els.ops2ExportProject.addEventListener("click", () => exportBundle("project").catch((error) => toast(error.message)));
 
 els.taskForm.addEventListener("submit", async (event) => {
   event.preventDefault();

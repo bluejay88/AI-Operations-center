@@ -19,6 +19,17 @@ from .flowise import predict as flowise_predict
 from .health import machine_status
 from .integrations import dispatch_to_provider, integration_status, provider_health
 from .orchestrator import create_daily_priorities
+from .ops2 import (
+    create_notification,
+    export_bundle,
+    import_bundle,
+    noc_snapshot,
+    project_context,
+    publish_device_telemetry,
+    publish_workstation_update,
+    seed_operations_2,
+    split_project,
+)
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
@@ -136,6 +147,85 @@ class IntegrationDispatchRequest(BaseModel):
     task_id: int | None = None
     approval_request_id: int | None = None
     options: dict = Field(default_factory=dict)
+
+
+class ProjectSplitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template: str = Field(default="website", min_length=2, max_length=80)
+
+
+class ImportBundleRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    bundle_type: str
+    scope: str | None = None
+    project_id: str | None = None
+    exported_at: str | None = None
+    schema_version: int | None = None
+    data: dict = Field(default_factory=dict)
+
+
+class WorkstationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    update_type: str = Field(min_length=3, max_length=80)
+    summary: str = Field(min_length=3, max_length=4000)
+    agent_id: str | None = None
+    project_id: str | None = None
+    task_id: int | None = None
+    priority: int = Field(default=50, ge=1, le=100)
+    logs: str | None = None
+    metrics: dict = Field(default_factory=dict)
+    errors: list = Field(default_factory=list)
+    recommendations: list = Field(default_factory=list)
+    estimated_completion_at: str | None = None
+    duration_ms: float | None = None
+    resource_consumption: dict = Field(default_factory=dict)
+    outcome: str | None = None
+    created_by: str = "workstation"
+
+
+class DeviceTelemetryRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    device_name: str | None = None
+    hostname: str | None = None
+    operating_system: str | None = None
+    cpu: str | None = None
+    gpu: str | None = None
+    ram_mb: float | None = None
+    storage_free_mb: float | None = None
+    battery_percent: float | None = None
+    current_user: str | None = None
+    network_status: str | None = None
+    tailscale_status: str | None = None
+    current_ai_model: str | None = None
+    installed_models: list = Field(default_factory=list)
+    active_projects: list = Field(default_factory=list)
+    current_tasks: list = Field(default_factory=list)
+    idle_percentage: float | None = None
+    temperature_c: float | None = None
+    load_average: float | None = None
+    health_score: int | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class NotificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipient: str = Field(min_length=2, max_length=120)
+    subject: str = Field(min_length=3, max_length=180)
+    body: str = Field(min_length=3, max_length=4000)
+    channel: str = "dashboard"
+    priority: int = Field(default=50, ge=1, le=100)
+    category: str = "general"
+    project_id: str | None = None
+    eta_at: str | None = None
+    actions: list = Field(default_factory=lambda: ["acknowledge", "snooze"])
+    metadata: dict = Field(default_factory=dict)
 
 
 @app.get("/health")
@@ -358,6 +448,51 @@ async def integrations_dispatch(request: IntegrationDispatchRequest) -> dict:
         approval_request_id=request.approval_request_id,
         options=request.options,
     )
+
+
+@app.get("/ops2/noc")
+def ops2_noc() -> dict:
+    return noc_snapshot()
+
+
+@app.post("/ops2/seed")
+def ops2_seed() -> dict:
+    return seed_operations_2()
+
+
+@app.post("/ops2/projects/{project_id}/split")
+def ops2_split_project(project_id: str, request: ProjectSplitRequest) -> dict:
+    return split_project(project_id, request.template)
+
+
+@app.get("/ops2/projects/{project_id}/context")
+def ops2_project_context(project_id: str) -> dict:
+    return project_context(project_id)
+
+
+@app.get("/ops2/export")
+def ops2_export(scope: str = "all", project_id: str = "ai-operations-center-2") -> dict:
+    return export_bundle(scope=scope, project_id=project_id)
+
+
+@app.post("/ops2/import")
+def ops2_import(request: ImportBundleRequest) -> dict:
+    return import_bundle(request.model_dump())
+
+
+@app.post("/ops2/workstation-updates")
+def ops2_workstation_update(request: WorkstationUpdateRequest) -> dict:
+    return publish_workstation_update(request.model_dump())
+
+
+@app.post("/ops2/device-telemetry")
+def ops2_device_telemetry(request: DeviceTelemetryRequest) -> dict:
+    return publish_device_telemetry(request.model_dump())
+
+
+@app.post("/ops2/notifications")
+def ops2_notification(request: NotificationRequest) -> dict:
+    return create_notification(request.model_dump())
 
 
 if DASHBOARD_DIR.exists():

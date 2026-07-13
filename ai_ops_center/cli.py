@@ -11,6 +11,7 @@ from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
 from .integrations import integration_status
 from .orchestrator import create_daily_priorities
+from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_operations_2, split_project
 from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
 from .registry import seed_registry
@@ -39,6 +40,44 @@ def main() -> None:
     subparsers.add_parser("approvals")
     subparsers.add_parser("listener-events")
     subparsers.add_parser("integrations")
+    subparsers.add_parser("ops2-seed")
+    subparsers.add_parser("ops2-noc")
+
+    split_parser = subparsers.add_parser("ops2-split-project")
+    split_parser.add_argument("--project-id", default="ai-operations-center-2")
+    split_parser.add_argument("--template", default="website")
+
+    context_parser = subparsers.add_parser("project-context")
+    context_parser.add_argument("project_id")
+
+    export_parser = subparsers.add_parser("export-bundle")
+    export_parser.add_argument("--scope", choices=["all", "project", "ops"], default="all")
+    export_parser.add_argument("--project-id", default="ai-operations-center-2")
+    export_parser.add_argument("--output")
+
+    import_parser = subparsers.add_parser("import-bundle")
+    import_parser.add_argument("path")
+
+    publish_parser = subparsers.add_parser("publish-update")
+    publish_parser.add_argument("--machine-id", required=True)
+    publish_parser.add_argument("--update-type", required=True)
+    publish_parser.add_argument("--summary", required=True)
+    publish_parser.add_argument("--agent-id")
+    publish_parser.add_argument("--project-id")
+    publish_parser.add_argument("--task-id", type=int)
+    publish_parser.add_argument("--priority", type=int, default=50)
+    publish_parser.add_argument("--outcome")
+
+    telemetry_parser = subparsers.add_parser("publish-telemetry")
+    telemetry_parser.add_argument("--machine-id", required=True)
+    telemetry_parser.add_argument("--hostname")
+    telemetry_parser.add_argument("--os")
+    telemetry_parser.add_argument("--cpu")
+    telemetry_parser.add_argument("--gpu")
+    telemetry_parser.add_argument("--ram-mb", type=float)
+    telemetry_parser.add_argument("--storage-free-mb", type=float)
+    telemetry_parser.add_argument("--temperature-c", type=float)
+    telemetry_parser.add_argument("--health-score", type=int)
 
     request_approval_parser = subparsers.add_parser("request-approval")
     request_approval_parser.add_argument("--title", required=True)
@@ -156,6 +195,70 @@ def main() -> None:
         print(json.dumps(speaker_feed(args.target_id, local=args.local_db), indent=2, default=str))
     elif args.command == "integrations":
         print(json.dumps(integration_status(), indent=2, default=str))
+    elif args.command == "ops2-seed":
+        print(json.dumps(seed_operations_2(local=args.local_db), indent=2, default=str))
+    elif args.command == "ops2-noc":
+        print(json.dumps(noc_snapshot(local=args.local_db), indent=2, default=str))
+    elif args.command == "ops2-split-project":
+        print(json.dumps(split_project(args.project_id, args.template, local=args.local_db), indent=2, default=str))
+    elif args.command == "project-context":
+        print(json.dumps(project_context(args.project_id, local=args.local_db), indent=2, default=str))
+    elif args.command == "export-bundle":
+        bundle = export_bundle(scope=args.scope, project_id=args.project_id, local=args.local_db)
+        output = json.dumps(bundle, indent=2, default=str)
+        if args.output:
+            from pathlib import Path
+
+            Path(args.output).write_text(output, encoding="utf-8")
+            print(f"Exported bundle to {args.output}")
+        else:
+            print(output)
+    elif args.command == "import-bundle":
+        from pathlib import Path
+
+        bundle = json.loads(Path(args.path).read_text(encoding="utf-8"))
+        print(json.dumps(import_bundle(bundle, local=args.local_db), indent=2, default=str))
+    elif args.command == "publish-update":
+        print(
+            json.dumps(
+                publish_workstation_update(
+                    {
+                        "machine_id": args.machine_id,
+                        "agent_id": args.agent_id,
+                        "project_id": args.project_id,
+                        "task_id": args.task_id,
+                        "update_type": args.update_type,
+                        "priority": args.priority,
+                        "summary": args.summary,
+                        "outcome": args.outcome,
+                    },
+                    local=args.local_db,
+                ),
+                indent=2,
+                default=str,
+            )
+        )
+    elif args.command == "publish-telemetry":
+        print(
+            json.dumps(
+                publish_device_telemetry(
+                    {
+                        "machine_id": args.machine_id,
+                        "hostname": args.hostname,
+                        "operating_system": args.os,
+                        "cpu": args.cpu,
+                        "gpu": args.gpu,
+                        "ram_mb": args.ram_mb,
+                        "storage_free_mb": args.storage_free_mb,
+                        "temperature_c": args.temperature_c,
+                        "health_score": args.health_score,
+                    },
+                    local=args.local_db,
+                ),
+                indent=2,
+                default=str,
+            )
+        )
     elif args.command == "benchmark":
         result = run_benchmark(args.machine, brain_host=args.brain_host, local=args.local_db)
         print(result)

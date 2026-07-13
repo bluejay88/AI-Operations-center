@@ -1,0 +1,243 @@
+mission_control:
+  id: ai-operations-center-2
+  name: AI Operations Center 2.0
+  brain_role: Master orchestrator, decision engine, scheduler, memory, security, KPI, audit, and reporting hub.
+  principle: The Brain decides who does the work, when it happens, how results merge, and whether outputs pass approval. It should not write every line itself.
+
+machines:
+  brain-gaming-pc:
+    title: Brain PC / Mission Control
+    responsibilities:
+      - Master decision engine
+      - Global scheduler
+      - Long-term memory
+      - Project management
+      - AI agent routing
+      - Authentication
+      - Database management
+      - KPI dashboard
+      - Security monitoring
+      - Performance optimization
+      - Cost optimization
+      - Learning from previous projects
+      - Report generation
+      - Email dispatch
+      - Audit logging
+      - Conflict resolution
+      - Version management
+      - Goal tracking
+      - Resource allocation
+  dev-laptop:
+    title: Lead Software Engineer
+    responsibilities:
+      - Read project backlog
+      - Pull Git repository
+      - Review project context from the knowledge base
+      - Continue unfinished work
+      - Generate code
+      - Refactor
+      - Unit testing
+      - Integration testing
+      - API development
+      - Database migrations
+      - Documentation
+      - Technical reports
+      - Dependency updates
+      - Security scans
+      - Code review
+      - Merge requests
+      - Build installers
+      - Package releases
+  research-laptop:
+    title: Research and Intelligence Lead
+    responsibilities:
+      - Market research
+      - Patent research
+      - Academic papers
+      - Competitor analysis
+      - AI model benchmarking
+      - Grant discovery
+      - Real estate analysis
+      - Funding opportunities
+      - Government programs
+      - Industry news
+      - Reddit summaries
+      - Trend prediction
+      - Risk analysis
+  business-laptop:
+    title: Business Operations Lead
+    responsibilities:
+      - CRM
+      - Customer support drafts
+      - Marketing campaigns
+      - Sales pipeline
+      - Proposal generation
+      - Invoice management
+      - Accounting summaries
+      - Product listings
+      - Website content
+      - Email campaigns
+      - Analytics
+      - Business KPIs
+      - Social media planning
+
+project_context_schema:
+  - Goals
+  - Requirements
+  - Decisions
+  - Meeting Notes
+  - Prompt History
+  - Generated Code
+  - Architecture
+  - TODO
+  - Bugs
+  - Documentation
+  - Progress Log
+
+project_split_template:
+  website:
+    phases:
+      - name: Architecture
+        owner_agent: programmer
+        owner_machine: dev-laptop
+      - name: Frontend
+        owner_agent: website-builder
+        owner_machine: dev-laptop
+      - name: Backend
+        owner_agent: programmer
+        owner_machine: dev-laptop
+      - name: Database
+        owner_agent: programmer
+        owner_machine: dev-laptop
+      - name: Testing
+        owner_agent: code-reviewer
+        owner_machine: dev-laptop
+      - name: Security
+        owner_agent: code-reviewer
+        owner_machine: dev-laptop
+      - name: Marketing
+        owner_agent: content-engine
+        owner_machine: brain-gaming-pc
+      - name: Documentation
+        owner_agent: project-coordinator
+        owner_machine: brain-gaming-pc
+      - name: Merge
+        owner_agent: orchestrator
+        owner_machine: brain-gaming-pc
+      - name: QA
+        owner_agent: code-reviewer
+        owner_machine: dev-laptop
+      - name: Deploy
+        owner_agent: code-reviewer
+        owner_machine: dev-laptop
+
+device_control_policy:
+  trust_boundary: Only devices registered to this Operations Center, owned or explicitly managed by the user, authenticated, encrypted, and connected through approved channels may receive remote operations.
+  approval_required_for:
+    - destructive filesystem changes
+    - credential changes
+    - firewall changes
+    - service uninstall
+    - system reboot outside maintenance windows
+    - money movement
+    - external email or social sending
+  preapproved_operations:
+    - open approved applications
+    - close approved applications
+    - restart approved services
+    - launch development environments
+    - pull git repositories
+    - run automated tests
+    - start build pipelines
+    - synchronize project files
+    - execute approved automation workflows
+  telemetry_fields:
+    - device_name
+    - hostname
+    - operating_system
+    - cpu
+    - gpu
+    - ram
+    - storage
+    - battery
+    - current_user
+    - network_status
+    - tailscale_status
+    - current_ai_model
+    - installed_models
+    - active_projects
+    - current_tasks
+    - idle_percentage
+    - temperature
+    - load_average
+    - health_score
+  notification_categories:
+    - new_assignment
+    - build_completed
+    - test_failed
+    - deployment_completed
+    - git_commit
+    - high_temperature
+    - low_disk_space
+    - security_alert
+    - research_completed
+    - daily_summary
+  notification_actions:
+    - acknowledge
+    - snooze
+    - open_task
+    - request_help
+  routing_weights:
+    cpu_available: 0.18
+    gpu_available: 0.12
+    ram_available: 0.16
+    workload: 0.2
+    capability_match: 0.22
+    deadline_pressure: 0.12
+
+dashboard_widgets:
+  ai_workforce:
+    - Online agents
+    - Active jobs
+    - Queue length
+    - GPU usage
+    - CPU usage
+    - Memory usage
+  projects:
+    - Progress
+    - Current owner
+    - Estimated completion
+    - Risk score
+    - Cost estimate
+    - Quality score
+    - Test coverage
+    - Outstanding blockers
+  business:
+    - Revenue
+    - Monthly recurring revenue
+    - Leads
+    - Sales
+    - Conversion rate
+    - Marketing performance
+    - Customer satisfaction
+  infrastructure:
+    - Laptop status
+    - Desktop status
+    - Disk usage
+    - Temperatures
+    - Tailscale connectivity
+    - Service health
+    - Database health
+    - Backup status
+  ai_metrics:
+    - Tokens consumed
+    - Inference time
+    - Average response quality
+    - Completion rates
+    - Success/failure ratio
+  security:
+    - Login attempts
+    - Device trust status
+    - Encryption health
+    - Backup verification
+    - Audit events

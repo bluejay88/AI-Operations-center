@@ -26,3 +26,6 @@ def load_machines() -> list[dict[str, Any]]:
 def load_revenue_strategy() -> dict[str, Any]:
     return load_yaml("revenue_strategy.yaml")
 
+
+def load_operations_2() -> dict[str, Any]:
+    return load_yaml("operations_2.yaml")

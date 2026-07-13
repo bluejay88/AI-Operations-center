@@ -47,6 +47,7 @@ const els = {
   pets: document.querySelector("#pet-grid"),
   animationBankCount: document.querySelector("#animation-bank-count"),
   ops2Seed: document.querySelector("#ops2-seed"),
+  ops2SeedLaptopWork: document.querySelector("#ops2-seed-laptop-work"),
   ops2ExportAll: document.querySelector("#ops2-export-all"),
   ops2ExportProject: document.querySelector("#ops2-export-project"),
   refreshApprovals: document.querySelector("#refresh-approvals"),
@@ -283,14 +284,16 @@ function renderNoc() {
     .join("") || metricTile("Business KPIs", "none", "seed 2.0");
 
   const telemetryByMachine = Object.fromEntries((noc.infrastructure?.telemetry || []).map((item) => [item.machine_id, item]));
+  const sshByMachine = Object.fromEntries((noc.ssh_status || []).map((item) => [item.machine_id, item]));
   els.nocInfra.innerHTML = (noc.infrastructure?.machines || [])
     .map((machine) => {
       const tele = telemetryByMachine[machine.machine_id] || {};
+      const ssh = sshByMachine[machine.machine_id] || {};
       return `
         <article>
           <strong>${escapeHtml(machine.machine_id)}</strong>
           <span>${escapeHtml(machine.status)} / ${escapeHtml(machine.hostname || tele.hostname || "unknown host")}</span>
-          <p>Health ${escapeHtml(tele.health_score ?? "n/a")} / temp ${escapeHtml(tele.temperature_c ?? "n/a")}C / Tailscale ${escapeHtml(tele.tailscale_status || "unknown")}</p>
+          <p>Health ${escapeHtml(tele.health_score ?? "n/a")} / temp ${escapeHtml(tele.temperature_c ?? "n/a")}C / SSH ${escapeHtml(ssh.state || "not audited")}</p>
         </article>
       `;
     })
@@ -324,7 +327,15 @@ function renderNoc() {
   const updates = noc.collaboration?.updates || [];
   const recs = noc.collaboration?.recommendations || [];
   els.nocCollaboration.innerHTML = [
-    ...updates.slice(0, 8).map((item) => `<article><strong>${escapeHtml(item.summary)}</strong><span>${escapeHtml(item.machine_id)} / ${escapeHtml(item.update_type)} / ${escapeHtml(item.outcome || "published")}</span><p>${escapeHtml(item.logs || "")}</p></article>`),
+    ...(noc.ssh_status || []).map((item) => `<article><strong>${escapeHtml(item.machine_id)} SSH</strong><span>${escapeHtml(item.label)} / user ${escapeHtml(item.brain_ssh_user || "unknown")}</span><p>API ${escapeHtml(item.brain_api)} / port 22 ${escapeHtml(item.brain_ssh_port)} / noninteractive ${escapeHtml(item.ssh_noninteractive)}</p></article>`),
+    ...updates.slice(0, 8).map((item) => {
+      const metrics = item.metrics || {};
+      const body =
+        item.update_type === "laptop_unblock_audit"
+          ? `Tailscale ${metrics.tailscale ?? "n/a"} / SSH port ${metrics.brain_ssh_port ?? "n/a"} / SSH auth ${metrics.ssh_noninteractive ?? "n/a"} / state ${metrics.ssh_auth_state || "unknown"}`
+          : item.logs || "";
+      return `<article><strong>${escapeHtml(item.summary)}</strong><span>${escapeHtml(item.machine_id)} / ${escapeHtml(item.update_type)} / ${escapeHtml(item.outcome || "published")}</span><p>${escapeHtml(body)}</p></article>`;
+    }),
     ...recs.slice(0, 5).map((item) => `<article><strong>${escapeHtml(item.summary)}</strong><span>Recommendation / P${escapeHtml(item.priority)} / ${escapeHtml(item.machine_id || "global")}</span><p>${escapeHtml(item.rationale)}</p></article>`),
   ].join("") || `<p class="muted">No workstation updates yet.</p>`;
 }
@@ -620,12 +631,14 @@ function applyRealtimePayload(payload) {
   state.connections = payload.connections || [];
   state.factory = payload.factory || state.factory;
   state.approvals = payload.approvals || state.approvals;
+  state.noc = payload.noc || state.noc;
   renderSummary();
   renderMachines();
   renderFactory();
   renderAgents();
   renderTasks();
   renderApprovals();
+  renderNoc();
   renderPets();
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
@@ -696,6 +709,15 @@ els.redistributeBusiness.addEventListener("click", async () => {
 els.ops2Seed.addEventListener("click", async () => {
   const data = await api("/ops2/seed", { method: "POST" });
   toast(`Seeded 2.0: ${data.split.phase_count} phases`);
+  await refresh();
+});
+
+els.ops2SeedLaptopWork.addEventListener("click", async () => {
+  const data = await api("/ops2/laptop-work/seed?tasks_per_laptop=100", { method: "POST" });
+  const machines = Object.entries(data.machines || {})
+    .map(([machine, counts]) => `${machine}: ${counts.created} new`)
+    .join(", ");
+  toast(`Seeded laptop work: ${machines}`);
   await refresh();
 });
 

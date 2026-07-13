@@ -61,17 +61,21 @@ try {
 }
 
 $sshOk = $false
+$sshAuthState = "unknown"
 try {
     $sshOutput = ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 "$BrainUser@$BrainHost" hostname 2>&1
     $sshOk = $LASTEXITCODE -eq 0
+    $sshAuthState = if ($sshOk) { "noninteractive_ready" } else { "interactive_login_required" }
     Write-Check "SSH to Brain" $sshOk ($sshOutput -join "`n")
 } catch {
+    $sshAuthState = "interactive_login_required"
     Write-Check "SSH to Brain" $false $_.Exception.Message
 }
 
 Write-Host ""
 Write-Host "Summary:"
 Write-Host "API=$apiOk Listener=$listenerOk Speaker=$speakerOk SSH=$sshOk"
+Write-Host "SSHAuthState=$sshAuthState"
 if (-not $sshOk) {
     Write-Host "If SSH fails but API passes, run docker\setup-brain-openssh.ps1 on the Brain PC and sign in with the Brain Windows username/password or set up SSH keys."
 }

@@ -74,11 +74,14 @@ try {
 }
 
 $sshOk = $false
+$sshAuthState = "unknown"
 try {
     $sshOutput = ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 "$BrainUser@$BrainHost" hostname 2>&1
     $sshOk = $LASTEXITCODE -eq 0
+    $sshAuthState = if ($sshOk) { "noninteractive_ready" } elseif ($portOk) { "interactive_login_required" } else { "blocked" }
     Write-Check "SSH key/noninteractive login" $sshOk ($sshOutput -join "`n")
 } catch {
+    $sshAuthState = if ($portOk) { "interactive_login_required" } else { "blocked" }
     Write-Check "SSH key/noninteractive login" $false $_.Exception.Message
 }
 
@@ -95,8 +98,26 @@ try {
             brain_api = $apiOk
             brain_ssh_port = $portOk
             ssh_noninteractive = $sshOk
+            ssh_auth_state = $sshAuthState
+            brain_ssh_user = $BrainUser
             tailscale = $tailscaleOk
             git = $gitOk
+        }
+        recommendations = if ($apiOk -and $portOk -and -not $sshOk) {
+            @(
+                @{
+                    type = "ssh_authentication"
+                    priority = 90
+                    summary = "$MachineId SSH network is unblocked but noninteractive login is not configured."
+                    rationale = "Complete one interactive login or install SSH keys for automation-safe Brain operations."
+                    metadata = @{
+                        brain_user = $BrainUser
+                        ssh_auth_state = $sshAuthState
+                    }
+                }
+            )
+        } else {
+            @()
         }
     } | ConvertTo-Json -Depth 5
     $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/workstation-updates" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
@@ -109,6 +130,7 @@ try {
 Write-Host ""
 Write-Host "Summary:"
 Write-Host "Git=$gitOk Tailscale=$tailscaleOk API=$apiOk Port22=$portOk SSHKeyLogin=$sshOk Publish=$sendOk"
+Write-Host "SSHAuthState=$sshAuthState"
 Write-Host ""
 if ($apiOk -and $portOk -and -not $sshOk) {
     Write-Host "SSH network is unblocked, but noninteractive SSH login is not configured yet. Try interactive login:"

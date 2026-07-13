@@ -11,7 +11,7 @@ from .factory import factory_snapshot, redistribute_business_queue
 from .health import machine_status
 from .integrations import integration_status
 from .orchestrator import create_daily_priorities
-from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_operations_2, split_project
+from .ops2 import export_bundle, import_bundle, noc_snapshot, project_context, publish_device_telemetry, publish_workstation_update, seed_improvement_backlog, seed_laptop_work_batches, seed_operations_2, split_project
 from .phoenix import laptop_instruction, phoenix_briefing, phoenix_snapshot, prompt_pack
 from .readiness import readiness_report
 from .registry import seed_registry
@@ -41,6 +41,9 @@ def main() -> None:
     subparsers.add_parser("listener-events")
     subparsers.add_parser("integrations")
     subparsers.add_parser("ops2-seed")
+    subparsers.add_parser("ops2-seed-improvements")
+    laptop_work_parser = subparsers.add_parser("ops2-seed-laptop-work")
+    laptop_work_parser.add_argument("--tasks-per-laptop", type=int, default=100)
     subparsers.add_parser("ops2-noc")
 
     split_parser = subparsers.add_parser("ops2-split-project")
@@ -197,6 +200,10 @@ def main() -> None:
         print(json.dumps(integration_status(), indent=2, default=str))
     elif args.command == "ops2-seed":
         print(json.dumps(seed_operations_2(local=args.local_db), indent=2, default=str))
+    elif args.command == "ops2-seed-improvements":
+        print(json.dumps(seed_improvement_backlog(local=args.local_db), indent=2, default=str))
+    elif args.command == "ops2-seed-laptop-work":
+        print(json.dumps(seed_laptop_work_batches(tasks_per_laptop=args.tasks_per_laptop, local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-noc":
         print(json.dumps(noc_snapshot(local=args.local_db), indent=2, default=str))
     elif args.command == "ops2-split-project":

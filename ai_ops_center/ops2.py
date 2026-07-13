@@ -11,6 +11,80 @@ from .orchestrator import create_task
 
 PROJECT_ID = "ai-operations-center-2"
 
+IMPROVEMENT_OWNERS = {
+    "Brain": "orchestrator",
+    "Dev": "programmer",
+    "Research": "research-lead",
+    "Business": "business-manager",
+    "Security": "code-reviewer",
+    "Finance": "finance-manager",
+    "Dashboard": "project-coordinator",
+    "Automation": "orchestrator",
+    "Revenue": "lead-generation",
+    "Infrastructure": "code-reviewer",
+}
+
+IMPROVEMENT_BACKLOG = [
+    ("Unified memory index", "Brain", "P0"), ("Agent intent router", "Brain", "P0"), ("Cross-agent context handoff", "Brain", "P0"),
+    ("Long-term goal tracker", "Brain", "P1"), ("Decision audit trail", "Brain", "P1"), ("Prompt library registry", "Brain", "P1"),
+    ("Agent confidence scoring", "Brain", "P1"), ("Knowledge freshness checker", "Brain", "P2"), ("Task decomposition engine", "Brain", "P2"),
+    ("Failure pattern memory", "Brain", "P2"), ("Local dev environment audit", "Dev", "P0"), ("Standard test runner", "Dev", "P0"),
+    ("API contract validation", "Dev", "P0"), ("Component health checks", "Dev", "P1"), ("Code ownership map", "Dev", "P1"),
+    ("Dependency update workflow", "Dev", "P1"), ("Local smoke test suite", "Dev", "P1"), ("Error reproduction templates", "Dev", "P2"),
+    ("Developer command palette", "Dev", "P2"), ("Release checklist automation", "Dev", "P2"), ("Source credibility scoring", "Research", "P0"),
+    ("Competitive intelligence tracker", "Research", "P0"), ("Citation-backed report mode", "Research", "P0"), ("Industry trend monitor", "Research", "P1"),
+    ("Research request queue", "Research", "P1"), ("Research summary archive", "Research", "P1"), ("Expert-source directory", "Research", "P1"),
+    ("Dataset discovery workflow", "Research", "P2"), ("Research gap detector", "Research", "P2"), ("Regulatory watchlist", "Research", "P2"),
+    ("Business KPI framework", "Business", "P0"), ("Operating cadence planner", "Business", "P0"), ("Weekly executive brief", "Business", "P0"),
+    ("Customer segment model", "Business", "P1"), ("Vendor evaluation matrix", "Business", "P1"), ("Project ROI scoring", "Business", "P1"),
+    ("Risk register workflow", "Business", "P1"), ("Decision memo generator", "Business", "P2"), ("OKR progress tracker", "Business", "P2"),
+    ("Business process map", "Business", "P2"), ("Secrets inventory scan", "Security", "P0"), ("Access control review", "Security", "P0"),
+    ("Threat model baseline", "Security", "P0"), ("Dependency vulnerability alerts", "Security", "P1"), ("Audit log dashboard", "Security", "P1"),
+    ("Incident response playbook", "Security", "P1"), ("Data classification labels", "Security", "P1"), ("Secure config checker", "Security", "P2"),
+    ("Agent permission boundaries", "Security", "P2"), ("Backup recovery drill", "Security", "P2"), ("Cash flow dashboard", "Finance", "P0"),
+    ("Expense categorization", "Finance", "P0"), ("Budget variance alerts", "Finance", "P0"), ("Revenue forecast model", "Finance", "P1"),
+    ("Vendor spend tracker", "Finance", "P1"), ("Unit economics calculator", "Finance", "P1"), ("Invoice status monitor", "Finance", "P1"),
+    ("Tax document checklist", "Finance", "P2"), ("Scenario planning model", "Finance", "P2"), ("Financial close checklist", "Finance", "P2"),
+    ("Executive command dashboard", "Dashboard", "P0"), ("Agent performance dashboard", "Dashboard", "P0"), ("System health dashboard", "Dashboard", "P0"),
+    ("Revenue operations dashboard", "Dashboard", "P1"), ("Security posture dashboard", "Dashboard", "P1"), ("Research pipeline dashboard", "Dashboard", "P1"),
+    ("Automation run history view", "Dashboard", "P1"), ("Task SLA dashboard", "Dashboard", "P2"), ("Data quality dashboard", "Dashboard", "P2"),
+    ("Custom dashboard builder", "Dashboard", "P2"), ("Daily briefing automation", "Automation", "P0"), ("Task triage automation", "Automation", "P0"),
+    ("Alert routing automation", "Automation", "P0"), ("Report generation scheduler", "Automation", "P1"), ("Email follow-up drafts", "Automation", "P1"),
+    ("Meeting notes processor", "Automation", "P1"), ("Data sync automation", "Automation", "P1"), ("Regression test automation", "Automation", "P2"),
+    ("Renewal reminder automation", "Automation", "P2"), ("Document filing automation", "Automation", "P2"), ("Lead scoring engine", "Revenue", "P0"),
+    ("Sales pipeline tracker", "Revenue", "P0"), ("Offer testing backlog", "Revenue", "P0"), ("Pricing experiment framework", "Revenue", "P1"),
+    ("Churn risk detector", "Revenue", "P1"), ("Upsell opportunity finder", "Revenue", "P1"), ("Campaign performance monitor", "Revenue", "P1"),
+    ("Proposal generator", "Revenue", "P2"), ("Customer feedback miner", "Revenue", "P2"), ("Referral program tracker", "Revenue", "P2"),
+    ("Environment configuration audit", "Infrastructure", "P0"), ("Backup strategy implementation", "Infrastructure", "P0"), ("Observability baseline", "Infrastructure", "P0"),
+    ("Deployment pipeline hardening", "Infrastructure", "P1"), ("Database health monitor", "Infrastructure", "P1"), ("Queue and worker monitoring", "Infrastructure", "P1"),
+    ("Cost monitoring alerts", "Infrastructure", "P1"), ("Service dependency map", "Infrastructure", "P2"), ("Disaster recovery runbook", "Infrastructure", "P2"),
+    ("Infrastructure-as-code baseline", "Infrastructure", "P2"),
+]
+
+LAPTOP_WORKSTREAMS = {
+    "dev-laptop": {
+        "agents": ["programmer", "code-reviewer", "website-builder"],
+        "themes": [
+            "API hardening", "unit test coverage", "dashboard reliability", "database migration safety", "GitHub workflow",
+            "deployment validation", "security scan automation", "developer documentation", "package release", "worker runtime",
+        ],
+    },
+    "research-laptop": {
+        "agents": ["research-lead", "grant-scout", "resale-scout", "gaming-intel"],
+        "themes": [
+            "grant discovery", "Illinois opportunity scan", "real estate lead research", "estate sale sourcing", "eBay arbitrage",
+            "AI news brief", "competitor analysis", "academic paper scan", "government funding watchlist", "trend prediction",
+        ],
+    },
+    "business-laptop": {
+        "agents": ["business-manager", "finance-manager", "social-media", "lead-generation", "marketing-agent"],
+        "themes": [
+            "CRM hygiene", "invoice workflow", "cash flow report", "lead generation", "proposal drafting",
+            "email campaign", "social media calendar", "sales funnel", "product listing", "customer support drafts",
+        ],
+    },
+}
+
 
 def _json(value: Any) -> str:
     return json.dumps(value, default=str)
@@ -130,6 +204,161 @@ def seed_operations_2(local: bool = False) -> dict[str, Any]:
 
     split = split_project(PROJECT_ID, "website", local=local)
     return {"project_id": PROJECT_ID, "seeded": True, "split": split}
+
+
+def seed_improvement_backlog(local: bool = False) -> dict[str, Any]:
+    priority_map = {"P0": 96, "P1": 82, "P2": 68}
+    created = 0
+    existing = 0
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            for index, (title, category, priority_band) in enumerate(IMPROVEMENT_BACKLOG, start=1):
+                agent_id = IMPROVEMENT_OWNERS[category]
+                cur.execute(
+                    """
+                    insert into tasks (title, agent_id, category, description, priority, metadata)
+                    select %s, %s, 'improvement', %s, %s, %s::jsonb
+                    where not exists (
+                        select 1 from tasks
+                        where title = %s
+                          and category = 'improvement'
+                          and metadata->>'improvement_backlog' = 'ai-ops-100'
+                    )
+                    returning id
+                    """,
+                    (
+                        f"Improvement {index:03d}: {title}",
+                        agent_id,
+                        (
+                            f"{priority_band} {category} improvement. Produce implementation plan, validation criteria, "
+                            "security impact, estimated effort, and a Brain approval request before high-impact changes."
+                        ),
+                        priority_map[priority_band],
+                        _json(
+                            {
+                                "project_id": PROJECT_ID,
+                                "improvement_backlog": "ai-ops-100",
+                                "improvement_number": index,
+                                "improvement_category": category,
+                                "priority_band": priority_band,
+                            }
+                        ),
+                        f"Improvement {index:03d}: {title}",
+                    ),
+                )
+                if cur.fetchone():
+                    created += 1
+                else:
+                    existing += 1
+            cur.execute(
+                """
+                insert into audit_logs (actor, action, entity_type, entity_id, summary, metadata)
+                values ('brain-gaming-pc', 'seed_improvement_backlog', 'project', %s, %s, %s::jsonb)
+                """,
+                (PROJECT_ID, f"Seeded AI Ops 100 improvement backlog: {created} created, {existing} existing.", _json({"created": created, "existing": existing})),
+            )
+        conn.commit()
+    return {"created": created, "existing": existing, "total": len(IMPROVEMENT_BACKLOG)}
+
+
+def seed_laptop_work_batches(tasks_per_laptop: int = 100, local: bool = False) -> dict[str, Any]:
+    batch_id = datetime.now(UTC).strftime("laptop-work-%Y%m%d")
+    result: dict[str, Any] = {"batch_id": batch_id, "machines": {}}
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            for machine_id, spec in LAPTOP_WORKSTREAMS.items():
+                created = 0
+                existing = 0
+                for index in range(1, tasks_per_laptop + 1):
+                    theme = spec["themes"][(index - 1) % len(spec["themes"])]
+                    agent_id = spec["agents"][(index - 1) % len(spec["agents"])]
+                    wave = ((index - 1) // len(spec["themes"])) + 1
+                    title = f"{machine_id} work {index:03d}: {theme}"
+                    dedupe_key = f"{batch_id}:{machine_id}:{index:03d}:{theme.lower().replace(' ', '-')}"
+                    cur.execute(
+                        """
+                        insert into tasks (title, agent_id, category, description, priority, metadata)
+                        select %s, %s, 'laptop-workforce', %s, %s, %s::jsonb
+                        where not exists (
+                            select 1 from tasks
+                            where metadata->>'dedupe_key' = %s
+                        )
+                        returning id
+                        """,
+                        (
+                            title,
+                            agent_id,
+                            _laptop_work_description(machine_id, agent_id, theme, wave),
+                            _laptop_work_priority(index),
+                            _json(
+                                {
+                                    "project_id": PROJECT_ID,
+                                    "batch_id": batch_id,
+                                    "dedupe_key": dedupe_key,
+                                    "machine_id": machine_id,
+                                    "theme": theme,
+                                    "wave": wave,
+                                    "fallback": "git-api-ssh",
+                                    "verification_required": True,
+                                }
+                            ),
+                            dedupe_key,
+                        ),
+                    )
+                    if cur.fetchone():
+                        created += 1
+                    else:
+                        existing += 1
+                _queue_laptop_instruction(cur, machine_id, batch_id, created, existing)
+                result["machines"][machine_id] = {"created": created, "existing": existing}
+            cur.execute(
+                """
+                insert into audit_logs (actor, action, entity_type, entity_id, summary, metadata)
+                values ('brain-gaming-pc', 'seed_laptop_work_batches', 'batch', %s, %s, %s::jsonb)
+                """,
+                (batch_id, f"Seeded deduped laptop work batches for {len(LAPTOP_WORKSTREAMS)} laptops.", _json(result)),
+            )
+        conn.commit()
+    return result
+
+
+def _laptop_work_description(machine_id: str, agent_id: str, theme: str, wave: int) -> str:
+    return (
+        f"Wave {wave} task for {machine_id} owned by {agent_id}. Theme: {theme}. "
+        "Before starting: pull GitHub master, run the laptop unblock audit, read the current speaker feed, "
+        "and check for existing output with the same dedupe_key. Produce workstation updates with ETA, logs, "
+        "errors, recommendations, and completion evidence. Request Brain approval before destructive, credential, "
+        "financial, legal, deployment, or external-send actions."
+    )
+
+
+def _laptop_work_priority(index: int) -> int:
+    if index <= 10:
+        return 96
+    if index <= 40:
+        return 84
+    if index <= 75:
+        return 72
+    return 60
+
+
+def _queue_laptop_instruction(cur: Any, machine_id: str, batch_id: str, created: int, existing: int) -> None:
+    cur.execute(
+        """
+        insert into speaker_messages (target_id, message_type, subject, body, priority, metadata)
+        values (%s, 'work_batch', %s, %s, 92, %s::jsonb)
+        """,
+        (
+            machine_id,
+            f"New deduped work batch: {batch_id}",
+            (
+                f"{machine_id} has {created} new tasks and {existing} existing deduped tasks in batch {batch_id}. "
+                "Run git pull origin master, run docker\\audit-laptop-unblock.ps1, check /speaker/feed, then claim work by assigned agent. "
+                "Do not duplicate tasks: use metadata.dedupe_key and publish workstation updates after every meaningful checkpoint."
+            ),
+            _json({"batch_id": batch_id, "created": created, "existing": existing}),
+        ),
+    )
 
 
 def _default_context_body(note_type: str, config: dict[str, Any]) -> str:
@@ -325,6 +554,15 @@ def noc_snapshot(local: bool = False) -> dict[str, Any]:
             updates = cur.fetchall()
             cur.execute(
                 """
+                select distinct on (machine_id) machine_id, agent_id, outcome, metrics, created_at
+                from workstation_updates
+                where update_type = 'laptop_unblock_audit'
+                order by machine_id, created_at desc
+                """
+            )
+            ssh_updates = cur.fetchall()
+            cur.execute(
+                """
                 select distinct on (machine_id) *
                 from device_telemetry
                 order by machine_id, created_at desc
@@ -333,12 +571,21 @@ def noc_snapshot(local: bool = False) -> dict[str, Any]:
             telemetry = cur.fetchall()
             cur.execute("select * from resource_recommendations where status='open' order by priority desc, created_at desc limit 20")
             recommendations = cur.fetchall()
+    ssh_status = _ssh_status_snapshot(ssh_updates)
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "ai_workforce": {**agents, **jobs, "gpu_usage": None, "cpu_usage": _average_cpu(benchmarks), "memory_usage": _memory_usage(benchmarks)},
         "projects": projects,
         "business": kpis,
-        "infrastructure": {"machines": machines, "benchmarks": benchmarks, "telemetry": telemetry, "database_health": "ok", "backups": backups},
+        "infrastructure": {
+            "machines": machines,
+            "benchmarks": benchmarks,
+            "telemetry": telemetry,
+            "ssh_status": ssh_status,
+            "database_health": "ok",
+            "backups": backups,
+        },
+        "ssh_status": ssh_status,
         "ai_metrics": ai_metrics,
         "security": {"events": security_events, "pending_approvals": approvals["pending_approvals"]},
         "reports": reports,
@@ -412,6 +659,20 @@ def publish_workstation_update(payload: dict[str, Any], local: bool = False) -> 
                         _json({"update_id": update["id"], **recommendation.get("metadata", {})}),
                     ),
                 )
+            metrics = payload.get("metrics", {})
+            if payload.get("update_type") == "laptop_unblock_audit" and metrics.get("brain_ssh_port") and not metrics.get("ssh_noninteractive"):
+                cur.execute(
+                    """
+                    insert into resource_recommendations (machine_id, recommendation_type, priority, summary, rationale, metadata)
+                    values (%s, 'ssh_authentication', 90, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        payload["machine_id"],
+                        f"{payload['machine_id']} SSH network is unblocked but noninteractive login is not configured.",
+                        "Complete one interactive login or install SSH keys so the Brain can run approved remote operations safely.",
+                        _json({"update_id": update["id"], "metrics": metrics}),
+                    ),
+                )
             cur.execute(
                 """
                 insert into audit_logs (actor, action, entity_type, entity_id, summary, metadata)
@@ -426,6 +687,39 @@ def publish_workstation_update(payload: dict[str, Any], local: bool = False) -> 
             )
         conn.commit()
     return {"update": update}
+
+
+def _ssh_status_snapshot(ssh_updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    statuses = []
+    for row in ssh_updates:
+        metrics = row.get("metrics") or {}
+        port_ok = bool(metrics.get("brain_ssh_port"))
+        auth_ok = bool(metrics.get("ssh_noninteractive"))
+        if auth_ok:
+            state = "noninteractive_ready"
+            label = "SSH automation ready"
+        elif port_ok:
+            state = "interactive_login_required"
+            label = "SSH network unblocked; login/key setup needed"
+        else:
+            state = "blocked"
+            label = "SSH network blocked"
+        statuses.append(
+            {
+                "machine_id": row.get("machine_id"),
+                "agent_id": row.get("agent_id"),
+                "state": state,
+                "label": label,
+                "brain_ssh_port": port_ok,
+                "ssh_noninteractive": auth_ok,
+                "brain_ssh_user": metrics.get("brain_ssh_user"),
+                "tailscale": bool(metrics.get("tailscale")),
+                "git": bool(metrics.get("git")),
+                "brain_api": bool(metrics.get("brain_api")),
+                "updated_at": row.get("created_at"),
+            }
+        )
+    return statuses
 
 
 def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> dict[str, Any]:

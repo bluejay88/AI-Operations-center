@@ -28,6 +28,8 @@ from .ops2 import (
     publish_device_telemetry,
     publish_workstation_update,
     seed_operations_2,
+    seed_improvement_backlog,
+    seed_laptop_work_batches,
     split_project,
 )
 from .phoenix import phoenix_briefing, phoenix_snapshot
@@ -458,6 +460,16 @@ def ops2_noc() -> dict:
 @app.post("/ops2/seed")
 def ops2_seed() -> dict:
     return seed_operations_2()
+
+
+@app.post("/ops2/improvements/seed")
+def ops2_seed_improvements() -> dict:
+    return seed_improvement_backlog()
+
+
+@app.post("/ops2/laptop-work/seed")
+def ops2_seed_laptop_work(tasks_per_laptop: int = 100) -> dict:
+    return seed_laptop_work_batches(tasks_per_laptop=tasks_per_laptop)
 
 
 @app.post("/ops2/projects/{project_id}/split")

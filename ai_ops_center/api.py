@@ -163,6 +163,7 @@ class TaskCreateRequest(BaseModel):
     category: str = Field(min_length=2, max_length=80)
     description: str = Field(min_length=3, max_length=4000)
     priority: int = Field(default=50, ge=1, le=100)
+    metadata: dict = Field(default_factory=dict)
 
 
 class ChatTaskIntakeRequest(BaseModel):
@@ -721,6 +722,7 @@ def create_task(request: TaskCreateRequest) -> dict[str, int]:
         category=request.category,
         description=request.description,
         priority=request.priority,
+        metadata=request.metadata,
     )
     return {"task_id": task_id}
 

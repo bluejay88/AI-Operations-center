@@ -185,6 +185,32 @@ def complete_task(task_id: int, result: str, claim_token: str, machine_id: str, 
     return True
 
 
+def renew_task_lease(
+    task_id: int,
+    claim_token: str,
+    machine_id: str,
+    lease_seconds: int = 120,
+    local: bool = False,
+) -> bool:
+    if lease_seconds < 30 or lease_seconds > 3600:
+        raise ValueError("lease_seconds must be between 30 and 3600")
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update tasks
+                set lease_expires_at = now() + (%s * interval '1 second'), updated_at = now()
+                where id = %s and status = 'running'
+                  and claim_token = %s and claimed_by_machine = %s
+                returning id
+                """,
+                (lease_seconds, task_id, claim_token, machine_id),
+            )
+            renewed = cur.fetchone() is not None
+        conn.commit()
+    return renewed
+
+
 def fail_task(task_id: int, error: str, claim_token: str, machine_id: str, local: bool = False) -> str:
     with connect(local=local) as conn:
         with conn.cursor() as cur:

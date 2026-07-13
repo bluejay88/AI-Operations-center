@@ -323,6 +323,7 @@ def create_manual_task(
     category: str,
     description: str,
     priority: int,
+    metadata: dict[str, Any] | None = None,
     local: bool = False,
 ) -> int:
     return create_task(
@@ -331,7 +332,7 @@ def create_manual_task(
         category=category,
         description=description,
         priority=priority,
-        metadata={"created_by": "dashboard"},
+        metadata={"created_by": "dashboard", **(metadata or {})},
         local=local,
     )
 

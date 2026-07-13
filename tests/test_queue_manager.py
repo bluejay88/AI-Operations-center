@@ -48,10 +48,13 @@ def test_worker_immediately_requests_more_work_after_completion(monkeypatch):
     sleeps = []
 
     monkeypatch.setattr(worker, "record_heartbeat", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "_consume_machine_messages", lambda *args, **kwargs: 0)
     monkeypatch.setattr(worker, "steward_queue", lambda *args, **kwargs: {})
     monkeypatch.setattr(worker, "claim_next_task", lambda *args, **kwargs: next(claims))
     monkeypatch.setattr(worker, "complete_task", lambda *args, **kwargs: True)
-    monkeypatch.setattr(worker, "_simulate_agent_work", lambda task: "done")
+    monkeypatch.setattr(worker, "_execute_with_lease_heartbeats", lambda *args, **kwargs: "done")
+    monkeypatch.setattr(worker, "_report_task_completion", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "_respond_to_linked_peer_request", lambda *args, **kwargs: None)
 
     class StopWorker(Exception):
         pass
@@ -66,3 +69,29 @@ def test_worker_immediately_requests_more_work_after_completion(monkeypatch):
         worker.run_worker("business-laptop", sleep_seconds=9, work_seconds=0)
 
     assert sleeps == [9]
+
+
+def test_worker_acknowledges_direct_machine_messages_only(monkeypatch):
+    messages = [
+        {"id": 1, "target_id": "business-laptop", "subject": "Pulse", "priority": 90, "status": "delivered"},
+        {"id": 2, "target_id": "all", "subject": "Broadcast", "priority": 50, "status": "delivered"},
+    ]
+    events = []
+    acknowledgements = []
+    monkeypatch.setattr(worker, "speaker_feed", lambda *_args, **_kwargs: {"messages": messages})
+    monkeypatch.setattr(worker, "submit_listener_event", lambda **kwargs: events.append(kwargs))
+    monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda message_id, actor, **_kwargs: acknowledgements.append((message_id, actor)))
+
+    assert worker._consume_machine_messages("business-laptop") == 1
+    assert acknowledgements == [(1, "business-laptop")]
+    assert events[0]["metadata"]["speaker_message_id"] == 1
+
+
+def test_connectivity_probe_is_real_machine_evidence():
+    result = worker._execute_task(
+        "business-laptop",
+        {"id": 42, "metadata": {"executor": "connectivity_probe"}},
+    )
+
+    assert '"machine_id": "business-laptop"' in result
+    assert '"executor": "connectivity_probe"' in result

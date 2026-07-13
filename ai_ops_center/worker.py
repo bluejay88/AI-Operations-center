@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import logging
+import asyncio
+import json
+import platform
+import socket
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from datetime import UTC, datetime
 
 from .brain_bus import acknowledge_speaker_message, speaker_feed, submit_listener_event
+from .collaboration import respond_to_peer_request
+from .integrations import dispatch_to_provider, integration_status
 from .migrations import apply_migrations
-from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat
+from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
 from .queue_manager import steward_queue
 
 logger = logging.getLogger(__name__)
@@ -29,10 +37,11 @@ def run_worker(machine_id: str, once: bool = False, sleep_seconds: int = 15, wor
             try:
                 if work_seconds > 0:
                     time.sleep(work_seconds)
-                result = _simulate_agent_work(task)
+                result = _execute_with_lease_heartbeats(machine_id, task, local=local)
                 completed = complete_task(task["id"], result, task["claim_token"], machine_id, local=local)
                 if completed:
                     _report_task_completion(machine_id, task, result, local=local)
+                    _respond_to_linked_peer_request(machine_id, task, result, local=local)
             except Exception as exc:
                 fail_task(task["id"], str(exc), task["claim_token"], machine_id, local=local)
                 if once:
@@ -95,9 +104,94 @@ def _report_task_completion(machine_id: str, task: dict, result: str, local: boo
         logger.exception("Task %s completed but its listener pulse failed", task.get("id"))
 
 
-def _simulate_agent_work(task: dict) -> str:
-    return (
-        f"Agent {task['agent_id']} completed planning pass for '{task['title']}'. "
-        "Next production version should connect this task type to its approved external tool, "
-        "store artifacts, and request human approval for sensitive actions."
+def _execute_with_lease_heartbeats(machine_id: str, task: dict, local: bool = False) -> str:
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="aiops-task") as pool:
+        future = pool.submit(_execute_task, machine_id, task, local)
+        while True:
+            try:
+                return future.result(timeout=30)
+            except FutureTimeoutError:
+                if not renew_task_lease(task["id"], task["claim_token"], machine_id, local=local):
+                    raise RuntimeError("Task lease ownership was lost while executing")
+                record_heartbeat(machine_id, active_task_id=task["id"], local=local)
+
+
+def _execute_task(machine_id: str, task: dict, local: bool = False) -> str:
+    metadata = dict(task.get("metadata") or {})
+    executor = str(metadata.get("executor") or "model").strip().lower()
+    if executor == "connectivity_probe":
+        return json.dumps(
+            {
+                "status": "completed",
+                "executor": executor,
+                "machine_id": machine_id,
+                "hostname": socket.gethostname(),
+                "platform": platform.platform(),
+                "python": platform.python_version(),
+                "observed_at": datetime.now(UTC).isoformat(),
+                "task_id": task["id"],
+            },
+            sort_keys=True,
+        )
+    if executor != "model":
+        raise RuntimeError(f"No approved worker executor is registered for {executor!r}")
+    return asyncio.run(_execute_model_task(machine_id, task, metadata, local=local))
+
+
+async def _execute_model_task(machine_id: str, task: dict, metadata: dict, local: bool = False) -> str:
+    requested = metadata.get("providers")
+    configured = [item["id"] for item in integration_status()["providers"] if item.get("configured") and item["id"] in {"openai", "groq", "claude", "gemini"}]
+    providers = [str(item) for item in requested] if isinstance(requested, list) else configured
+    if not providers:
+        raise RuntimeError("No model provider is configured; task was not falsely completed")
+    prompt = (
+        f"Machine: {machine_id}\nAgent: {task['agent_id']}\nCategory: {task['category']}\n"
+        f"Task: {task['title']}\n\n{task.get('description') or ''}\n\n"
+        "Return a concrete work product, evidence/assumptions, blockers, confidence, and next action. "
+        "Do not claim external actions or files unless actually performed."
     )
+    failures = []
+    for provider in providers:
+        response = await dispatch_to_provider(
+            provider=provider,
+            purpose=f"worker_task:{task['category']}",
+            prompt=prompt,
+            task_id=int(task["id"]),
+            options={"max_tokens": 1200, "temperature": 0.2},
+            local=local,
+        )
+        result = response.get("result") or {}
+        text = str(result.get("text") or "").strip()
+        if result.get("status") == "completed" and text:
+            return json.dumps(
+                {
+                    "status": "completed",
+                    "executor": "model",
+                    "provider": provider,
+                    "model": result.get("model"),
+                    "latency_ms": result.get("latency_ms"),
+                    "work_product": text,
+                },
+                default=str,
+            )
+        failures.append(f"{provider}: {result.get('error') or result.get('status') or 'empty response'}")
+    raise RuntimeError("All configured model executors failed: " + "; ".join(failures))
+
+
+def _respond_to_linked_peer_request(machine_id: str, task: dict, result: str, local: bool = False) -> None:
+    metadata = dict(task.get("metadata") or {})
+    request_id = metadata.get("peer_request_id")
+    if not request_id:
+        return
+    try:
+        respond_to_peer_request(
+            request_id=int(request_id),
+            responder_machine_id=machine_id,
+            response_body=result,
+            status="fulfilled",
+            quality_score=100,
+            metadata={"task_id": task["id"], "claim_token": task["claim_token"]},
+            local=local,
+        )
+    except Exception:
+        logger.exception("Task %s completed but peer request %s response failed", task.get("id"), request_id)

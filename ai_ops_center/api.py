@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -228,6 +229,48 @@ class NotificationRequest(BaseModel):
     eta_at: str | None = None
     actions: list = Field(default_factory=lambda: ["acknowledge", "snooze"])
     metadata: dict = Field(default_factory=dict)
+
+
+def _normalize_workstation_update(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized["machine_id"] = str(normalized.get("machine_id") or "unknown-machine")[:80]
+    normalized["update_type"] = str(normalized.get("update_type") or "workstation_update")[:80]
+    normalized["summary"] = str(normalized.get("summary") or "Workstation update received.")[:4000]
+    normalized["agent_id"] = normalized.get("agent_id") or None
+    normalized["project_id"] = normalized.get("project_id") or None
+    normalized["logs"] = normalized.get("logs") or None
+    normalized["outcome"] = normalized.get("outcome") or None
+    normalized["created_by"] = normalized.get("created_by") or "workstation"
+
+    try:
+        normalized["priority"] = max(1, min(100, int(normalized.get("priority", 50))))
+    except (TypeError, ValueError):
+        normalized["priority"] = 50
+
+    try:
+        normalized["task_id"] = int(normalized["task_id"]) if normalized.get("task_id") is not None else None
+    except (TypeError, ValueError):
+        normalized["task_id"] = None
+
+    try:
+        normalized["duration_ms"] = float(normalized["duration_ms"]) if normalized.get("duration_ms") is not None else None
+    except (TypeError, ValueError):
+        normalized["duration_ms"] = None
+
+    for field in ("metrics", "resource_consumption"):
+        if not isinstance(normalized.get(field), dict):
+            normalized[field] = {}
+
+    for field in ("errors", "recommendations"):
+        value = normalized.get(field)
+        if value is None:
+            normalized[field] = []
+        elif isinstance(value, list):
+            normalized[field] = value
+        else:
+            normalized[field] = [value]
+
+    return normalized
 
 
 @app.get("/health")
@@ -493,8 +536,11 @@ def ops2_import(request: ImportBundleRequest) -> dict:
 
 
 @app.post("/ops2/workstation-updates")
-def ops2_workstation_update(request: WorkstationUpdateRequest) -> dict:
-    return publish_workstation_update(request.model_dump())
+async def ops2_workstation_update(request: Request) -> dict:
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        payload = {"summary": "Non-object workstation update received.", "raw_payload": payload}
+    return publish_workstation_update(_normalize_workstation_update(payload))
 
 
 @app.post("/ops2/device-telemetry")

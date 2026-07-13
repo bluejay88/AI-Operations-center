@@ -1,0 +1,21 @@
+﻿AI Operations Center Laptop Diagnostic Report
+Machine: dev-laptop
+Host: DEV-LAPTOP
+Overall: partial_worker_ready
+Passed: 10 / 12
+Brain: http://100.70.49.32:8088
+
+[PASS] Git remote - https://github.com/bluejay88/AI-Operations-center.git
+[PASS] Git pull latest - branch=master
+[PASS] Tailscale local IP - 100.71.82.122
+[PASS] Brain API health - {"status":"ok"}
+[PASS] Brain listener publish - event_id=241
+[PASS] Brain speaker feed - messages=33
+[PASS] Local OpenSSH server - status=Running
+[FAIL] Tailscale-only SSH firewall rule - rules=0
+  Fix: Run docker\setup-worker-openssh-tailscale-admin.ps1 as Administrator.
+[PASS] Docker engine - 29.6.1
+[FAIL] Worker start - docker compose worker requested
+  Fix: Review docker compose logs worker
+[PASS] Node Console package - C:\Users\Jayla\Desktop\AI-Operations-center-live\laptop_packages\dev-laptop\index.html
+[PASS] Publish telemetry - telemetry recorded

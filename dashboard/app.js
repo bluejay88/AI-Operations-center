@@ -9,6 +9,7 @@ const state = {
   listenerEvents: [],
   speakerFeed: null,
   integrations: [],
+  endpoints: null,
   operatorRequests: [],
   noc: null,
   mascotAnimations: [
@@ -23,6 +24,7 @@ const state = {
   ],
   selectedReport: "hourly",
   stream: null,
+  refreshTimer: null,
   unlocked: false,
 };
 
@@ -83,6 +85,9 @@ const els = {
   refreshApprovals: document.querySelector("#refresh-approvals"),
   refreshListener: document.querySelector("#refresh-listener"),
   refreshIntegrations: document.querySelector("#refresh-integrations"),
+  refreshEndpoints: document.querySelector("#refresh-endpoints"),
+  processApprovals: document.querySelector("#process-approvals"),
+  endpoints: document.querySelector("#endpoint-list"),
   agents: document.querySelector("#agent-matrix"),
   tasks: document.querySelector("#task-table"),
   report: document.querySelector("#report-output"),
@@ -178,15 +183,43 @@ function taskCounts() {
   );
 }
 
+function isLaptop(machine) {
+  return machine?.role !== "brain" && machine?.id !== "brain-gaming-pc";
+}
+
+function isConnected(machine) {
+  const status = String(machine?.state || "").toLowerCase();
+  return status === "online" || status.startsWith("reachable");
+}
+
+function isActive(machine) {
+  const workforce = String(machine?.workforce_status || machine?.employment_status || "").toLowerCase();
+  return String(machine?.state || "").toLowerCase() === "online" && workforce === "employed";
+}
+
 function renderSummary() {
-  const online = new Set((state.readiness?.machines || []).filter((machine) => machine.state === "online").map((machine) => machine.id));
-  const machines = state.registry?.machines || [];
+  const laptops = (state.readiness?.machines || []).filter(isLaptop);
+  const connected = laptops.filter(isConnected).length;
+  const active = laptops.filter(isActive).length;
+  const employedMachineIds = new Set(
+    state.tasks
+      .filter((task) => ["queued", "running"].includes(task.status) && task.machine_id)
+      .map((task) => task.machine_id)
+  );
+  const employed = laptops.filter((machine) => {
+    return String(machine.workforce_status || machine.employment_status || "").toLowerCase() === "employed";
+  }).length;
+  const assigned = laptops.filter((machine) => {
+    const counts = machine.task_counts || {};
+    return employedMachineIds.has(machine.id) || Number(counts.running || 0) + Number(counts.queued || 0) > 0;
+  }).length;
   const counts = taskCounts();
   const metrics = [
-    ["Online", online.size, `${machines.length} machines registered`],
-    ["Queued", counts.queued || 0, "waiting for workers"],
-    ["Running", counts.running || 0, "active now"],
-    ["Done", counts.completed || 0, "completed tasks"],
+    ["Connected laptops", connected, `${laptops.length} registered`],
+    ["Active laptops", active, "fresh worker heartbeat"],
+    ["Employed laptops", employed, "configured workforce assignment"],
+    ["Assigned laptops", assigned, "queued/running work"],
+    ["Running jobs", counts.running || 0, `${counts.queued || 0} queued`],
   ];
 
   els.summary.innerHTML = metrics
@@ -621,10 +654,23 @@ function renderApprovals() {
     .slice(0, 12)
     .map(
       (item) => `
-        <article>
-          <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.status)} / ${escapeHtml(item.risk_level)} / ${escapeHtml(item.requester_machine_id || "")}</span>
-          <p>${escapeHtml(item.summary || "")}</p>
+        <article class="approval-card" data-approval-id="${escapeHtml(item.id)}">
+          <div class="approval-head">
+            <strong>${escapeHtml(item.title)}</strong>
+            <span class="score ${escapeHtml(item.approval_rating || "review")}">${escapeHtml(item.completion_score ?? 0)} / ${escapeHtml(item.approval_rating || "review")}</span>
+          </div>
+          <span>${escapeHtml(item.status)} / ${escapeHtml(item.risk_level)} / ${escapeHtml(item.requester_machine_id || "")} / ${escapeHtml(item.requester_agent_id || "")}</span>
+          <p>${escapeHtml(item.outcome_summary || item.summary || "")}</p>
+          <small>Produced: ${escapeHtml(item.proposed_changes || "No artifact/result description recorded yet.").slice(0, 280)}</small>
+          <div class="evidence-row">
+            ${Object.entries(item.evidence_checks || {}).map(([key, passed]) => `<span class="${passed ? "pass" : "missing"}">${escapeHtml(key)}</span>`).join("")}
+          </div>
+          <div class="approval-actions">
+            <button type="button" data-approval-action="approved" data-id="${escapeHtml(item.id)}">Approve</button>
+            <button type="button" data-approval-action="needs_changes" data-id="${escapeHtml(item.id)}">Cycle Back</button>
+            <button type="button" data-approval-action="rejected" data-id="${escapeHtml(item.id)}">Deny</button>
+            <button type="button" data-approval-action="deployed" data-id="${escapeHtml(item.id)}">Mark Done</button>
+          </div>
         </article>
       `
     )
@@ -674,6 +720,21 @@ function renderIntegrations() {
       `
     )
     .join("");
+}
+
+function renderEndpoints() {
+  const contract = state.endpoints || {};
+  const endpoints = contract.endpoints || [];
+  els.endpoints.innerHTML = [
+    `<article><strong>Brain API</strong><span>${escapeHtml(contract.base_url || API_BASE || "same origin")} / port ${escapeHtml(contract.ports?.brain_api || 8088)}</span><p>${escapeHtml(contract.security?.approval_policy || "Sensitive actions require approval.")}</p></article>`,
+    ...endpoints.map((item) => `
+      <article>
+        <strong>${escapeHtml(item.method)} ${escapeHtml(item.path)}</strong>
+        <span>${escapeHtml(item.name)}</span>
+        <p>${escapeHtml(item.purpose)}</p>
+      </article>
+    `),
+  ].join("") || `<p class="muted">Endpoint contract unavailable.</p>`;
 }
 
 function renderOperatorRequests() {
@@ -729,6 +790,11 @@ async function loadIntegrations() {
   renderIntegrations();
 }
 
+async function loadEndpoints() {
+  state.endpoints = await safeApi("/endpoints", { endpoints: [] }, "endpoint contract");
+  renderEndpoints();
+}
+
 async function loadOperatorRequests() {
   const data = await safeApi("/operator-requests", { requests: [] }, "operator requests");
   state.operatorRequests = data.requests || [];
@@ -744,7 +810,7 @@ async function refresh() {
   setConnectionStatus(`Connecting to Brain API ${API_BASE || window.location.origin}`, "warning");
   const [registry, readiness, tasks, connections, factory, noc] = await Promise.all([
     safeApi("/registry", { machines: [], agents: [] }, "registry"),
-    safeApi("/readiness.json", { machines: [] }, "readiness"),
+    api("/readiness.json"),
     safeApi("/tasks", { tasks: [] }, "tasks"),
     safeApi("/connections", { connections: [] }, "connections"),
     safeApi("/factory", { factory: { machines: [], handoff_gates: [] } }, "factory"),
@@ -765,15 +831,15 @@ async function refresh() {
   safeRender("pets", renderPets);
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
-  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations(), loadOperatorRequests()]);
+  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations(), loadEndpoints(), loadOperatorRequests()]);
   setConnectionStatus(`Connected to Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
 
 function applyRealtimePayload(payload) {
-  state.readiness = payload.readiness;
-  state.tasks = normalizeTasks(payload.tasks);
-  state.connections = normalizeConnections(payload.connections);
+  state.readiness = payload.readiness || state.readiness;
+  if (payload.tasks) state.tasks = normalizeTasks(payload.tasks);
+  if (payload.connections) state.connections = normalizeConnections(payload.connections);
   state.factory = normalizeFactory(payload.factory || state.factory);
   state.approvals = normalizeApprovals(payload.approvals || state.approvals);
   state.noc = payload.noc || state.noc;
@@ -791,17 +857,24 @@ function applyRealtimePayload(payload) {
   safeRender("integrations", renderIntegrations);
   safeRender("NOC", renderNoc);
   safeRender("pets", renderPets);
+  setConnectionStatus(`Live with Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
 
 function startStream() {
   if (!window.EventSource) return;
+  state.stream?.close();
   state.stream = new EventSource(`${API_BASE}/stream`);
   state.stream.onmessage = (event) => {
-    const payload = JSON.parse(event.data);
-    applyRealtimePayload(payload);
+    try {
+      applyRealtimePayload(JSON.parse(event.data));
+    } catch (error) {
+      console.error("Invalid live dashboard payload", error);
+      els.lastRefresh.textContent = "Live update could not be read";
+    }
   };
   state.stream.onerror = () => {
+    setConnectionStatus("Brain live stream reconnecting; polling remains active", "warning");
     els.lastRefresh.textContent = "Live stream reconnecting";
   };
 }
@@ -813,6 +886,7 @@ function lockDashboard() {
 }
 
 function unlockDashboard() {
+  if (state.unlocked) return;
   state.unlocked = true;
   document.body.classList.remove("locked");
   els.lock?.classList.add("hidden");
@@ -823,7 +897,10 @@ function unlockDashboard() {
     toast(error.message);
   });
   startStream();
-  window.setInterval(() => refresh().catch(() => {}), 30000);
+  state.refreshTimer = window.setInterval(() => refresh().catch((error) => {
+    console.error("Dashboard polling failed", error);
+    setConnectionStatus(`Brain API polling failed: ${error.message}`, "warning");
+  }), 15000);
 }
 
 async function submitDashboardLogin(password) {
@@ -863,8 +940,42 @@ els.phoenixRefresh.addEventListener("click", () => loadPhoenixBriefing().catch((
 els.refreshApprovals.addEventListener("click", () => loadApprovals().catch((error) => toast(error.message)));
 els.refreshListener.addEventListener("click", () => loadListenerEvents().catch((error) => toast(error.message)));
 els.refreshIntegrations.addEventListener("click", () => loadIntegrations().catch((error) => toast(error.message)));
+els.refreshEndpoints.addEventListener("click", () => loadEndpoints().catch((error) => toast(error.message)));
 els.refreshOperatorRequests.addEventListener("click", () => loadOperatorRequests().catch((error) => toast(error.message)));
 els.speakerTarget.addEventListener("change", () => loadSpeakerFeed().catch((error) => toast(error.message)));
+
+els.processApprovals.addEventListener("click", async () => {
+  const data = await api("/approvals/process", {
+    method: "POST",
+    body: JSON.stringify({ limit: 50, actor: "brain-dashboard-processor" }),
+  });
+  toast(`Brain reviewed ${data.processed.length} approvals`);
+  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadNoc()]);
+});
+
+els.approvals.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-approval-action]");
+  if (!button) return;
+  const decision = button.dataset.approvalAction;
+  const id = button.dataset.id;
+  const feedbackByDecision = {
+    approved: "Jayla dashboard approval: evidence reviewed and approved for the next controlled step. Continue through logged worker/speaker execution and report completion evidence.",
+    needs_changes: "Jayla dashboard review: cycle this back with stronger evidence, exact artifacts, validation output, rollback plan, and security notes before approval.",
+    rejected: "Jayla dashboard denial: do not execute this request. Record the reason, stop related remote operations, and propose a safer alternative.",
+    deployed: "Jayla dashboard completion: deployment/result is accepted as completed. Preserve artifacts, logs, and final outcome summary.",
+  };
+  await api(`/approvals/${encodeURIComponent(id)}/review`, {
+    method: "POST",
+    body: JSON.stringify({
+      decision,
+      feedback: feedbackByDecision[decision] || "Dashboard review recorded.",
+      actor: "jayla-dashboard",
+      metadata: { source: "dashboard", human_reviewed: true },
+    }),
+  });
+  toast(`Approval ${id}: ${decision}`);
+  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadNoc()]);
+});
 
 els.phoenixSpeak.addEventListener("click", async () => {
   if (!state.phoenixBriefing) {
@@ -925,8 +1036,8 @@ els.ops2SeedLaptopWork.addEventListener("click", async () => {
 });
 
 els.ops2SeedExpansion.addEventListener("click", async () => {
-  const data = await api("/ops2/expansion/seed?total=400", { method: "POST" });
-  toast(`Seeded 400 expansion tasks: ${data.created} new / ${data.existing} existing`);
+  const data = await api("/ops2/expansion/seed?total=600", { method: "POST" });
+  toast(`Seeded 600 expansion tasks: ${data.created} new / ${data.existing} existing`);
   await refresh();
 });
 

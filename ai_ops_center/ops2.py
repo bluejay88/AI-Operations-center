@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from .config import load_operations_2
+from .config import load_machines, load_operations_2
 from .db import connect
 from .orchestrator import create_task
 
@@ -323,6 +323,13 @@ def seed_expansion_backlog(total: int = 400, local: bool = False) -> dict[str, A
         ("Business", "business-manager", "CRM, operations, reporting, and sales process"),
         ("Security", "code-reviewer", "secure remote operations and auditability"),
         ("Finance", "finance-manager", "cash flow, expenses, bills, and KPI control"),
+        ("External Models", "orchestrator", "OpenAI, Groq, Claude, Gemini, Flowise, and n8n model routing"),
+        ("Database", "database-optimizer", "scalable schema, imports, exports, relationships, and history"),
+        ("Mini Dashboards", "programmer", "laptop-specific PET dashboards, mirrored status, and operator controls"),
+        ("Plugin Workflows", "project-coordinator", "connector usage, plugin permissions, and workflow safety"),
+        ("Reporting", "content-engine", "PDF, DOCX, email, spreadsheet, and executive report delivery"),
+        ("Laptop Expertise", "rubric-auditor", "role-specific skills, rubrics, and task specialization"),
+        ("CEO Logic", "orchestrator", "decision records, resource allocation, conflict resolution, and portfolio judgment"),
     ]
     verbs = [
         "Implement", "Optimize", "Harden", "Instrument", "Document", "Automate", "Validate", "Design",
@@ -337,6 +344,13 @@ def seed_expansion_backlog(total: int = 400, local: bool = False) -> dict[str, A
         "Phoenix briefing memory", "laptop workload balancing", "duplicate task detection", "quality score rubric",
         "operator request timeline", "model provider fallback", "database import export", "worker capability registry",
         "AI cost controls", "customer lead scoring", "proposal generation", "cash flow forecasting",
+        "mini dashboard PET personality", "laptop dashboard autostart", "Brain mirrored laptop views",
+        "remote browser approval flow", "remote file browse approval flow", "external workflow listener",
+        "model solution packet review", "plugin permission audit", "database relationship graph",
+        "laptop expertise matrix", "agent skill rubric library", "real time approval cycling",
+        "dashboard overlap regression", "PET animation state bank", "workflow import export consistency",
+        "model provider cost guardrail", "CEO decision record", "cross laptop task handoff",
+        "model assisted task critique", "approved peer collaboration",
     ]
     created = 0
     existing = 0
@@ -751,7 +765,9 @@ def project_context(project_id: str, local: bool = False) -> dict[str, Any]:
     return {"project": project, "notes": notes, "phases": phases, "git_repositories": repos}
 
 
-def noc_snapshot(local: bool = False) -> dict[str, Any]:
+def noc_snapshot(local: bool = False, stale_after_seconds: int = 60) -> dict[str, Any]:
+    if stale_after_seconds < 1:
+        raise ValueError("stale_after_seconds must be at least 1")
     with connect(local=local) as conn:
         with conn.cursor() as cur:
             cur.execute("select count(*) filter (where status='active') as active_agents from agents")
@@ -768,7 +784,21 @@ def noc_snapshot(local: bool = False) -> dict[str, Any]:
             jobs = dict(cur.fetchone())
             cur.execute("select * from projects order by updated_at desc limit 12")
             projects = cur.fetchall()
-            cur.execute("select * from machine_status_current order by machine_id")
+            cur.execute(
+                """
+                select m.id as machine_id, m.name, m.role,
+                    s.status, s.last_seen_at, s.hostname, s.tailscale_ip,
+                    s.worker_version, s.active_task_id, s.load, s.metadata, s.updated_at,
+                    count(a.id) filter (where a.status = 'active') as active_agent_count
+                from machines m
+                left join machine_status_current s on s.machine_id = m.id
+                left join agents a on a.machine_id = m.id
+                group by m.id, m.name, m.role, s.machine_id, s.status, s.last_seen_at,
+                    s.hostname, s.tailscale_ip, s.worker_version, s.active_task_id,
+                    s.load, s.metadata, s.updated_at
+                order by m.id
+                """
+            )
             machines = cur.fetchall()
             cur.execute(
                 """
@@ -826,13 +856,21 @@ def noc_snapshot(local: bool = False) -> dict[str, Any]:
             cur.execute("select * from resource_recommendations where status='open' order by priority desc, created_at desc limit 20")
             recommendations = cur.fetchall()
     ssh_status = _ssh_status_snapshot(ssh_updates)
+    observed_at = datetime.now(UTC)
+    workforce_statuses = {
+        machine["id"]: machine.get("workforce_status", "unassigned") for machine in load_machines()
+    }
+    machines, machine_summary = _freshen_machine_statuses(
+        machines, stale_after_seconds, observed_at, workforce_statuses
+    )
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": observed_at.isoformat(),
         "ai_workforce": {**agents, **jobs, "gpu_usage": None, "cpu_usage": _average_cpu(benchmarks), "memory_usage": _memory_usage(benchmarks)},
         "projects": projects,
         "business": kpis,
         "infrastructure": {
             "machines": machines,
+            "machine_summary": machine_summary,
             "benchmarks": benchmarks,
             "telemetry": telemetry,
             "ssh_status": ssh_status,
@@ -846,6 +884,38 @@ def noc_snapshot(local: bool = False) -> dict[str, Any]:
         "notifications": notifications,
         "collaboration": {"updates": updates, "recommendations": recommendations},
     }
+
+
+def _freshen_machine_statuses(
+    machines: list[dict[str, Any]],
+    stale_after_seconds: int,
+    observed_at: datetime,
+    workforce_statuses: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    cutoff = observed_at - timedelta(seconds=stale_after_seconds)
+    freshened = [dict(machine) for machine in machines]
+    for machine in freshened:
+        reported_status = str(machine.get("status") or "never_seen").strip().lower()
+        last_seen = machine.get("last_seen_at")
+        is_stale = last_seen is None or last_seen < cutoff
+        machine["reported_status"] = reported_status
+        machine["is_stale"] = is_stale
+        machine["status"] = "stale" if is_stale and reported_status == "online" else reported_status
+        machine["is_online"] = machine["status"] == "online"
+        machine["workforce_status"] = (workforce_statuses or {}).get(machine.get("machine_id"), "unassigned")
+        machine["employment_status"] = machine["workforce_status"]
+    laptops = [machine for machine in freshened if machine.get("role") != "brain"]
+    summary = {
+        "registered_laptops": len(laptops),
+        "active_laptops": sum(
+            bool(machine["is_online"]) and machine["workforce_status"] == "employed" for machine in laptops
+        ),
+        "employed_laptops": sum(machine["workforce_status"] == "employed" for machine in laptops),
+        "stale_laptops": sum(bool(machine["is_stale"]) and machine.get("last_seen_at") is not None for machine in laptops),
+        "never_seen_laptops": sum(machine.get("last_seen_at") is None for machine in laptops),
+        "stale_after_seconds": stale_after_seconds,
+    }
+    return freshened, summary
 
 
 def publish_workstation_update(payload: dict[str, Any], local: bool = False) -> dict[str, Any]:
@@ -1032,22 +1102,33 @@ def publish_device_telemetry(payload: dict[str, Any], local: bool = False) -> di
                 ),
             )
             telemetry = dict(cur.fetchone())
+            reported_status = str(payload.get("network_status") or "online").strip().lower()
             cur.execute(
                 """
-                update machine_status_current
-                set status = coalesce(%s, status),
-                    hostname = coalesce(%s, hostname),
-                    metadata = metadata || %s::jsonb,
-                    last_seen_at = now(),
-                    updated_at = now()
-                where machine_id = %s
+                insert into machine_status_current (
+                    machine_id, status, hostname, last_seen_at, metadata, updated_at
+                )
+                values (%s, %s, %s, now(), %s::jsonb, now())
+                on conflict (machine_id) do update set
+                    status = excluded.status,
+                    hostname = coalesce(excluded.hostname, machine_status_current.hostname),
+                    metadata = machine_status_current.metadata || excluded.metadata,
+                    last_seen_at = excluded.last_seen_at,
+                    updated_at = excluded.updated_at
                 """,
                 (
-                    payload.get("network_status") or "online",
+                    payload["machine_id"],
+                    reported_status,
                     payload.get("hostname"),
                     _json({"latest_health_score": payload.get("health_score"), "latest_temperature_c": payload.get("temperature_c")}),
-                    payload["machine_id"],
                 ),
+            )
+            cur.execute(
+                """
+                insert into machine_heartbeats (machine_id, status, metadata)
+                values (%s, %s, %s::jsonb)
+                """,
+                (payload["machine_id"], reported_status, _json({"source": "device_telemetry"})),
             )
             _create_health_recommendation(cur, payload)
         conn.commit()

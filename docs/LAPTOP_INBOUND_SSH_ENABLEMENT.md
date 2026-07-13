@@ -8,7 +8,10 @@ Use this only on laptops owned or explicitly managed by Jayla. The safer default
 
 - OpenSSH Server runs on each laptop.
 - Windows Firewall allows inbound TCP 22 only from Tailscale CGNAT range `100.64.0.0/10`.
-- Brain-to-laptop tests should use key-based SSH where possible.
+- Brain-to-laptop access uses the dedicated Brain key `ai_ops_brain_to_laptops`.
+- Password SSH is disabled by default by `setup-worker-openssh-tailscale-admin.ps1`; use `-AllowPasswordAuthentication` only for temporary break-glass troubleshooting.
+- `authorized_keys` permissions are tightened for the laptop user, Administrators, and SYSTEM.
+- Admin users also receive the key in `C:\ProgramData\ssh\administrators_authorized_keys` because Windows OpenSSH checks that file for local administrators.
 - Sensitive actions still require Brain/Jayla approval.
 - Do not open port 22 to public Wi-Fi/LAN broadly.
 
@@ -23,6 +26,12 @@ powershell -ExecutionPolicy Bypass -File .\docker\setup-worker-openssh-tailscale
 tailscale ip -4
 hostname
 whoami
+```
+
+If `whoami` shows a local username different from `$env:USERNAME`, pass it explicitly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docker\setup-worker-openssh-tailscale-admin.ps1 -UserName jayla
 ```
 
 Then run the laptop-specific Business OS configuration:
@@ -68,7 +77,15 @@ ssh jayla@100.90.219.88 hostname
 ssh jayla@100.112.91.61 hostname
 ```
 
-If password login works, set up SSH keys next so automation can run noninteractively.
+Preferred key-based tests:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops" jayla@100.71.82.122 hostname
+ssh -i "$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops" jayla@100.90.219.88 hostname
+ssh -i "$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops" jayla@100.112.91.61 hostname
+```
+
+If port 22 is open but key login says `Permission denied`, rerun the setup script on that laptop as Administrator so the Brain public key is installed.
 
 ## Start Worker/Speaker Pull Mode
 

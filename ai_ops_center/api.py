@@ -13,9 +13,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .approval_processor import process_approval_queue
 from .approvals import approval_detail, approval_snapshot, create_approval_request, review_approval_request
 from .brain_bus import acknowledge_speaker_message, create_speaker_message, listener_snapshot, speaker_feed, submit_listener_event
 from .business_os import business_os_snapshot, enterprise_org_snapshot, laptop_setup_prompt, seed_autonomous_business_os, seed_enterprise_departments
+from .collaboration import collaboration_snapshot, create_laptop_handoff, create_laptop_model_session, request_remote_assist
 from .connectivity import connection_snapshot, record_connection
 from .factory import factory_snapshot, redistribute_business_queue
 from .flowise import healthcheck as flowise_healthcheck
@@ -46,7 +48,7 @@ from .operator_requests import create_operator_request, operator_request_snapsho
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
-from .remote_ops import remote_operation_snapshot, request_remote_operation
+from .remote_ops import remote_operation_snapshot, request_remote_operation, update_remote_operation_from_approval
 from .registry import registry_snapshot
 from .reports import generate_report
 from .security_guardian import security_guardian_audit
@@ -148,7 +150,7 @@ class ConnectionUpdateRequest(BaseModel):
     source_machine_id: str = Field(min_length=2, max_length=80)
     target_machine_id: str = Field(min_length=2, max_length=80)
     channel: str = Field(min_length=2, max_length=80)
-    status: str = Field(pattern="^(online|offline|degraded|unknown|blocked)$")
+    status: str = Field(pattern="^(online|offline|degraded|unknown|blocked|auth_failed)$")
     latency_ms: float | None = Field(default=None, ge=0)
     metadata: dict = Field(default_factory=dict)
 
@@ -173,6 +175,13 @@ class ApprovalReviewRequest(BaseModel):
     feedback: str = Field(min_length=3, max_length=8000)
     actor: str = Field(default="brain-gaming-pc", min_length=2, max_length=80)
     metadata: dict = Field(default_factory=dict)
+
+
+class ApprovalProcessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=20, ge=1, le=100)
+    actor: str = Field(default="brain-approval-processor", min_length=2, max_length=80)
 
 
 class ListenerEventRequest(BaseModel):
@@ -202,6 +211,39 @@ class RemoteOperationRequest(BaseModel):
     command_summary: str = Field(min_length=3, max_length=4000)
     priority: int = Field(default=50, ge=1, le=100)
     metadata: dict = Field(default_factory=dict)
+
+
+class LaptopHandoffRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_machine_id: str = Field(min_length=2, max_length=80)
+    to_machine_id: str = Field(min_length=2, max_length=80)
+    task_id: int | None = None
+    summary: str = Field(min_length=3, max_length=4000)
+    evidence: dict = Field(default_factory=dict)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    priority: int = Field(default=80, ge=1, le=100)
+
+
+class LaptopModelSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    purpose: str = Field(min_length=3, max_length=180)
+    prompt: str = Field(min_length=3, max_length=12000)
+    providers: list[str] = Field(default_factory=list)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    priority: int = Field(default=80, ge=1, le=100)
+
+
+class RemoteAssistRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    assist_type: str = Field(pattern="^(browser|files|dashboard|remote_browser_view|remote_file_browse|open_mini_dashboard)$")
+    summary: str = Field(min_length=3, max_length=4000)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    priority: int = Field(default=88, ge=1, le=100)
 
 
 class CodexHandoffRequest(BaseModel):
@@ -415,6 +457,46 @@ def status() -> dict[str, str]:
     return {"status": machine_status()}
 
 
+@app.get("/endpoints")
+def endpoint_contract() -> dict:
+    base = "http://100.70.49.32:8088"
+    endpoints = [
+        {"name": "Health", "method": "GET", "path": "/health", "purpose": "Verify Brain API is reachable."},
+        {"name": "Realtime stream", "method": "GET", "path": "/stream", "purpose": "SSE stream for readiness, tasks, connections, approvals, listener, speaker, integrations, and model solutions."},
+        {"name": "Device telemetry", "method": "POST", "path": "/ops2/device-telemetry", "purpose": "Laptop heartbeat, hardware, battery, model, workload, and health telemetry."},
+        {"name": "Connections", "method": "POST", "path": "/connections", "purpose": "Report Tailscale, SSH, API, listener, speaker, and worker connectivity."},
+        {"name": "Tasks", "method": "GET", "path": "/tasks", "purpose": "Read assigned and global queue items."},
+        {"name": "Task intake", "method": "POST", "path": "/tasks/intake", "purpose": "Submit chat/request work for Brain routing."},
+        {"name": "Listener events", "method": "POST", "path": "/listener/events", "purpose": "Publish laptop progress, logs, errors, recommendations, and requests to the Brain."},
+        {"name": "Listener snapshot", "method": "GET", "path": "/listener/events", "purpose": "Read recent inbound workstation and workflow events."},
+        {"name": "Speaker feed", "method": "GET", "path": "/speaker/feed/{machine_id}", "purpose": "Pull Brain assignments, approvals, feedback, and package install instructions."},
+        {"name": "Speaker ack", "method": "POST", "path": "/speaker/messages/{message_id}/ack", "purpose": "Acknowledge a Brain message after the laptop has consumed it."},
+        {"name": "Approvals", "method": "GET", "path": "/approvals", "purpose": "Read outstanding and completed approval requests with Brain score/rating."},
+        {"name": "Create approval", "method": "POST", "path": "/approvals", "purpose": "Request approval for sensitive or high-impact changes."},
+        {"name": "Brain approval processor", "method": "POST", "path": "/approvals/process", "purpose": "Have the Brain review pending approvals and return approve/needs_changes/reject decisions."},
+        {"name": "Human approval review", "method": "POST", "path": "/approvals/{request_id}/review", "purpose": "Jayla or Brain manually approves, rejects, cycles back, or marks deployed."},
+        {"name": "Remote operations", "method": "POST", "path": "/remote-ops", "purpose": "Request approved remote actions such as opening dashboards, builds, tests, browser/file assist, or service restarts."},
+        {"name": "Remote operations queue", "method": "GET", "path": "/remote-ops", "purpose": "Read approved, pending, queued, rejected, and completed remote requests."},
+        {"name": "Collaboration handoff", "method": "POST", "path": "/collaboration/handoff", "purpose": "Pass approved work between laptops with evidence rubric."},
+        {"name": "Laptop model session", "method": "POST", "path": "/collaboration/model-session", "purpose": "Ask a laptop team to consult configured models and report back."},
+        {"name": "Model query", "method": "POST", "path": "/models/query", "purpose": "Pipe prompts into configured model mesh for recommendations and task routing."},
+        {"name": "Model workflow", "method": "POST", "path": "/integrations/workflow", "purpose": "Run external model workflow and publish results to listener/speaker."},
+        {"name": "NOC", "method": "GET", "path": "/ops2/noc", "purpose": "Enterprise dashboard data for workforce, projects, infrastructure, AI metrics, security, reports, and KPIs."},
+        {"name": "Laptop packages", "method": "GET", "path": "/laptop-packages", "purpose": "List laptop-specific AI Operations Center Node Console packages."},
+        {"name": "Laptop package dispatch", "method": "POST", "path": "/laptop-packages/dispatch", "purpose": "Send install/update instructions to each laptop speaker feed."},
+    ]
+    return {
+        "base_url": base,
+        "security": {
+            "network": "Tailscale-only private 100.64.0.0/10 access is the expected transport.",
+            "ssh": "Key-only SSH is preferred; sensitive actions require approval and audit records.",
+            "approval_policy": "Money, legal, credentials, public posting/sending, deployment, browser/file control, and destructive actions require Brain/Jayla approval.",
+        },
+        "ports": {"brain_api": 8088, "ssh": 22, "dashboard": 8088},
+        "endpoints": endpoints,
+    }
+
+
 @app.get("/registry")
 def registry() -> dict:
     return registry_snapshot()
@@ -552,6 +634,11 @@ def create_approval(request: ApprovalCreateRequest) -> dict[str, int]:
     return {"approval_request_id": request_id}
 
 
+@app.post("/approvals/process")
+def process_approvals(request: ApprovalProcessRequest) -> dict:
+    return process_approval_queue(limit=request.limit, actor=request.actor)
+
+
 @app.get("/approvals/{request_id}")
 def approval(request_id: int) -> dict:
     detail = approval_detail(request_id)
@@ -561,6 +648,10 @@ def approval(request_id: int) -> dict:
 @app.post("/approvals/{request_id}/review")
 def review_approval(request_id: int, request: ApprovalReviewRequest) -> dict:
     reviewed = review_approval_request(request_id, request.decision, request.feedback, request.actor, request.metadata)
+    approval_metadata = dict(reviewed.get("metadata") or {})
+    remote_operation_id = approval_metadata.get("remote_operation_request_id")
+    if remote_operation_id:
+        update_remote_operation_from_approval(int(remote_operation_id), request.decision, request.feedback)
     requester_machine = reviewed.get("requester_machine_id")
     if requester_machine:
         create_speaker_message(
@@ -616,6 +707,47 @@ def create_remote_ops(request: RemoteOperationRequest) -> dict:
         command_summary=request.command_summary,
         priority=request.priority,
         metadata=request.metadata,
+    )
+
+
+@app.get("/collaboration")
+def collaboration() -> dict:
+    return collaboration_snapshot()
+
+
+@app.post("/collaboration/handoff")
+def laptop_handoff(request: LaptopHandoffRequest) -> dict:
+    return create_laptop_handoff(
+        from_machine_id=request.from_machine_id,
+        to_machine_id=request.to_machine_id,
+        task_id=request.task_id,
+        summary=request.summary,
+        evidence=request.evidence,
+        requested_by=request.requested_by,
+        priority=request.priority,
+    )
+
+
+@app.post("/collaboration/model-session")
+def laptop_model_session(request: LaptopModelSessionRequest) -> dict:
+    return create_laptop_model_session(
+        machine_id=request.machine_id,
+        purpose=request.purpose,
+        prompt=request.prompt,
+        providers=request.providers or None,
+        requested_by=request.requested_by,
+        priority=request.priority,
+    )
+
+
+@app.post("/remote-assist")
+def remote_assist(request: RemoteAssistRequest) -> dict:
+    return request_remote_assist(
+        machine_id=request.machine_id,
+        assist_type=request.assist_type,
+        summary=request.summary,
+        requested_by=request.requested_by,
+        priority=request.priority,
     )
 
 
@@ -758,10 +890,10 @@ def dispatch_laptop_packages(request: LaptopPackageDispatchRequest) -> dict:
         message_id = create_speaker_message(
             target_id=machine_id,
             message_type="laptop_package_install",
-            subject=f"Install Mini Phoenix package for {machine_id}",
+            subject=f"Install AI Ops Node Console package for {machine_id}",
             body=(
-                "Pull the latest AI Operations Center repo, then run the laptop-specific Mini Phoenix dashboard package. "
-                "This opens the local dashboard, publishes heartbeat telemetry, reads the Brain speaker feed, and keeps Shield visible.\n\n"
+                "Pull the latest AI Operations Center repo, then run the laptop-specific Node Console package. "
+                "This opens the local dashboard, publishes heartbeat telemetry, reads the Brain speaker feed, and keeps the PET companion and Shield visible.\n\n"
                 f"Command:\n{install_command}"
             ),
             priority=request.priority,

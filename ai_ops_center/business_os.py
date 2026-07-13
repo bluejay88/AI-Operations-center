@@ -678,7 +678,7 @@ def laptop_setup_prompt(machine_id: str) -> str:
         "Run these PowerShell commands in order:\n"
         f"{commands}\n\n"
         "Then report status with:\n"
-        f"Invoke-RestMethod -Method Post http://100.70.49.32:8088/listener/events -ContentType 'application/json' -Body '{{\"source_type\":\"machine\",\"source_id\":\"{machine_id}\",\"event_type\":\"workload_update\",\"subject\":\"{machine_id} setup complete\",\"body\":\"Pulled GitHub, opened Mini Phoenix, tested Brain API, and started laptop operations.\",\"priority\":90,\"metadata\":{{\"machine_id\":\"{machine_id}\",\"agent_id\":\"{packet['agent']}\"}}}}'\n\n"
+        f"Invoke-RestMethod -Method Post http://100.70.49.32:8088/listener/events -ContentType 'application/json' -Body '{{\"source_type\":\"machine\",\"source_id\":\"{machine_id}\",\"event_type\":\"workload_update\",\"subject\":\"{machine_id} setup complete\",\"body\":\"Pulled GitHub, opened the AI Ops Node Console, tested Brain API, and started laptop operations.\",\"priority\":90,\"metadata\":{{\"machine_id\":\"{machine_id}\",\"agent_id\":\"{packet['agent']}\"}}}}'\n\n"
         "Rules: no spending, public publishing, customer sends, account changes, contracts, banking, legal filings, or destructive operations without Brain/Jayla approval."
     )
 

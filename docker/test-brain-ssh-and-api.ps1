@@ -7,6 +7,11 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+$BrainHost = $BrainHost.Trim().Trim('"').Trim("'")
+$BrainHost = $BrainHost -replace "^https?://", ""
+$BrainHost = ($BrainHost -split "/")[0]
+$BrainHost = ($BrainHost -split ":")[0]
+$BrainHost = $BrainHost.TrimEnd("\")
 
 function Write-Check {
     param(

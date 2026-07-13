@@ -17,5 +17,10 @@ if ($RenameTailscale) {
 
 .\docker\configure-worker-env.ps1 -MachineId $MachineId -BrainHost $BrainHost
 .\docker\check-brain.ps1 -BrainHost $BrainHost
-.\docker\worker-bootstrap.ps1 -MachineId $MachineId
 
+$consoleInstaller = ".\laptop_packages\$MachineId\install.ps1"
+if (Test-Path $consoleInstaller) {
+    powershell -ExecutionPolicy Bypass -File $consoleInstaller -BrainHost $BrainHost
+}
+
+.\docker\worker-bootstrap.ps1 -MachineId $MachineId

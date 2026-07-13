@@ -70,7 +70,7 @@ def approval_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, An
                 """,
                 (limit,),
             )
-            return [dict(row) for row in cur.fetchall()]
+            return [_enrich_approval_row(dict(row)) for row in cur.fetchall()]
 
 
 def approval_detail(request_id: int, local: bool = False) -> dict[str, Any] | None:
@@ -92,7 +92,7 @@ def approval_detail(request_id: int, local: bool = False) -> dict[str, Any] | No
             events = [dict(row) for row in cur.fetchall()]
     detail = dict(request)
     detail["events"] = events
-    return detail
+    return _enrich_approval_row(detail)
 
 
 def review_approval_request(
@@ -134,6 +134,35 @@ def review_approval_request(
     return dict(request)
 
 
+def _enrich_approval_row(row: dict[str, Any]) -> dict[str, Any]:
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ["summary", "proposed_changes", "audit_feedback", "request_type", "title"]
+    ).lower()
+    evidence_checks = {
+        "target": any(term in text for term in ["target", "device", "project", "machine", "repository"]),
+        "validation": any(term in text for term in ["test", "validation", "audit", "evidence", "verified"]),
+        "rollback": any(term in text for term in ["rollback", "recover", "revert", "restore"]),
+        "security": any(term in text for term in ["security", "risk", "permission", "approval", "audit"]),
+        "outcome": any(term in text for term in ["result", "outcome", "produced", "artifact", "completed"]),
+    }
+    base = sum(18 for passed in evidence_checks.values() if passed)
+    status_bonus = {
+        "pending": 0,
+        "needs_changes": 5,
+        "approved": 10,
+        "deployed": 10,
+        "rejected": 0,
+    }.get(str(row.get("status") or ""), 0)
+    risk_penalty = {"low": 0, "medium": 8, "high": 18, "critical": 28}.get(str(row.get("risk_level") or "medium"), 8)
+    score = max(0, min(100, base + status_bonus - risk_penalty + 10))
+    row["completion_score"] = score
+    row["approval_rating"] = "ready" if score >= 82 else "review" if score >= 58 else "needs_evidence"
+    row["evidence_checks"] = evidence_checks
+    row["outcome_summary"] = row.get("audit_feedback") or row.get("summary") or "No outcome recorded yet."
+    return row
+
+
 def _insert_event(cur: Any, request_id: int, event_type: str, actor: str, message: str, metadata: dict[str, Any]) -> None:
     cur.execute(
         """
@@ -142,4 +171,3 @@ def _insert_event(cur: Any, request_id: int, event_type: str, actor: str, messag
         """,
         (request_id, event_type, actor, message, json.dumps(metadata)),
     )
-

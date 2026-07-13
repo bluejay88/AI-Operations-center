@@ -19,14 +19,17 @@ ROLE_ALLOWED_OPERATIONS = {
         "restart_worker",
         "sync_files",
         "model_workflow",
+        "remote_browser_view",
+        "remote_file_browse",
+        "open_mini_dashboard",
     },
-    "development": {"publish_update", "run_audit", "run_tests", "git_pull", "git_status", "build_project", "restart_worker"},
-    "research": {"publish_update", "run_audit", "git_pull", "git_status", "research_task", "sync_files", "restart_worker"},
-    "business": {"publish_update", "run_audit", "git_pull", "git_status", "business_task", "sync_files", "restart_worker"},
+    "development": {"publish_update", "run_audit", "run_tests", "git_pull", "git_status", "build_project", "restart_worker", "open_mini_dashboard"},
+    "research": {"publish_update", "run_audit", "git_pull", "git_status", "research_task", "sync_files", "restart_worker", "open_mini_dashboard"},
+    "business": {"publish_update", "run_audit", "git_pull", "git_status", "business_task", "sync_files", "restart_worker", "open_mini_dashboard"},
 }
 
-SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine"}
-DESTRUCTIVE_WORDS = {"delete", "remove", "format", "wipe", "reset", "credential", "password", "secret", "send email", "payment"}
+SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine", "remote_browser_view", "remote_file_browse"}
+DESTRUCTIVE_WORDS = {"delete", "remove", "format", "wipe", "reset", "credential", "password", "secret", "send email", "payment", "browser", "files", "take over", "remote control"}
 
 
 def request_remote_operation(
@@ -151,6 +154,48 @@ def remote_operation_snapshot(limit: int = 50, local: bool = False) -> list[dict
                 (limit,),
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+def update_remote_operation_from_approval(
+    operation_id: int,
+    approval_decision: str,
+    feedback: str,
+    local: bool = False,
+) -> dict[str, Any] | None:
+    status_by_decision = {
+        "approved": "queued",
+        "rejected": "rejected",
+        "needs_changes": "needs_changes",
+        "deployed": "completed",
+    }
+    status = status_by_decision.get(approval_decision)
+    if not status:
+        return None
+
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update remote_operation_requests
+                set status = %s,
+                    approved_at = case when %s = 'queued' then now() else approved_at end,
+                    completed_at = case when %s = 'completed' then now() else completed_at end,
+                    metadata = metadata || %s::jsonb,
+                    updated_at = now()
+                where id = %s
+                returning *
+                """,
+                (
+                    status,
+                    status,
+                    status,
+                    json.dumps({"approval_decision": approval_decision, "approval_feedback": feedback}),
+                    operation_id,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return dict(row) if row else None
 
 
 def _machine_role(machine_id: str, local: bool = False) -> str:

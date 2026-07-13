@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from .approval_processor import process_approval_queue
 from .approvals import approval_snapshot, create_approval_request, review_approval_request
 from .benchmark import benchmark_report, run_benchmark
 from .brain_bus import listener_snapshot, speaker_feed, submit_listener_event
@@ -45,6 +46,9 @@ def main() -> None:
     subparsers.add_parser("phoenix-brief")
     subparsers.add_parser("agent-prompts")
     subparsers.add_parser("approvals")
+    process_approvals_parser = subparsers.add_parser("process-approvals")
+    process_approvals_parser.add_argument("--limit", type=int, default=20)
+    process_approvals_parser.add_argument("--actor", default="brain-approval-processor")
     subparsers.add_parser("listener-events")
     subparsers.add_parser("integrations")
     subparsers.add_parser("model-solutions")
@@ -198,6 +202,8 @@ def main() -> None:
         print(laptop_instruction(args.machine))
     elif args.command == "approvals":
         print(json.dumps({"approvals": approval_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "process-approvals":
+        print(json.dumps(process_approval_queue(limit=args.limit, actor=args.actor, local=args.local_db), indent=2, default=str))
     elif args.command == "request-approval":
         request_id = create_approval_request(
             title=args.title,

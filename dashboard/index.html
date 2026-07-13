@@ -221,7 +221,10 @@
             <section class="bus-panel">
               <header>
                 <h3>Approvals</h3>
-                <button id="refresh-approvals" type="button">Refresh</button>
+                <div class="mini-actions">
+                  <button id="process-approvals" type="button">Process Queue</button>
+                  <button id="refresh-approvals" type="button">Refresh</button>
+                </div>
               </header>
               <div id="approval-list" class="compact-list"></div>
             </section>
@@ -250,6 +253,13 @@
                 <button id="refresh-integrations" type="button">Refresh</button>
               </header>
               <div id="integration-list" class="compact-list"></div>
+            </section>
+            <section class="bus-panel bus-panel-wide">
+              <header>
+                <h3>Endpoint Contract</h3>
+                <button id="refresh-endpoints" type="button">Refresh</button>
+              </header>
+              <div id="endpoint-list" class="compact-list endpoint-list"></div>
             </section>
           </div>
         </section>

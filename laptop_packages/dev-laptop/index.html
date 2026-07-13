@@ -3,59 +3,95 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dev Laptop Mini Phoenix</title>
+    <title>Dev Laptop Node Console</title>
     <link rel="stylesheet" href="../shared/mini-dashboard.css">
   </head>
   <body>
     <div class="shell">
-      <aside>
-        <h1 class="machine-name">dev-laptop</h1>
-        <p class="machine-role muted">Lead Software Engineer Node</p>
+      <aside class="side-rail">
+        <div class="identity">
+          <div>
+            <h1 class="machine-name">dev-laptop</h1>
+            <p class="machine-role muted">Lead Software Engineer Node</p>
+            <small class="specialty">websites, Python, React, apps, APIs, debugging</small>
+          </div>
+        </div>
         <div class="toolbar">
           <input id="brain-host" aria-label="Brain host">
-          <button id="save-brain">Save</button>
-          <button id="refresh">Refresh</button>
-          <button id="speak">Speak</button>
+          <button id="save-brain" type="button">Save</button>
+          <button id="refresh" type="button">Refresh</button>
+          <button id="speak" type="button">Speak</button>
         </div>
         <div class="shield-row">
-          <div class="shield-pet"></div>
+          <div class="shield-pet" aria-hidden="true"></div>
           <div>
             <h2>Shield</h2>
             <p id="shield-state">Scanning</p>
             <small>Database: <span id="db-state">checking</span></small>
           </div>
         </div>
-        <p><strong id="heartbeat-state">checking</strong></p>
-        <p id="heartbeat-detail" class="muted">Waiting for Brain pulse.</p>
-      </aside>
-      <main>
-        <section>
-          <h2>Development Workload</h2>
-          <table>
-            <thead><tr><th>ID</th><th>Task</th><th>Agent</th><th>Status</th><th>Priority</th></tr></thead>
-            <tbody id="task-body"></tbody>
-          </table>
-        </section>
-        <div class="panels">
-          <section>
-            <h2>Brain Messages</h2>
-            <div id="message-list"></div>
-          </section>
-          <section>
-            <h2>Mini Phoenix</h2>
-            <p class="variant-count muted"></p>
-          </section>
-        </div>
-        <div class="pet-shell">
-          <div class="pet">
-            <div class="pet-name">Circuit Mentor</div>
-            <div class="pet-status">Booting</div>
+        <div class="status-grid">
+          <div class="status-tile">
+            <strong id="heartbeat-state" class="live-dot attention">checking</strong>
+            <span id="heartbeat-detail">Waiting for Brain pulse.</span>
+          </div>
+          <div class="status-tile">
+            <strong id="metric-ssh">checking</strong>
+            <span>Tailscale SSH control</span>
+          </div>
+          <div class="status-tile">
+            <strong id="metric-latency">--</strong>
+            <span>Brain latency</span>
           </div>
         </div>
+      </aside>
+      <main class="workspace">
+        <section class="top-strip">
+          <div class="panel panel-pad">
+            <h2>Live Workload</h2>
+            <div class="metric-grid">
+              <div class="metric"><strong id="metric-queue">0</strong><span>Queued</span></div>
+              <div class="metric"><strong id="metric-running">0</strong><span>Running</span></div>
+              <div class="metric"><strong id="metric-done">0</strong><span>Completed</span></div>
+              <div class="metric"><strong id="metric-health">checking</strong><span>Node state</span></div>
+            </div>
+          </div>
+          <div class="panel pet-stage pet-dev pet-state-connecting" data-task="thinking">
+            <div class="pet anim-connecting">
+              <span class="pet-fx pet-fx-left"></span><span class="pet-fx pet-fx-right"></span><span class="pet-roll-burst"></span><span class="pet-aura"></span><span class="pet-halo"></span><span class="pet-ear left"></span><span class="pet-ear right"></span><span class="pet-screenplate"><span class="pet-gridlines"></span><span class="pet-scanline"></span><span class="pet-badge"></span><span class="pet-eye left"></span><span class="pet-eye right"></span><span class="pet-mouth"></span></span><span class="pet-keyboard"><span></span><span></span><span></span><span></span></span><span class="pet-trackpad"></span><span class="pet-base"></span><span class="pet-port left"></span><span class="pet-port right"></span><span class="pet-status-light"></span><span class="pet-tool"></span>
+              <div class="pet-name">Byte</div>
+              <div class="pet-status">Booting</div>
+            </div>
+          </div>
+        </section>
+        <section class="panel panel-pad">
+          <h2>Brain-Governed Controls</h2>
+          <div class="control-grid">
+            <button id="request-dashboard" type="button">Open Node Console</button>
+            <button id="request-browser" type="button">Request Browser View</button>
+            <button id="request-files" type="button">Request File Browse</button>
+          </div>
+          <p class="command-note muted">Browser/file takeover requests require Brain/Jayla approval and are logged.</p>
+        </section>
+        <section class="panel panel-pad">
+          <h2>Development Tasks</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Task</th><th>Agent</th><th>Status</th><th>Priority</th></tr></thead>
+              <tbody id="task-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="feed-grid">
+          <div class="panel panel-pad"><h2>Brain Messages</h2><div id="message-list" class="feed-list"></div></div>
+          <div class="panel panel-pad"><h2>Approvals</h2><div id="approval-list" class="feed-list"></div></div>
+          <div class="panel panel-pad"><h2>Remote Ops</h2><div id="remote-list" class="feed-list"></div></div>
+          <div class="panel panel-pad"><h2>Node Console</h2><p class="variant-count muted"></p></div>
+        </section>
       </main>
     </div>
     <script>
-      window.LAPTOP_PACKAGE = { machineId: "dev-laptop", role: "Lead Software Engineer Node", pet: "Circuit Mentor", brainHost: "100.70.49.32" };
+      window.LAPTOP_PACKAGE = { machineId: "dev-laptop", role: "Lead Software Engineer Node", pet: "Byte", specialty: "websites, Python, React, apps, APIs, debugging", brainHost: "100.70.49.32" };
     </script>
     <script src="../shared/mini-dashboard.js"></script>
   </body>

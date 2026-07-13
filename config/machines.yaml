@@ -1,7 +1,32 @@
+status_policy:
+  # Workforce assignment is configuration; connectivity is live telemetry.
+  # Never infer one from the other.
+  workforce_states:
+    - employed
+    - suspended
+    - retired
+  runtime_states:
+    - online
+    - reachable_not_onboarded
+    - reachable_worker_stale
+    - worker_stale
+    - never_seen
+    - blocked
+    - offline
+  active_definition:
+    workforce_status: employed
+    runtime_state: online
+  telemetry:
+    heartbeat_expected_seconds: 10
+    connectivity_scan_seconds: 30
+    worker_stale_after_seconds: 60
+
 machines:
   - id: brain-gaming-pc
     name: Gaming PC AI Server
     role: brain
+    workforce_status: employed
+    live_status_enabled: true
     responsibilities:
       - orchestrator
       - database
@@ -22,6 +47,8 @@ machines:
   - id: business-laptop
     name: Laptop A Business AI
     role: business
+    workforce_status: employed
+    live_status_enabled: true
     responsibilities:
       - email-sorting
       - candidate-reminders
@@ -37,6 +64,8 @@ machines:
   - id: research-laptop
     name: Laptop B Research AI
     role: research
+    workforce_status: employed
+    live_status_enabled: true
     responsibilities:
       - grants
       - real-estate-deals
@@ -52,6 +81,8 @@ machines:
   - id: dev-laptop
     name: Laptop C Development AI
     role: development
+    workforce_status: employed
+    live_status_enabled: true
     responsibilities:
       - write-code
       - test-code

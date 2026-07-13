@@ -4,6 +4,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$BrainHost = $BrainHost.Trim().Trim('"').Trim("'")
+$BrainHost = $BrainHost -replace "^https?://", ""
+$BrainHost = ($BrainHost -split "/")[0]
+$BrainHost = ($BrainHost -split ":")[0]
+$BrainHost = $BrainHost.TrimEnd("\")
 
 . ".\docker\lib.ps1"
 $tailscaleExe = Assert-TailscaleAvailable

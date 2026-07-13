@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from .config import load_machines
 from .connectivity import connection_snapshot
 from .db import connect
 
@@ -24,6 +25,7 @@ ONBOARD_COMMANDS = {
 
 def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dict:
     cutoff = datetime.now(UTC) - timedelta(minutes=stale_after_minutes)
+    configured_machines = {machine["id"]: machine for machine in load_machines()}
 
     with connect(local=local) as conn:
         with conn.cursor() as cur:
@@ -74,6 +76,16 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
             )
             benchmarks = {row["machine_id"]: row for row in cur.fetchall()}
 
+            cur.execute(
+                """
+                select machine_id, count(*) as active_agent_count
+                from agents
+                where status = 'active'
+                group by machine_id
+                """
+            )
+            active_agents = {row["machine_id"]: row["active_agent_count"] for row in cur.fetchall()}
+
     task_counts: dict[str, dict[str, int]] = {}
     for row in task_rows:
         task_counts.setdefault(row["machine_id"], {})[row["status"]] = row["count"]
@@ -103,13 +115,31 @@ def readiness_snapshot(local: bool = False, stale_after_minutes: int = 1) -> dic
             state = machine["current_status"] or "online"
         machine["state"] = state
         machine["task_counts"] = task_counts.get(machine["id"], {})
+        machine["active_agent_count"] = active_agents.get(machine["id"], 0)
+        machine["workforce_status"] = configured_machines.get(machine["id"], {}).get("workforce_status", "unassigned")
+        machine["employment_status"] = machine["workforce_status"]
         machine["latest_benchmark"] = dict(benchmarks[machine["id"]]) if machine["id"] in benchmarks else None
         machine["connections"] = machine_connections
         machine["next_command"] = ONBOARD_COMMANDS.get(machine["id"]) if state != "online" else None
 
+    laptops = [machine for machine in machines if machine["role"] != "brain"]
+    connected_states = {"online", "reachable_not_onboarded", "reachable_worker_stale"}
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "stale_after_minutes": stale_after_minutes,
+        "summary": {
+            "registered_laptops": len(laptops),
+            "connected_laptops": sum(machine["state"] in connected_states for machine in laptops),
+            "active_laptops": sum(
+                machine["state"] == "online" and machine["workforce_status"] == "employed" for machine in laptops
+            ),
+            "worker_online_laptops": sum(machine["state"] == "online" for machine in laptops),
+            "employed_laptops": sum(machine["workforce_status"] == "employed" for machine in laptops),
+            "assigned_laptops": sum(
+                int(machine["task_counts"].get("queued", 0)) + int(machine["task_counts"].get("running", 0)) > 0
+                for machine in laptops
+            ),
+        },
         "machines": machines,
         "next_gates": [
             "Dev Agent is ready when it is worker-online, has a benchmark, and can complete a development task.",

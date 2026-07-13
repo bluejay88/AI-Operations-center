@@ -30,6 +30,11 @@ git pull --ff-only origin $Branch
 .\docker\configure-worker-env.ps1 -MachineId $MachineId -BrainHost $BrainHost
 .\docker\check-brain.ps1 -BrainHost $BrainHost
 
+$consoleInstaller = ".\laptop_packages\$MachineId\install.ps1"
+if (Test-Path $consoleInstaller) {
+    powershell -ExecutionPolicy Bypass -File $consoleInstaller -BrainHost $BrainHost
+}
+
 docker compose up -d worker
 
 if (!$SkipBenchmark) {

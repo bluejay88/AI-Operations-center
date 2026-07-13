@@ -16,6 +16,11 @@ Write-Host "Starting AI Operations worker and heavy-work overlay for $MachineId"
 
 .\docker\configure-worker-env.ps1 -MachineId $MachineId -BrainHost $BrainHost
 
+$consoleInstaller = ".\laptop_packages\$MachineId\install.ps1"
+if (Test-Path $consoleInstaller) {
+    powershell -ExecutionPolicy Bypass -File $consoleInstaller -BrainHost $BrainHost
+}
+
 if (Test-Path ".env") {
     $envText = Get-Content ".env" -Raw
     if ($envText -match "(?m)^WORKER_WORK_SECONDS=") {

@@ -63,3 +63,25 @@ Then verify:
 - The AI Bridge Factory section lists each laptop's duties, subagents, rubrics, and due windows.
 - Business tasks are redistributed if Business Laptop is offline.
 
+## Laptop Status Semantics
+
+Laptop status has two independent dimensions. `workforce_status` comes from
+`config/machines.yaml` and answers whether a laptop is assigned to the workforce.
+Live `runtime_state` comes from heartbeats and connectivity scans and answers what
+the Brain can currently observe.
+
+An **active laptop** must be both `workforce_status: employed` and
+`runtime_state: online`. Tailscale reachability by itself does not make a laptop
+active: a reachable laptop with no fresh worker heartbeat is
+`reachable_not_onboarded` or `reachable_worker_stale`. Likewise, an employed
+laptop may be offline without losing its workforce assignment.
+
+The expected live cadence is:
+
+- Worker heartbeat every 10 seconds.
+- Tailscale/SSH connectivity scan every 30 seconds.
+- Worker status becomes stale after 60 seconds without a heartbeat.
+
+Every status response should include its observation time (`last_seen` or the
+scan timestamp). UI and automation should use runtime state for task routing and
+`workforce_status` for inventory or staffing counts.

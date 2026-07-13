@@ -47,6 +47,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "dashboard/app.js",
         "dashboard/styles.css",
         "ai_ops_center/api.py",
+        "ai_ops_center/approval_processor.py",
         "ai_ops_center/tasks.py",
         "ai_ops_center/settings.py",
         "config/agents.yaml",
@@ -93,6 +94,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("API enterprise org configured", "/enterprise-org" in api_py)
     add("model solution packet schema configured", "model_solution_packets" in (ROOT / "sql/schema.sql").read_text(encoding="utf-8"))
     add("API security guardian configured", "/security/guardian" in api_py)
+    add("API approval processor configured", "/approvals/process" in api_py)
+    add("approval processor routes needs changes", "process_approval_queue" in (ROOT / "ai_ops_center/approval_processor.py").read_text(encoding="utf-8"))
     add("task intake splitter configured", "create_chat_task_intake" in tasks_py)
     add("task intake rubric configured", "INTAKE_RUBRIC" in tasks_py)
     add("security monitor agent configured", "security-monitor" in agents_yaml)

@@ -30,6 +30,7 @@ def run_25_checks() -> dict:
         "ai_ops_center/ops2.py",
         "ai_ops_center/failover.py",
         "ai_ops_center/operator_requests.py",
+        "ai_ops_center/approval_processor.py",
         "dashboard/index.html",
         "dashboard/app.js",
         "dashboard/styles.css",
@@ -38,11 +39,12 @@ def run_25_checks() -> dict:
         "docker/publish-laptop-telemetry.ps1",
         "docker/show-heavy-work-overlay.ps1",
         "docker/start-laptop-operations.ps1",
+        "docker/run-laptop-diagnostics.ps1",
     ]
     for rel in required_files:
         add(f"file exists: {rel}", (ROOT / rel).exists())
 
-    for rel in ["ai_ops_center/api.py", "ai_ops_center/ops2.py", "ai_ops_center/failover.py", "ai_ops_center/operator_requests.py"]:
+    for rel in ["ai_ops_center/api.py", "ai_ops_center/ops2.py", "ai_ops_center/failover.py", "ai_ops_center/operator_requests.py", "ai_ops_center/approval_processor.py"]:
         try:
             ast.parse((ROOT / rel).read_text(encoding="utf-8"))
             add(f"python parses: {rel}", True)
@@ -63,6 +65,8 @@ def run_25_checks() -> dict:
     add("dashboard has password gate", "dashboard-login-form" in index_html and "/dashboard/login" in app_js)
     add("dashboard supports live API base", "DEFAULT_BRAIN_API" in app_js and "aiOpsApiBase" in app_js)
     add("dashboard has dynamic pet motion states", "pet-state-connecting" in app_js and "pet-state-on-roll" in app_js and "pet-state-heavy" in app_js)
+    add("dashboard has approval action controls", "data-approval-action" in app_js and "processApprovals" in app_js)
+    add("dashboard shows endpoint contract", "endpoint-list" in index_html and "/endpoints" in app_js)
 
     api_py = (ROOT / "ai_ops_center/api.py").read_text(encoding="utf-8")
     add("api exposes failover evaluate", "/ops2/failover/evaluate" in api_py)
@@ -74,7 +78,16 @@ def run_25_checks() -> dict:
     add("api exposes business os seed", "/business-os/seed" in api_py)
     add("api exposes enterprise org", "/enterprise-org" in api_py)
     add("api exposes security guardian", "/security/guardian" in api_py)
+    add("api exposes approval processor", "/approvals/process" in api_py)
+    add("api exposes endpoint contract", "/endpoints" in api_py)
     add("schema has model solution packets", "create table if not exists model_solution_packets" in schema)
+
+    approvals_py = (ROOT / "ai_ops_center/approvals.py").read_text(encoding="utf-8")
+    add("approvals have score/rating", "completion_score" in approvals_py and "approval_rating" in approvals_py)
+
+    diag = (ROOT / "docker/run-laptop-diagnostics.ps1").read_text(encoding="utf-8")
+    add("laptop diagnostic publishes to Brain", "/ops2/workstation-updates" in diag and "/listener/events" in diag)
+    add("laptop diagnostic can commit report", "CommitReport" in diag and "diagnostics\\$MachineId" in diag)
 
     critical = _failover_recommendation("dev-laptop", 5, "online")
     healthy = _failover_recommendation("dev-laptop", 80, "online")

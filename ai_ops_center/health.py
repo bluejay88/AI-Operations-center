@@ -15,10 +15,12 @@ def machine_status(local: bool = False, stale_after_minutes: int = 5) -> str:
                     m.id,
                     m.name,
                     m.role,
-                    max(h.created_at) as last_seen
+                    coalesce(s.last_seen_at, max(h.created_at)) as last_seen,
+                    s.status as current_status
                 from machines m
+                left join machine_status_current s on s.machine_id = m.id
                 left join machine_heartbeats h on h.machine_id = m.id
-                group by m.id, m.name, m.role
+                group by m.id, m.name, m.role, s.last_seen_at, s.status
                 order by
                     case m.role
                         when 'brain' then 0
@@ -43,7 +45,7 @@ def machine_status(local: bool = False, stale_after_minutes: int = 5) -> str:
         elif last_seen < stale_after:
             state = f"stale, last seen {last_seen.isoformat()}"
         else:
-            state = f"online, last seen {last_seen.isoformat()}"
+            current_status = str(row.get("current_status") or "online").lower()
+            state = f"{current_status}, last seen {last_seen.isoformat()}"
         lines.append(f"- {row['id']} ({row['role']}): {state}")
     return "\n".join(lines)
-

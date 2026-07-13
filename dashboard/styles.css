@@ -305,11 +305,11 @@ main {
 .pet-security .pet { --pet-accent: #ff6b6b; --pet-dark: #2c1719; }
 
 .pet-aura,
-.pet-head,
-.pet-core,
-.pet-tail,
+.pet-monitor,
+.pet-tower,
+.pet-status-light,
 .pet-tool,
-.pet-ear {
+.pet-antenna {
   position: absolute;
   display: block;
 }
@@ -322,24 +322,41 @@ main {
   animation: pet-scan 2.4s linear infinite;
 }
 
-.pet-head {
-  left: 19px;
-  top: 18px;
-  width: 54px;
+.pet-monitor {
+  left: 15px;
+  top: 16px;
+  width: 62px;
   height: 46px;
   border: 2px solid var(--pet-accent);
-  border-radius: 45% 45% 36% 36%;
-  background: var(--pet-dark);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pet-accent) 16%, transparent), transparent 58%),
+    var(--pet-dark);
+  box-shadow: inset 0 0 16px rgba(255,255,255,0.04);
 }
 
-.pet-core {
-  left: 25px;
+.pet-monitor::after {
+  content: "";
+  position: absolute;
+  left: 19px;
+  right: 19px;
+  bottom: -8px;
+  height: 7px;
+  border: 2px solid var(--pet-accent);
+  border-top: 0;
+  background: #0c1218;
+}
+
+.pet-tower {
+  left: 23px;
   top: 60px;
-  width: 42px;
+  width: 46px;
   height: 34px;
   border: 2px solid var(--pet-accent);
-  border-radius: 38% 38% 46% 46%;
-  background: #0c1218;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 7px),
+    #0c1218;
 }
 
 .pet-eye {
@@ -364,34 +381,32 @@ main {
   background: color-mix(in srgb, var(--pet-accent) 70%, white);
 }
 
-.pet-ear {
+.pet-antenna {
   top: 8px;
-  width: 20px;
-  height: 24px;
-  border: 2px solid var(--pet-accent);
-  background: #0c1218;
+  width: 18px;
+  height: 18px;
+  border-top: 2px solid var(--pet-accent);
+  border-left: 2px solid var(--pet-accent);
 }
 
-.pet-ear.left {
-  left: 18px;
-  border-radius: 80% 20% 45% 45%;
-  transform: rotate(-16deg);
+.pet-antenna.left {
+  left: 20px;
+  transform: rotate(20deg);
 }
 
-.pet-ear.right {
-  right: 18px;
-  border-radius: 20% 80% 45% 45%;
-  transform: rotate(16deg);
+.pet-antenna.right {
+  right: 20px;
+  transform: scaleX(-1) rotate(20deg);
 }
 
-.pet-tail {
-  right: 12px;
-  top: 67px;
-  width: 31px;
-  height: 16px;
-  border-top: 3px solid var(--pet-accent);
+.pet-status-light {
+  right: 27px;
+  top: 71px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  transform-origin: left center;
+  background: var(--pet-accent);
+  box-shadow: 0 0 10px var(--pet-accent);
   animation: pet-tail 1.1s ease-in-out infinite;
 }
 
@@ -835,11 +850,37 @@ svg {
   font-weight: 700;
 }
 
-.task-layout {
+.task-layout,
+.request-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 1rem;
   align-items: start;
+}
+
+.request-layout {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.compact-heading {
+  margin-bottom: 0.75rem;
+}
+
+.compact-heading h3 {
+  margin-bottom: 0;
+}
+
+.request-list article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+
+.request-list small {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--muted);
 }
 
 .task-table-wrap {
@@ -988,6 +1029,7 @@ pre {
   .bus-grid,
   .agent-matrix,
   .task-layout,
+  .request-layout,
   .phoenix-console {
     grid-template-columns: 1fr;
   }

@@ -42,6 +42,27 @@ create table if not exists tasks (
 create index if not exists idx_tasks_status_priority on tasks(status, priority desc, created_at);
 create index if not exists idx_tasks_agent on tasks(agent_id);
 
+create table if not exists operator_requests (
+    id bigserial primary key,
+    title text not null,
+    request_body text not null,
+    requester text not null default 'owner',
+    target_machine_id text,
+    target_agent_id text,
+    priority integer not null default 70,
+    status text not null default 'queued',
+    delivery_methods jsonb not null default '["dashboard"]',
+    output_format text not null default 'dashboard',
+    due_at timestamptz,
+    routed_task_ids jsonb not null default '[]',
+    response_summary text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_operator_requests_status_priority on operator_requests(status, priority desc, created_at desc);
+
 create table if not exists task_events (
     id bigserial primary key,
     task_id bigint not null references tasks(id) on delete cascade,

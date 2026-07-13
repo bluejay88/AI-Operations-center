@@ -85,6 +85,52 @@ LAPTOP_WORKSTREAMS = {
     },
 }
 
+BUSINESS_LAUNCH_BLUEPRINTS = [
+    {
+        "id": "local-website-maintenance",
+        "name": "Local Website Maintenance Studio",
+        "offer": "Done-for-you website refresh, hosting, monthly updates, analytics, and AI content support for small businesses.",
+        "customer": "Local service businesses, salons, restaurants, contractors, clinics, and solo professionals.",
+    },
+    {
+        "id": "digital-template-market",
+        "name": "Digital Template Market",
+        "offer": "Downloadable business forms, contracts, prompt libraries, planners, resumes, study guides, and coding manuals.",
+        "customer": "Creators, students, small-business owners, job seekers, and self-employed operators.",
+    },
+    {
+        "id": "grant-intelligence-service",
+        "name": "Grant Intelligence Service",
+        "offer": "Subscription research briefs for grants, government funding, deadlines, eligibility, and application checklists.",
+        "customer": "Illinois small businesses, nonprofits, workforce programs, startups, and local service providers.",
+    },
+    {
+        "id": "resale-opportunity-radar",
+        "name": "Resale Opportunity Radar",
+        "offer": "Research-driven estate sale, eBay arbitrage, hardware resale, and local deal intelligence reports.",
+        "customer": "Resellers, collectors, gamers, refurbishers, estate-sale shoppers, and local entrepreneurs.",
+    },
+    {
+        "id": "ai-content-growth-agency",
+        "name": "AI Content Growth Agency",
+        "offer": "Monthly content packages: blog posts, Shorts ideas, TikTok scripts, LinkedIn posts, email campaigns, and reporting.",
+        "customer": "Small businesses that need consistent marketing but cannot hire a full-time content team.",
+    },
+]
+
+BUSINESS_LAUNCH_PHASES = [
+    ("Market research dossier", "research-lead", "research", "Research target customers, competitors, pain points, pricing, keywords, and top risks."),
+    ("Grant and funding scan", "grant-scout", "funding", "Find grants, local programs, startup funding, Illinois opportunities, and application next steps."),
+    ("Business plan", "business-manager", "business", "Create the business model, packages, operations, staffing, delivery process, and first 90-day roadmap."),
+    ("Revenue and cash-flow model", "finance-manager", "finance", "Estimate pricing, margins, startup costs, monthly recurring revenue, break-even, and $250k-$500k path."),
+    ("Lead generation plan", "lead-generation", "sales", "Define lead sources, qualification rules, CRM fields, outreach sequence, and first 100 prospect criteria."),
+    ("Campaign strategy", "marketing-agent", "marketing", "Create positioning, funnel, launch campaign, email sequence, social plan, and conversion metrics."),
+    ("Social content calendar", "social-media", "content", "Draft 30 days of social posts, short video ideas, LinkedIn posts, and YouTube titles."),
+    ("Mockup website plan", "website-builder", "development", "Build a landing-page mockup plan with sections, copy, CTAs, pricing block, FAQ, and Netlify deployment notes."),
+    ("Digital product assets", "digital-products", "product", "Identify starter products, templates, downloadables, upsells, bundles, and production checklist."),
+    ("Brain launch review", "orchestrator", "approval", "Review all outputs, find gaps, score risk, recommend next actions, and prepare approval/deployment gates."),
+]
+
 
 def _json(value: Any) -> str:
     return json.dumps(value, default=str)
@@ -261,6 +307,90 @@ def seed_improvement_backlog(local: bool = False) -> dict[str, Any]:
     return {"created": created, "existing": existing, "total": len(IMPROVEMENT_BACKLOG)}
 
 
+def seed_expansion_backlog(total: int = 400, local: bool = False) -> dict[str, Any]:
+    total = max(1, min(1000, int(total)))
+    domains = [
+        ("Dashboard", "project-coordinator", "visibility and operator experience"),
+        ("Automation", "orchestrator", "self-running workflow automation"),
+        ("Revenue", "lead-generation", "revenue generation and offer creation"),
+        ("Dev", "programmer", "engineering, testing, and release quality"),
+        ("Research", "research-lead", "market, grants, funding, and data intelligence"),
+        ("Business", "business-manager", "CRM, operations, reporting, and sales process"),
+        ("Security", "code-reviewer", "secure remote operations and auditability"),
+        ("Finance", "finance-manager", "cash flow, expenses, bills, and KPI control"),
+    ]
+    verbs = [
+        "Implement", "Optimize", "Harden", "Instrument", "Document", "Automate", "Validate", "Design",
+        "Benchmark", "Monitor", "Refactor", "Package", "Integrate", "Audit", "Scale", "Simplify",
+    ]
+    objects = [
+        "task intake routing", "agent handoff evidence", "delivery format selection", "dashboard command console",
+        "remote operation approvals", "worker heartbeat history", "daily report generation", "weekly KPI review",
+        "business offer backlog", "grant discovery workflow", "website package pipeline", "content engine queue",
+        "security event triage", "GitHub sync fallback", "Netlify deployment readiness", "project context continuation",
+        "spreadsheet export path", "PDF report path", "DOCX report path", "email draft approval gate",
+        "Phoenix briefing memory", "laptop workload balancing", "duplicate task detection", "quality score rubric",
+        "operator request timeline", "model provider fallback", "database import export", "worker capability registry",
+        "AI cost controls", "customer lead scoring", "proposal generation", "cash flow forecasting",
+    ]
+    created = 0
+    existing = 0
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            for index in range(1, total + 1):
+                domain, agent_id, outcome = domains[(index - 1) % len(domains)]
+                verb = verbs[(index - 1) % len(verbs)]
+                obj = objects[(index - 1) % len(objects)]
+                wave = ((index - 1) // len(objects)) + 1
+                title = f"Expansion {index:03d}: {verb} {obj}"
+                dedupe_key = f"expansion-400:{index:03d}:{verb.lower()}:{obj.replace(' ', '-')}"
+                priority = 98 if index <= 40 else 88 if index <= 160 else 76 if index <= 300 else 64
+                cur.execute(
+                    """
+                    insert into tasks (title, agent_id, category, description, priority, metadata)
+                    select %s, %s, 'expansion', %s, %s, %s::jsonb
+                    where not exists (
+                        select 1 from tasks where metadata->>'dedupe_key' = %s
+                    )
+                    returning id
+                    """,
+                    (
+                        title,
+                        agent_id,
+                        (
+                            f"Wave {wave} {domain} expansion task. Goal: {outcome}. "
+                            "Produce implementation notes, risk check, user impact, validation steps, and delivery artifact plan. "
+                            "Route high-impact actions through Brain approval."
+                        ),
+                        priority,
+                        _json(
+                            {
+                                "project_id": PROJECT_ID,
+                                "expansion_backlog": "ai-ops-400",
+                                "expansion_number": index,
+                                "dedupe_key": dedupe_key,
+                                "domain": domain,
+                                "wave": wave,
+                            }
+                        ),
+                        dedupe_key,
+                    ),
+                )
+                if cur.fetchone():
+                    created += 1
+                else:
+                    existing += 1
+            cur.execute(
+                """
+                insert into audit_logs (actor, action, entity_type, entity_id, summary, metadata)
+                values ('brain-gaming-pc', 'seed_expansion_backlog', 'project', %s, %s, %s::jsonb)
+                """,
+                (PROJECT_ID, f"Seeded AI Ops expansion backlog: {created} created, {existing} existing.", _json({"created": created, "existing": existing, "total": total})),
+            )
+        conn.commit()
+    return {"created": created, "existing": existing, "total": total}
+
+
 def seed_laptop_work_batches(tasks_per_laptop: int = 100, local: bool = False) -> dict[str, Any]:
     batch_id = datetime.now(UTC).strftime("laptop-work-%Y%m%d")
     result: dict[str, Any] = {"batch_id": batch_id, "machines": {}}
@@ -317,6 +447,122 @@ def seed_laptop_work_batches(tasks_per_laptop: int = 100, local: bool = False) -
                 values ('brain-gaming-pc', 'seed_laptop_work_batches', 'batch', %s, %s, %s::jsonb)
                 """,
                 (batch_id, f"Seeded deduped laptop work batches for {len(LAPTOP_WORKSTREAMS)} laptops.", _json(result)),
+            )
+        conn.commit()
+    return result
+
+
+def seed_business_launches(local: bool = False) -> dict[str, Any]:
+    result: dict[str, Any] = {"businesses": {}, "total_tasks": 0}
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            for business in BUSINESS_LAUNCH_BLUEPRINTS:
+                project_id = f"business-{business['id']}"
+                cur.execute(
+                    """
+                    insert into projects (
+                        id, name, project_type, status, owner_machine_id, owner_agent_id,
+                        progress, risk_score, cost_estimate, quality_score, revenue_target, goals, metadata
+                    )
+                    values (%s, %s, 'business-launch', 'active', 'brain-gaming-pc', 'orchestrator',
+                        5, 55, 0, 70, 500000, %s::jsonb, %s::jsonb)
+                    on conflict (id) do update set
+                        name = excluded.name,
+                        status = excluded.status,
+                        revenue_target = excluded.revenue_target,
+                        goals = excluded.goals,
+                        metadata = excluded.metadata,
+                        updated_at = now()
+                    """,
+                    (
+                        project_id,
+                        business["name"],
+                        _json(["Validate offer", "Build mockup website", "Launch campaign plan", "Find funding", "Create first revenue path"]),
+                        _json({"offer": business["offer"], "target_customer": business["customer"], "annual_target": "$250k-$500k"}),
+                    ),
+                )
+                cur.execute(
+                    """
+                    insert into products (name, product_type, status, price, recurring_price, owner_agent_id, metadata)
+                    select %s, 'business-offer', 'planning', 497, 197, 'business-manager', %s::jsonb
+                    where not exists (select 1 from products where name = %s)
+                    """,
+                    (
+                        business["name"],
+                        _json({"project_id": project_id, "offer": business["offer"], "target_customer": business["customer"]}),
+                        business["name"],
+                    ),
+                )
+                created = 0
+                existing = 0
+                task_ids: list[int] = []
+                for index, (phase, agent_id, category, instruction) in enumerate(BUSINESS_LAUNCH_PHASES, start=1):
+                    title = f"{business['name']}: {phase}"
+                    dedupe_key = f"{project_id}:{index:02d}:{phase.lower().replace(' ', '-')}"
+                    cur.execute(
+                        """
+                        insert into tasks (title, agent_id, category, description, priority, metadata)
+                        select %s, %s, %s, %s, %s, %s::jsonb
+                        where not exists (select 1 from tasks where metadata->>'dedupe_key' = %s)
+                        returning id
+                        """,
+                        (
+                            title,
+                            agent_id,
+                            category,
+                            (
+                                f"Business launch project: {business['name']}.\n"
+                                f"Offer: {business['offer']}\n"
+                                f"Target customer: {business['customer']}\n\n"
+                                f"{instruction}\n\n"
+                                "Required output: detailed plan, assumptions, next actions, risks, KPIs, and Brain handoff notes. "
+                                "Do not send emails, spend money, deploy externally, or contact leads without approval."
+                            ),
+                            max(60, 100 - index * 3),
+                            _json(
+                                {
+                                    "project_id": project_id,
+                                    "business_launch": "five-business-mission",
+                                    "business_id": business["id"],
+                                    "phase": phase,
+                                    "dedupe_key": dedupe_key,
+                                    "delivery_methods": ["dashboard", "pdf", "docx", "spreadsheet"],
+                                }
+                            ),
+                            dedupe_key,
+                        ),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        created += 1
+                        task_ids.append(int(row["id"]))
+                    else:
+                        existing += 1
+                for machine_id in ["dev-laptop", "research-laptop", "business-laptop", "brain-gaming-pc"]:
+                    cur.execute(
+                        """
+                        insert into speaker_messages (target_id, message_type, subject, body, priority, metadata)
+                        values (%s, 'business_launch', %s, %s, 95, %s::jsonb)
+                        """,
+                        (
+                            machine_id,
+                            f"Business launch mission: {business['name']}",
+                            (
+                                f"Project {project_id} has been launched. Coordinate your assigned phases, publish updates, "
+                                "and prepare artifacts for Brain review. Research covers funding and market data; Dev covers mockup website; "
+                                "Business covers plans, CRM, campaigns, finance, and launch readiness."
+                            ),
+                            _json({"project_id": project_id, "business_id": business["id"], "task_ids": task_ids}),
+                        ),
+                    )
+                result["businesses"][business["id"]] = {"project_id": project_id, "created": created, "existing": existing, "task_ids": task_ids}
+                result["total_tasks"] += created
+            cur.execute(
+                """
+                insert into audit_logs (actor, action, entity_type, entity_id, summary, metadata)
+                values ('brain-gaming-pc', 'seed_business_launches', 'mission', 'five-business-mission', %s, %s::jsonb)
+                """,
+                ("Seeded five business launch workstreams.", _json(result)),
             )
         conn.commit()
     return result
@@ -665,7 +911,7 @@ def publish_workstation_update(payload: dict[str, Any], local: bool = False) -> 
                     """
                     update resource_recommendations
                     set status = 'resolved',
-                        updated_at = now(),
+                        resolved_at = now(),
                         metadata = metadata || %s::jsonb
                     where machine_id = %s
                       and recommendation_type = 'ssh_authentication'

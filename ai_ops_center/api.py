@@ -31,8 +31,11 @@ from .ops2 import (
     seed_operations_2,
     seed_improvement_backlog,
     seed_laptop_work_batches,
+    seed_expansion_backlog,
+    seed_business_launches,
     split_project,
 )
+from .operator_requests import create_operator_request, operator_request_snapshot
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .readiness import readiness_report, readiness_snapshot
 from .registry import registry_snapshot
@@ -88,6 +91,21 @@ class TaskCreateRequest(BaseModel):
     category: str = Field(min_length=2, max_length=80)
     description: str = Field(min_length=3, max_length=4000)
     priority: int = Field(default=50, ge=1, le=100)
+
+
+class OperatorRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    title: str = Field(min_length=3, max_length=180)
+    request_body: str = Field(min_length=3, max_length=8000)
+    requester: str = Field(default="owner", min_length=2, max_length=80)
+    target_machine_id: str | None = None
+    target_agent_id: str | None = None
+    priority: int = Field(default=70, ge=1, le=100)
+    delivery_methods: list[str] = Field(default_factory=lambda: ["dashboard"])
+    output_format: str = Field(default="dashboard", min_length=2, max_length=40)
+    due_at: str | None = None
+    metadata: dict = Field(default_factory=dict)
 
 
 class ConnectionUpdateRequest(BaseModel):
@@ -368,6 +386,16 @@ def create_task(request: TaskCreateRequest) -> dict[str, int]:
     return {"task_id": task_id}
 
 
+@app.get("/operator-requests")
+def operator_requests() -> dict:
+    return {"requests": operator_request_snapshot()}
+
+
+@app.post("/operator-requests")
+def create_operator_request_api(request: OperatorRequestCreateRequest) -> dict:
+    return create_operator_request(request.model_dump())
+
+
 @app.get("/approvals")
 def approvals() -> dict:
     return {"approvals": approval_snapshot()}
@@ -508,6 +536,16 @@ def ops2_seed() -> dict:
 @app.post("/ops2/improvements/seed")
 def ops2_seed_improvements() -> dict:
     return seed_improvement_backlog()
+
+
+@app.post("/ops2/expansion/seed")
+def ops2_seed_expansion(total: int = 400) -> dict:
+    return seed_expansion_backlog(total=total)
+
+
+@app.post("/ops2/business-launches/seed")
+def ops2_seed_business_launches() -> dict:
+    return seed_business_launches()
 
 
 @app.post("/ops2/laptop-work/seed")

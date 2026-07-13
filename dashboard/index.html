@@ -19,6 +19,7 @@
           <a href="#machines">Machines</a>
           <a href="#factory">Factory</a>
           <a href="#phoenix">Phoenix</a>
+          <a href="#operator-requests">Requests</a>
           <a href="#brain-bus">Brain Bus</a>
           <a href="#agents">Agents</a>
           <a href="#tasks">Tasks</a>
@@ -81,7 +82,9 @@
           </div>
           <div class="export-panel">
             <button id="ops2-seed" type="button">Seed 2.0 Control Plane</button>
-            <button id="ops2-seed-laptop-work" type="button">Seed Laptop Work Batches</button>
+            <button id="ops2-seed-laptop-work" type="button">Seed 500 Tasks Per Laptop</button>
+            <button id="ops2-seed-expansion" type="button">Seed 400 Improvements</button>
+            <button id="ops2-seed-businesses" type="button">Launch 5 Businesses</button>
             <button id="ops2-export-all" type="button">Export Full Bundle</button>
             <button id="ops2-export-project" type="button">Export Project Context</button>
           </div>
@@ -130,6 +133,59 @@
             <div class="phoenix-actions">
               <button id="phoenix-refresh" type="button">Refresh Briefing</button>
               <button id="phoenix-speak" type="button">Speak Briefing</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="operator-requests" class="workspace-section">
+          <div class="section-heading">
+            <h2>Operator Requests</h2>
+            <p>Ask the Brain for work, choose a delivery method, and route it to the right laptop team.</p>
+          </div>
+          <div class="request-layout">
+            <form id="operator-request-form" class="task-form">
+              <h3>New Request</h3>
+              <label>
+                Title
+                <input name="title" required placeholder="Create a grant funding brief" />
+              </label>
+              <label>
+                Target
+                <select name="target_machine_id">
+                  <option value="">Brain chooses</option>
+                  <option value="brain-gaming-pc">Brain PC</option>
+                  <option value="dev-laptop">Dev Laptop</option>
+                  <option value="research-laptop">Research Laptop</option>
+                  <option value="business-laptop">Business Laptop</option>
+                </select>
+              </label>
+              <label>
+                Delivery
+                <select name="output_format">
+                  <option value="dashboard">Dashboard update</option>
+                  <option value="pdf">PDF report</option>
+                  <option value="docx">DOCX document</option>
+                  <option value="email">Email draft</option>
+                  <option value="spreadsheet">Spreadsheet</option>
+                  <option value="github">GitHub artifact</option>
+                </select>
+              </label>
+              <label>
+                Priority
+                <input name="priority" type="number" min="1" max="100" value="80" />
+              </label>
+              <label>
+                Request
+                <textarea name="request_body" rows="6" required placeholder="Describe the result you want, sources to use, deadlines, and any approval requirements."></textarea>
+              </label>
+              <button type="submit">Route Request</button>
+            </form>
+            <div>
+              <div class="section-heading compact-heading">
+                <h3>Recent Requests</h3>
+                <button id="refresh-operator-requests" type="button">Refresh</button>
+              </div>
+              <div id="operator-request-list" class="compact-list request-list"></div>
             </div>
           </div>
         </section>

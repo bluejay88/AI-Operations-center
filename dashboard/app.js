@@ -9,6 +9,7 @@ const state = {
   listenerEvents: [],
   speakerFeed: null,
   integrations: [],
+  operatorRequests: [],
   noc: null,
   mascotAnimations: [
     "sleeping", "working", "thinking", "running", "building", "editing", "researching", "emailing",
@@ -48,8 +49,13 @@ const els = {
   animationBankCount: document.querySelector("#animation-bank-count"),
   ops2Seed: document.querySelector("#ops2-seed"),
   ops2SeedLaptopWork: document.querySelector("#ops2-seed-laptop-work"),
+  ops2SeedExpansion: document.querySelector("#ops2-seed-expansion"),
+  ops2SeedBusinesses: document.querySelector("#ops2-seed-businesses"),
   ops2ExportAll: document.querySelector("#ops2-export-all"),
   ops2ExportProject: document.querySelector("#ops2-export-project"),
+  operatorRequestForm: document.querySelector("#operator-request-form"),
+  operatorRequestList: document.querySelector("#operator-request-list"),
+  refreshOperatorRequests: document.querySelector("#refresh-operator-requests"),
   refreshApprovals: document.querySelector("#refresh-approvals"),
   refreshListener: document.querySelector("#refresh-listener"),
   refreshIntegrations: document.querySelector("#refresh-integrations"),
@@ -446,15 +452,15 @@ function petMarkup(pet) {
       <div class="pet-stage">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
           <span class="pet-aura"></span>
-          <span class="pet-ear left"></span>
-          <span class="pet-ear right"></span>
-          <span class="pet-head">
+          <span class="pet-antenna left"></span>
+          <span class="pet-antenna right"></span>
+          <span class="pet-monitor">
             <span class="pet-eye left"></span>
             <span class="pet-eye right"></span>
             <span class="pet-mouth"></span>
           </span>
-          <span class="pet-core"></span>
-          <span class="pet-tail"></span>
+          <span class="pet-tower"></span>
+          <span class="pet-status-light"></span>
           <span class="pet-tool"></span>
         </div>
       </div>
@@ -556,6 +562,23 @@ function renderIntegrations() {
     .join("");
 }
 
+function renderOperatorRequests() {
+  els.operatorRequestList.innerHTML = (state.operatorRequests || [])
+    .map((request) => {
+      const delivery = Array.isArray(request.delivery_methods) ? request.delivery_methods.join(", ") : request.output_format;
+      const tasks = Array.isArray(request.routed_task_ids) ? request.routed_task_ids.join(", ") : request.routed_task_ids || "";
+      return `
+        <article>
+          <strong>${escapeHtml(request.title)}</strong>
+          <span>${escapeHtml(request.status)} / P${escapeHtml(request.priority)} / ${escapeHtml(delivery)}</span>
+          <p>${escapeHtml(request.request_body)}</p>
+          <small>Target ${escapeHtml(request.target_machine_id || "Brain chooses")} / Agent ${escapeHtml(request.target_agent_id || "auto")} / Tasks ${escapeHtml(tasks || "pending")}</small>
+        </article>
+      `;
+    })
+    .join("") || `<p class="muted">No operator requests yet.</p>`;
+}
+
 async function loadReport(type = state.selectedReport) {
   state.selectedReport = type;
   const data = await api(`/reports/${type}`);
@@ -592,6 +615,12 @@ async function loadIntegrations() {
   renderIntegrations();
 }
 
+async function loadOperatorRequests() {
+  const data = await api("/operator-requests");
+  state.operatorRequests = data.requests || [];
+  renderOperatorRequests();
+}
+
 async function loadNoc() {
   state.noc = await api("/ops2/noc");
   renderNoc();
@@ -621,7 +650,7 @@ async function refresh() {
   renderPets();
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
-  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations()]);
+  await Promise.all([loadApprovals(), loadListenerEvents(), loadSpeakerFeed(), loadIntegrations(), loadOperatorRequests()]);
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
 }
 
@@ -661,6 +690,7 @@ els.phoenixRefresh.addEventListener("click", () => loadPhoenixBriefing().catch((
 els.refreshApprovals.addEventListener("click", () => loadApprovals().catch((error) => toast(error.message)));
 els.refreshListener.addEventListener("click", () => loadListenerEvents().catch((error) => toast(error.message)));
 els.refreshIntegrations.addEventListener("click", () => loadIntegrations().catch((error) => toast(error.message)));
+els.refreshOperatorRequests.addEventListener("click", () => loadOperatorRequests().catch((error) => toast(error.message)));
 els.speakerTarget.addEventListener("change", () => loadSpeakerFeed().catch((error) => toast(error.message)));
 
 els.phoenixSpeak.addEventListener("click", async () => {
@@ -713,11 +743,23 @@ els.ops2Seed.addEventListener("click", async () => {
 });
 
 els.ops2SeedLaptopWork.addEventListener("click", async () => {
-  const data = await api("/ops2/laptop-work/seed?tasks_per_laptop=100", { method: "POST" });
+  const data = await api("/ops2/laptop-work/seed?tasks_per_laptop=500", { method: "POST" });
   const machines = Object.entries(data.machines || {})
     .map(([machine, counts]) => `${machine}: ${counts.created} new`)
     .join(", ");
   toast(`Seeded laptop work: ${machines}`);
+  await refresh();
+});
+
+els.ops2SeedExpansion.addEventListener("click", async () => {
+  const data = await api("/ops2/expansion/seed?total=400", { method: "POST" });
+  toast(`Seeded 400 expansion tasks: ${data.created} new / ${data.existing} existing`);
+  await refresh();
+});
+
+els.ops2SeedBusinesses.addEventListener("click", async () => {
+  const data = await api("/ops2/business-launches/seed", { method: "POST" });
+  toast(`Launched 5 business workstreams with ${data.total_tasks} new tasks`);
   await refresh();
 });
 
@@ -743,6 +785,18 @@ els.taskForm.addEventListener("submit", async (event) => {
   body.priority = Number(body.priority || 50);
   const data = await api("/tasks", { method: "POST", body: JSON.stringify(body) });
   toast(`Queued task ${data.task_id}`);
+  event.currentTarget.reset();
+  await refresh();
+});
+
+els.operatorRequestForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const body = Object.fromEntries(form.entries());
+  body.priority = Number(body.priority || 70);
+  body.delivery_methods = [body.output_format || "dashboard"];
+  const data = await api("/operator-requests", { method: "POST", body: JSON.stringify(body) });
+  toast(`Request ${data.request.id} routed to task ${data.task_ids.join(", ")}`);
   event.currentTarget.reset();
   await refresh();
 });

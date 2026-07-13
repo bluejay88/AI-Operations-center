@@ -11,6 +11,7 @@ COPY config ./config
 COPY dashboard ./dashboard
 COPY laptop_packages ./laptop_packages
 COPY docker ./docker
+COPY docs ./docs
 COPY instructions ./instructions
 COPY prompts ./prompts
 COPY sql ./sql

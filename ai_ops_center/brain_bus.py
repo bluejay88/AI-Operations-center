@@ -7,6 +7,7 @@ from .approvals import create_approval_request
 from .db import connect
 from .phoenix import laptop_instruction, phoenix_briefing
 from .tasks import create_manual_task
+from .team_chat import post_team_chat_message
 
 
 def submit_listener_event(
@@ -33,6 +34,17 @@ def submit_listener_event(
             event_id = int(cur.fetchone()["id"])
         conn.commit()
 
+    _mirror_listener_to_team_chat(
+        source_type=source_type,
+        source_id=source_id,
+        event_type=event_type,
+        subject=subject,
+        body=body,
+        priority=priority,
+        metadata=metadata,
+        event_id=event_id,
+        local=local,
+    )
     actions = apply_brain_logic(event_id, local=local)
     return {"event_id": event_id, "actions": actions}
 
@@ -136,7 +148,118 @@ def create_speaker_message(
             )
             message_id = int(cur.fetchone()["id"])
         conn.commit()
+    _mirror_speaker_to_team_chat(
+        target_id=target_id,
+        message_type=message_type,
+        subject=subject,
+        body=body,
+        priority=priority,
+        metadata=metadata or {},
+        message_id=message_id,
+        local=local,
+    )
     return message_id
+
+
+def _mirror_listener_to_team_chat(
+    *,
+    source_type: str,
+    source_id: str,
+    event_type: str,
+    subject: str,
+    body: str,
+    priority: int,
+    metadata: dict[str, Any],
+    event_id: int,
+    local: bool,
+) -> None:
+    try:
+        post_team_chat_message(
+            channel=str(metadata.get("channel") or "operations"),
+            thread_key=str(metadata.get("thread_key") or metadata.get("task_id") or "global"),
+            actor_type=_actor_type(source_type),
+            actor_id=source_id,
+            machine_id=source_id if source_type == "machine" else metadata.get("machine_id"),
+            agent_id=metadata.get("agent_id"),
+            message_type=_team_message_type(event_type),
+            priority=priority,
+            task_id=_int_or_none(metadata.get("task_id")),
+            project_id=metadata.get("project_id"),
+            subject=subject,
+            body=body,
+            decision=metadata.get("decision"),
+            direction=metadata.get("direction"),
+            confidence=_int_or_none(metadata.get("confidence")),
+            metadata={**metadata, "listener_event_id": event_id, "mirrored_from": "listener"},
+            local=local,
+        )
+    except Exception:
+        return
+
+
+def _mirror_speaker_to_team_chat(
+    *,
+    target_id: str,
+    message_type: str,
+    subject: str,
+    body: str,
+    priority: int,
+    metadata: dict[str, Any],
+    message_id: int,
+    local: bool,
+) -> None:
+    try:
+        post_team_chat_message(
+            channel=str(metadata.get("channel") or "operations"),
+            thread_key=str(metadata.get("thread_key") or metadata.get("task_id") or "global"),
+            actor_type="brain",
+            actor_id="brain-gaming-pc",
+            machine_id=target_id if target_id.endswith("-laptop") else metadata.get("machine_id"),
+            agent_id=metadata.get("agent_id"),
+            message_type=_team_message_type(message_type),
+            priority=priority,
+            task_id=_int_or_none(metadata.get("task_id")),
+            project_id=metadata.get("project_id"),
+            subject=subject,
+            body=body,
+            decision=metadata.get("decision"),
+            direction=metadata.get("direction") or body,
+            confidence=_int_or_none(metadata.get("confidence")),
+            metadata={**metadata, "speaker_message_id": message_id, "target_id": target_id, "mirrored_from": "speaker"},
+            local=local,
+        )
+    except Exception:
+        return
+
+
+def _actor_type(value: str) -> str:
+    return value if value in {"brain", "machine", "agent", "model", "human", "workflow", "system"} else "system"
+
+
+def _team_message_type(value: str) -> str:
+    lowered = value.lower()
+    if "approval" in lowered or "decision" in lowered:
+        return "decision"
+    if "completed" in lowered or "response" in lowered or "result" in lowered:
+        return "answer"
+    if "error" in lowered or "blocker" in lowered or "failed" in lowered:
+        return "blocker"
+    if "security" in lowered:
+        return "security"
+    if "audit" in lowered:
+        return "audit"
+    if "request" in lowered or "question" in lowered:
+        return "question"
+    if "model" in lowered:
+        return "model_result"
+    return "update"
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None and str(value) != "" else None
+    except (TypeError, ValueError):
+        return None
 
 
 def apply_brain_logic(event_id: int, local: bool = False) -> list[dict[str, Any]]:
@@ -178,6 +301,14 @@ def apply_brain_logic(event_id: int, local: bool = False) -> list[dict[str, Any]
                 {"type": "approval_request_created", "approval_request_id": approval_id},
                 {"type": "speaker_message_created", "message_id": message_id},
             ]
+        )
+    elif event["event_type"] == "speaker_message_received":
+        actions.append(
+            {
+                "type": "speaker_receipt_recorded",
+                "message_id": metadata.get("speaker_message_id"),
+                "machine_id": metadata.get("machine_id") or event["source_id"],
+            }
         )
     elif event["event_type"] == "workload_update":
         target_id = metadata.get("machine_id") or event["source_id"]

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://aiops:aiops@localhost:5432/aiops"
     local_database_url: str = "postgresql://aiops:aiops@localhost:5432/aiops"
     ollama_base_url: str = "http://localhost:11434"
+    llm_router_url: str = "http://localhost:8091"
     openwebui_url: str = "http://localhost:3000"
     n8n_url: str = "http://localhost:5678"
     local_n8n_url: str = "http://localhost:5678"

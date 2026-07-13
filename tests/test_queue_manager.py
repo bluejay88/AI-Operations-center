@@ -2,7 +2,14 @@ import pytest
 
 from ai_ops_center import worker
 from ai_ops_center.migrations import _checksum_matches
-from ai_ops_center.queue_manager import rank_fallback_targets, retry_delay_seconds, task_is_automatic_eligible
+from ai_ops_center.queue_manager import (
+    rank_fallback_targets,
+    retry_delay_seconds,
+    select_fallback_target,
+    should_reroute_task,
+    task_is_automatic_eligible,
+    task_is_claim_eligible,
+)
 
 
 def test_retry_delay_is_exponential_and_bounded():
@@ -38,6 +45,12 @@ def test_approved_and_portable_tasks_are_eligible():
     assert task_is_automatic_eligible({"requires_approval": True, "approval_status": "approved"}) is True
 
 
+def test_machine_bound_work_can_be_claimed_but_not_automatically_rerouted():
+    metadata = {"no_failover": True, "pinned_machine": "business-laptop", "requires_local_resources": True}
+    assert task_is_claim_eligible(metadata) is True
+    assert task_is_automatic_eligible(metadata) is False
+
+
 def test_fallback_ranking_excludes_source_and_prefers_idle_normalized_capacity():
     loads = {
         "source": {"running": 0, "queued": 20, "capacity": 4},
@@ -50,6 +63,82 @@ def test_fallback_ranking_excludes_source_and_prefers_idle_normalized_capacity()
 
     assert ranked == ["idle-large", "idle-small", "busy"]
     assert "source" not in ranked
+
+
+def test_fallback_selection_skips_idle_full_target_for_spare_capacity():
+    loads = {
+        "source": {"running": 0, "queued": 1, "capacity": 2},
+        "idle-full": {"running": 0, "queued": 1, "capacity": 1},
+        "busy-spare": {"running": 1, "queued": 0, "capacity": 3},
+    }
+
+    assert select_fallback_target(loads, "source", source_unhealthy=False) == "busy-spare"
+
+
+def test_starved_portable_work_moves_to_a_target_with_capacity():
+    assert should_reroute_task(
+        source_unhealthy=False,
+        source_running=0,
+        assignment_generation=0,
+        target_has_room=True,
+        balances_backlog=False,
+        seconds_since_assignment=60,
+    ) is True
+
+
+def test_recent_balanced_work_stays_on_its_assigned_healthy_machine():
+    assert should_reroute_task(
+        source_unhealthy=False,
+        source_running=0,
+        assignment_generation=0,
+        target_has_room=True,
+        balances_backlog=False,
+        seconds_since_assignment=59,
+    ) is False
+
+
+def test_starvation_fallback_is_bounded_against_ping_pong():
+    assert should_reroute_task(
+        source_unhealthy=False,
+        source_running=0,
+        assignment_generation=2,
+        target_has_room=True,
+        balances_backlog=False,
+        seconds_since_assignment=600,
+    ) is False
+
+
+def test_starvation_fallback_does_not_move_work_from_an_active_source():
+    assert should_reroute_task(
+        source_unhealthy=False,
+        source_running=1,
+        assignment_generation=0,
+        target_has_room=True,
+        balances_backlog=False,
+        seconds_since_assignment=600,
+    ) is False
+
+
+def test_starvation_fallback_requires_target_capacity():
+    assert should_reroute_task(
+        source_unhealthy=False,
+        source_running=0,
+        assignment_generation=0,
+        target_has_room=False,
+        balances_backlog=False,
+        seconds_since_assignment=600,
+    ) is False
+
+
+def test_unhealthy_source_moves_even_before_starvation_threshold():
+    assert should_reroute_task(
+        source_unhealthy=True,
+        source_running=0,
+        assignment_generation=9,
+        target_has_room=False,
+        balances_backlog=False,
+        seconds_since_assignment=0,
+    ) is True
 
 
 def test_worker_immediately_requests_more_work_after_completion(monkeypatch):
@@ -105,3 +194,53 @@ def test_connectivity_probe_is_real_machine_evidence():
 
     assert '"machine_id": "business-laptop"' in result
     assert '"executor": "connectivity_probe"' in result
+
+
+def test_speaker_receipt_does_not_echo_to_speaker(monkeypatch):
+    from contextlib import contextmanager
+
+    from ai_ops_center import brain_bus
+
+    class Cursor:
+        def __init__(self):
+            self.last_sql = ""
+
+        def execute(self, sql, _params=()):
+            self.last_sql = sql
+
+        def fetchone(self):
+            if "select * from listener_events" in self.last_sql:
+                return {
+                    "id": 1,
+                    "source_id": "business-laptop",
+                    "event_type": "speaker_message_received",
+                    "subject": "Received: diagnostic",
+                    "body": "received",
+                    "priority": 90,
+                    "metadata": {"speaker_message_id": 77, "machine_id": "business-laptop"},
+                }
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            return None
+
+    @contextmanager
+    def fake_connect(**_kwargs):
+        yield Connection()
+
+    monkeypatch.setattr(brain_bus, "connect", fake_connect)
+    monkeypatch.setattr(brain_bus, "create_speaker_message", lambda **_kwargs: pytest.fail("receipt echoed to speaker"))
+
+    assert brain_bus.apply_brain_logic(1) == [
+        {"type": "speaker_receipt_recorded", "message_id": 77, "machine_id": "business-laptop"}
+    ]

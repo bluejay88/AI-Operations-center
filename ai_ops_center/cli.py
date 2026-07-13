@@ -14,6 +14,7 @@ from .health import machine_status
 from .codex_handoff import codex_handoff_packet
 from .github_defaults import github_defaults_dict
 from .integrations import integration_status
+from .llm_mesh import mesh_status, route_prompt
 from .model_router import model_solution_snapshot
 from .migrations import apply_migrations, migration_status
 from .orchestrator import create_daily_priorities
@@ -54,6 +55,13 @@ def main() -> None:
     process_approvals_parser.add_argument("--actor", default="brain-approval-processor")
     subparsers.add_parser("listener-events")
     subparsers.add_parser("integrations")
+    subparsers.add_parser("llm-mesh-status")
+    llm_route_parser = subparsers.add_parser("llm-route")
+    llm_route_parser.add_argument("--prompt", required=True)
+    llm_route_parser.add_argument("--mode")
+    llm_route_parser.add_argument("--local-only", action="store_true")
+    llm_route_parser.add_argument("--prefer-speed", action="store_true")
+    llm_route_parser.add_argument("--edge-device", action="store_true")
     subparsers.add_parser("model-solutions")
     subparsers.add_parser("github-defaults")
     subparsers.add_parser("remote-ops")
@@ -247,6 +255,22 @@ def main() -> None:
         print(json.dumps(speaker_feed(args.target_id, local=args.local_db), indent=2, default=str))
     elif args.command == "integrations":
         print(json.dumps(integration_status(), indent=2, default=str))
+    elif args.command == "llm-mesh-status":
+        print(json.dumps(mesh_status(), indent=2, default=str))
+    elif args.command == "llm-route":
+        print(
+            json.dumps(
+                route_prompt(
+                    args.prompt,
+                    mode=args.mode,
+                    local_only=args.local_only,
+                    prefer_speed=args.prefer_speed,
+                    edge_device=args.edge_device,
+                ),
+                indent=2,
+                default=str,
+            )
+        )
     elif args.command == "model-solutions":
         print(json.dumps({"solutions": model_solution_snapshot(local=args.local_db)}, indent=2, default=str))
     elif args.command == "github-defaults":

@@ -11,7 +11,8 @@ from datetime import UTC, datetime
 
 from .brain_bus import acknowledge_speaker_message, speaker_feed, submit_listener_event
 from .collaboration import respond_to_peer_request
-from .integrations import dispatch_to_provider, integration_status
+from .integrations import integration_status
+from .llm_mesh import run_llm_request
 from .migrations import apply_migrations
 from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
 from .queue_manager import steward_queue
@@ -142,7 +143,8 @@ async def _execute_model_task(machine_id: str, task: dict, metadata: dict, local
     requested = metadata.get("providers")
     configured = [item["id"] for item in integration_status()["providers"] if item.get("configured") and item["id"] in {"openai", "groq", "claude", "gemini"}]
     providers = [str(item) for item in requested] if isinstance(requested, list) else configured
-    if not providers:
+    local_only = bool(metadata.get("local_only") or metadata.get("edge_device"))
+    if not providers and not local_only:
         raise RuntimeError("No model provider is configured; task was not falsely completed")
     prompt = (
         f"Machine: {machine_id}\nAgent: {task['agent_id']}\nCategory: {task['category']}\n"
@@ -150,32 +152,30 @@ async def _execute_model_task(machine_id: str, task: dict, metadata: dict, local
         "Return a concrete work product, evidence/assumptions, blockers, confidence, and next action. "
         "Do not claim external actions or files unless actually performed."
     )
-    failures = []
-    for provider in providers:
-        response = await dispatch_to_provider(
-            provider=provider,
-            purpose=f"worker_task:{task['category']}",
-            prompt=prompt,
-            task_id=int(task["id"]),
-            options={"max_tokens": 1200, "temperature": 0.2},
-            local=local,
-        )
-        result = response.get("result") or {}
-        text = str(result.get("text") or "").strip()
-        if result.get("status") == "completed" and text:
-            return json.dumps(
-                {
-                    "status": "completed",
-                    "executor": "model",
-                    "provider": provider,
-                    "model": result.get("model"),
-                    "latency_ms": result.get("latency_ms"),
-                    "work_product": text,
-                },
-                default=str,
-            )
-        failures.append(f"{provider}: {result.get('error') or result.get('status') or 'empty response'}")
-    raise RuntimeError("All configured model executors failed: " + "; ".join(failures))
+    response = await run_llm_request(
+        prompt,
+        mode=str(metadata.get("mode") or task["category"]),
+        local_only=local_only,
+        prefer_speed=bool(metadata.get("prefer_speed")),
+        edge_device=bool(metadata.get("edge_device")),
+        max_tokens=int(metadata.get("max_tokens") or 1200),
+        temperature=float(metadata.get("temperature") or 0.2),
+        local=local,
+    )
+    if response.get("status") != "completed":
+        failures = response.get("failures") or []
+        raise RuntimeError("All LLM mesh routes failed: " + json.dumps(failures, default=str)[:1500])
+    result = response.get("result") or {}
+    return json.dumps(
+        {
+            "status": "completed",
+            "executor": "llm_mesh",
+            "route": response.get("route"),
+            "latency_ms": result.get("latency_ms"),
+            "work_product": result.get("text"),
+        },
+        default=str,
+    )
 
 
 def _respond_to_linked_peer_request(machine_id: str, task: dict, result: str, local: bool = False) -> None:

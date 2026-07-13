@@ -38,9 +38,11 @@ from .health import machine_status
 from .codex_handoff import codex_handoff_packet
 from .github_defaults import github_defaults_dict
 from .integrations import dispatch_to_provider, integration_status, provider_health
+from .llm_mesh import mesh_status, route_prompt, run_llm_request
 from .model_router import model_solution_snapshot, submit_model_query
 from .model_workflows import run_external_model_workflow
 from .migrations import apply_migrations, migration_status
+from .node_contract import node_contract
 from .node_mesh import node_mesh_snapshot
 from .orchestrator import create_daily_priorities
 from .ops2 import (
@@ -61,6 +63,7 @@ from .ops2 import (
 from .operator_requests import create_operator_request, operator_request_snapshot
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
+from .pet_release import PET_RELEASE_RUBRIC, submit_pet_release_candidate
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
 from .remote_ops import remote_operation_snapshot, request_remote_operation, update_remote_operation_from_approval
@@ -69,6 +72,7 @@ from .reports import generate_report
 from .security_guardian import security_guardian_audit
 from .settings import get_settings
 from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_accounting_audit, task_detail, task_snapshot, task_summary
+from .team_chat import post_team_chat_message, team_chat_digest, team_chat_snapshot
 
 settings = get_settings()
 docs_url = "/docs" if settings.expose_api_docs or settings.app_env != "production" else None
@@ -166,6 +170,18 @@ class TaskCreateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class LlmMeshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1, max_length=20000)
+    mode: str | None = Field(default=None, max_length=40)
+    local_only: bool = False
+    prefer_speed: bool = False
+    edge_device: bool = False
+    max_tokens: int | None = Field(default=None, ge=1, le=4000)
+    temperature: float = Field(default=0.2, ge=0, le=2)
+
+
 class ChatTaskIntakeRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -173,6 +189,48 @@ class ChatTaskIntakeRequest(BaseModel):
     body: str = Field(min_length=3, max_length=12000)
     requester: str = Field(default="chat", min_length=2, max_length=80)
     priority: int = Field(default=85, ge=1, le=100)
+
+
+class TeamChatPostRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel: str = Field(default="operations", min_length=2, max_length=80)
+    thread_key: str = Field(default="global", min_length=2, max_length=120)
+    actor_type: str = Field(min_length=2, max_length=40)
+    actor_id: str = Field(min_length=2, max_length=120)
+    machine_id: str | None = Field(default=None, max_length=80)
+    agent_id: str | None = Field(default=None, max_length=80)
+    model_provider: str | None = Field(default=None, max_length=80)
+    model_name: str | None = Field(default=None, max_length=120)
+    message_type: str = Field(default="update", min_length=2, max_length=60)
+    priority: int = Field(default=50, ge=1, le=100)
+    task_id: int | None = None
+    project_id: str | None = Field(default=None, max_length=120)
+    subject: str = Field(min_length=2, max_length=220)
+    body: str = Field(min_length=1, max_length=20000)
+    decision: str | None = Field(default=None, max_length=2000)
+    direction: str | None = Field(default=None, max_length=4000)
+    confidence: int | None = Field(default=None, ge=0, le=100)
+    visibility: str = Field(default="internal", min_length=2, max_length=40)
+    metadata: dict = Field(default_factory=dict)
+
+
+class BrainDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel: str = Field(default="executive", min_length=2, max_length=80)
+    thread_key: str = Field(default="ceo-decisions", min_length=2, max_length=120)
+    subject: str = Field(min_length=2, max_length=220)
+    body: str = Field(min_length=1, max_length=20000)
+    decision: str | None = Field(default=None, max_length=4000)
+    direction: str | None = Field(default=None, max_length=8000)
+    question: str | None = Field(default=None, max_length=8000)
+    confidence: int | None = Field(default=None, ge=0, le=100)
+    target_machines: list[str] = Field(default_factory=list)
+    priority: int = Field(default=90, ge=1, le=100)
+    task_id: int | None = None
+    project_id: str | None = Field(default=None, max_length=120)
+    metadata: dict = Field(default_factory=dict)
 
 
 class OperatorRequestCreateRequest(BaseModel):
@@ -240,6 +298,24 @@ class ListenerEventRequest(BaseModel):
     body: str = Field(min_length=3, max_length=8000)
     priority: int = Field(default=50, ge=1, le=100)
     metadata: dict = Field(default_factory=dict)
+
+
+class PetReleaseSubmissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    agent_id: str = Field(min_length=2, max_length=80)
+    pet_id: str = Field(min_length=2, max_length=120)
+    task_id: int | None = None
+    feature_ids: list[str] = Field(min_length=1)
+    implementation_summary: str = Field(min_length=3, max_length=8000)
+    artifacts: list[str] = Field(default_factory=list)
+    performance: dict = Field(default_factory=dict)
+    tests: dict = Field(default_factory=dict)
+    audit: dict = Field(default_factory=dict)
+    rollback_plan: str = Field(default="", max_length=4000)
+    release_channel: str = Field(default="staged", pattern="^(staged|canary|production)$")
+    priority: int = Field(default=85, ge=1, le=100)
 
 
 class SpeakerAckRequest(BaseModel):
@@ -544,6 +620,10 @@ def endpoint_contract() -> dict:
         {"name": "Listener snapshot", "method": "GET", "path": "/listener/events", "purpose": "Read recent inbound workstation and workflow events."},
         {"name": "Speaker feed", "method": "GET", "path": "/speaker/feed/{machine_id}", "purpose": "Pull Brain assignments, approvals, feedback, and package install instructions."},
         {"name": "Speaker ack", "method": "POST", "path": "/speaker/messages/{message_id}/ack", "purpose": "Acknowledge a Brain message after the laptop has consumed it."},
+        {"name": "Team room chatlog", "method": "GET", "path": "/team-chat", "purpose": "Read the backend team room where Brain, laptops, agents, workflows, and models exchange auditable updates."},
+        {"name": "Team room post", "method": "POST", "path": "/team-chat/post", "purpose": "Post updates, questions, answers, decisions, directions, model results, blockers, or audit notes into the shared team room."},
+        {"name": "Team room digest", "method": "GET", "path": "/team-chat/digest", "purpose": "Read a Brain-ingestible summary of recent team communications, decisions, blockers, and active channels."},
+        {"name": "Brain team decision", "method": "POST", "path": "/team-chat/brain-decision", "purpose": "Have the Brain publish CEO-level decisions, directions, or questions into the team room and targeted laptop speaker feeds."},
         {"name": "Approvals", "method": "GET", "path": "/approvals", "purpose": "Read outstanding and completed approval requests with Brain score/rating."},
         {"name": "Create approval", "method": "POST", "path": "/approvals", "purpose": "Request approval for sensitive or high-impact changes."},
         {"name": "Brain approval processor", "method": "POST", "path": "/approvals/process", "purpose": "Have the Brain review pending approvals and return approve/needs_changes/reject decisions."},
@@ -554,10 +634,15 @@ def endpoint_contract() -> dict:
         {"name": "Peer request", "method": "POST", "path": "/collaboration/peer-requests", "purpose": "Route laptop-to-laptop asks for research, assets, QA, security review, stats, diagnostics, and handoff help through the Brain bus."},
         {"name": "Peer response", "method": "POST", "path": "/collaboration/peer-requests/{request_id}/respond", "purpose": "Return peer work, artifacts, quality score, and status back to the requesting laptop through the speaker/listener bus."},
         {"name": "Node mesh contract", "method": "GET", "path": "/node-mesh", "purpose": "Read Brain Mesh node roles, peer permissions, message channels, task states, and the standard handoff envelope."},
+        {"name": "Laptop AI node contract", "method": "GET", "path": "/laptop-agents/{machine_id}/contract", "purpose": "Download the machine-specific agent roster, endpoints, model routes, security rules, and collaboration operating loop."},
+        {"name": "Laptop AI node prompt", "method": "GET", "path": "/laptop-agents/{machine_id}/prompt", "purpose": "Download a concise prompt for that laptop's local OpenAI/Codex helper and subagents."},
         {"name": "Migration status", "method": "GET", "path": "/migrations", "purpose": "Read applied and pending database migrations before an update."},
         {"name": "Apply migrations", "method": "POST", "path": "/migrations/apply", "purpose": "Apply pending versioned migrations with checksums after Git updates."},
         {"name": "Laptop model session", "method": "POST", "path": "/collaboration/model-session", "purpose": "Ask a laptop team to consult configured models and report back."},
         {"name": "Model query", "method": "POST", "path": "/models/query", "purpose": "Pipe prompts into configured model mesh for recommendations and task routing."},
+        {"name": "LLM mesh status", "method": "GET", "path": "/llm-mesh/status", "purpose": "Read local/cloud model profiles, routing policies, and guardrails for chat, Q&A, coding, edge, and generation."},
+        {"name": "LLM mesh route", "method": "POST", "path": "/llm-mesh/route", "purpose": "Classify a prompt and return ranked local/Ollama and cloud fallback routes without executing a model."},
+        {"name": "LLM mesh query", "method": "POST", "path": "/llm-mesh/query", "purpose": "Execute a prompt through the local-first LLM router with Ollama and provider fallback."},
         {"name": "Model workflow", "method": "POST", "path": "/integrations/workflow", "purpose": "Run external model workflow and publish results to listener/speaker."},
         {"name": "Enterprise feature catalog", "method": "GET", "path": "/enterprise-features", "purpose": "Read the 500-feature Brain PC enterprise roadmap grouped by domain, owner, laptop, and approval policy."},
         {"name": "Seed enterprise features", "method": "POST", "path": "/enterprise-features/seed", "purpose": "Create deduped backlog tasks for the 500 enterprise enhancements with audit records and approval gating."},
@@ -590,6 +675,37 @@ def factory() -> dict:
 @app.get("/node-mesh")
 def node_mesh() -> dict:
     return node_mesh_snapshot()
+
+
+@app.get("/laptop-agents/{machine_id}/contract")
+def laptop_agent_contract(machine_id: str, brain_host: str = "100.70.49.32") -> dict:
+    return node_contract(machine_id, brain_host=brain_host)
+
+
+@app.get("/laptop-agents/{machine_id}/prompt")
+def laptop_agent_prompt(machine_id: str, brain_host: str = "100.70.49.32") -> dict[str, str]:
+    contract = node_contract(machine_id, brain_host=brain_host)
+    agent_lines = "\n".join(
+        f"- {agent['id']} ({agent['category']}): {agent['mission']}" for agent in contract["assigned_agents"]
+    )
+    endpoint_lines = "\n".join(f"- {name}: {value}" for name, value in contract["endpoints"].items())
+    return {
+        "machine_id": machine_id,
+        "prompt": (
+            f"You are the AI Operations Center node helper for {contract['machine']['name']} ({machine_id}).\n"
+            f"Role: {contract['machine']['role']}.\n"
+            "Use the Brain API as the source of truth. Coordinate only Jayla-owned, registered, authenticated devices.\n\n"
+            f"Assigned agents:\n{agent_lines}\n\n"
+            f"Endpoints:\n{endpoint_lines}\n\n"
+            "Operating rules:\n"
+            "- Read speaker feed, acknowledge messages, and publish receipt/progress/completion events.\n"
+            "- Use peer requests to ask other laptops for research, QA, assets, stats, diagnostics, or handoff help.\n"
+            "- Use /llm-mesh/route before model work and /llm-mesh/query only for approved execution.\n"
+            "- Do not duplicate active work; check tasks, peer requests, and approvals first.\n"
+            "- Never spend money, change credentials, send emails, publish publicly, perform legal/financial actions, or make destructive changes without approval.\n"
+            "- Return evidence, assumptions, blockers, quality score, risks, ETA, and next action for every task.\n"
+        ),
+    }
 
 
 @app.get("/migrations")
@@ -656,6 +772,7 @@ async def stream() -> StreamingResponse:
                 "approvals": approval_snapshot(limit=20),
                 "listener": {"events": listener_snapshot(limit=20)},
                 "speaker": speaker_feed("brain-gaming-pc"),
+                "team_chat": team_chat_digest(limit=30),
                 "collaboration": collaboration_snapshot(limit=20),
                 "integrations": integration_status(),
                 "model_solutions": model_solution_snapshot(limit=10),
@@ -729,14 +846,127 @@ def create_task(request: TaskCreateRequest) -> dict[str, int]:
 
 @app.post("/tasks/intake")
 def chat_task_intake(request: ChatTaskIntakeRequest) -> dict[str, list[int]]:
+    created_ids = create_chat_task_intake(
+        title=request.title,
+        body=request.body,
+        requester=request.requester,
+        priority=request.priority,
+    )
+    post_team_chat_message(
+        channel="operations",
+        thread_key="operator-intake",
+        actor_type="human" if request.requester.lower() in {"jayla", "owner"} else "workflow",
+        actor_id=request.requester,
+        message_type="direction",
+        priority=request.priority,
+        subject=request.title,
+        body=request.body,
+        direction=f"Brain routed this intake into task ids: {created_ids}",
+        metadata={"created_task_ids": created_ids, "source": "tasks/intake"},
+    )
+    return {"created_task_ids": created_ids}
+
+
+@app.get("/team-chat")
+def team_chat(
+    channel: str | None = None,
+    thread_key: str | None = None,
+    machine_id: str | None = None,
+    task_id: int | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict:
     return {
-        "created_task_ids": create_chat_task_intake(
-            title=request.title,
-            body=request.body,
-            requester=request.requester,
-            priority=request.priority,
+        "messages": team_chat_snapshot(
+            channel=channel,
+            thread_key=thread_key,
+            machine_id=machine_id,
+            task_id=task_id,
+            limit=limit,
         )
     }
+
+
+@app.get("/team-chat/digest")
+def team_chat_digest_api(limit: int = Query(default=60, ge=1, le=500)) -> dict:
+    return team_chat_digest(limit=limit)
+
+
+@app.post("/team-chat/post")
+def team_chat_post(request: TeamChatPostRequest) -> dict:
+    return {
+        "message": post_team_chat_message(
+            channel=request.channel,
+            thread_key=request.thread_key,
+            actor_type=request.actor_type,
+            actor_id=request.actor_id,
+            machine_id=request.machine_id,
+            agent_id=request.agent_id,
+            model_provider=request.model_provider,
+            model_name=request.model_name,
+            message_type=request.message_type,
+            priority=request.priority,
+            task_id=request.task_id,
+            project_id=request.project_id,
+            subject=request.subject,
+            body=request.body,
+            decision=request.decision,
+            direction=request.direction,
+            confidence=request.confidence,
+            visibility=request.visibility,
+            metadata=request.metadata,
+        )
+    }
+
+
+@app.post("/team-chat/brain-decision")
+def team_chat_brain_decision(request: BrainDecisionRequest) -> dict:
+    message_type = "question" if request.question and not request.decision else "decision"
+    body_parts = [request.body]
+    if request.decision:
+        body_parts.append(f"Decision: {request.decision}")
+    if request.direction:
+        body_parts.append(f"Direction: {request.direction}")
+    if request.question:
+        body_parts.append(f"Question: {request.question}")
+    body = "\n\n".join(body_parts)
+    team_message = post_team_chat_message(
+        channel=request.channel,
+        thread_key=request.thread_key,
+        actor_type="brain",
+        actor_id="brain-gaming-pc",
+        message_type=message_type,
+        priority=request.priority,
+        task_id=request.task_id,
+        project_id=request.project_id,
+        subject=request.subject,
+        body=body,
+        decision=request.decision,
+        direction=request.direction or request.question,
+        confidence=request.confidence,
+        metadata={**request.metadata, "target_machines": request.target_machines, "source": "brain_decision"},
+    )
+    speaker_messages = []
+    for machine_id in request.target_machines:
+        speaker_messages.append(
+            {
+                "machine_id": machine_id,
+                "speaker_message_id": create_speaker_message(
+                    target_id=machine_id,
+                    message_type=f"brain_{message_type}",
+                    subject=request.subject,
+                    body=body,
+                    priority=request.priority,
+                    metadata={
+                        **request.metadata,
+                        "team_chat_message_id": team_message["id"],
+                        "thread_key": request.thread_key,
+                        "task_id": request.task_id,
+                        "project_id": request.project_id,
+                    },
+                ),
+            }
+        )
+    return {"team_chat_message": team_message, "speaker_messages": speaker_messages, "digest": team_chat_digest(limit=30)}
 
 
 @app.get("/operator-requests")
@@ -816,6 +1046,20 @@ def listener_event(request: ListenerEventRequest) -> dict:
         priority=request.priority,
         metadata=request.metadata,
     )
+
+
+@app.get("/pet-releases/rubric")
+def pet_release_rubric() -> dict:
+    return {
+        "required_checks": list(PET_RELEASE_RUBRIC),
+        "evidence_policy": "Submitted evidence is unverified until Brain review.",
+        "deployment_policy": "No submission or approval automatically deploys a release.",
+    }
+
+
+@app.post("/pet-releases/submissions")
+def pet_release_submission(request: PetReleaseSubmissionRequest) -> dict:
+    return submit_pet_release_candidate(request.model_dump())
 
 
 @app.get("/speaker/feed/{target_id}")
@@ -1009,6 +1253,35 @@ async def integrations_workflow(request: ModelWorkflowRequest) -> dict:
 @app.get("/models/solutions")
 def model_solutions() -> dict:
     return {"solutions": model_solution_snapshot()}
+
+
+@app.get("/llm-mesh/status")
+def llm_mesh_status() -> dict:
+    return mesh_status()
+
+
+@app.post("/llm-mesh/route")
+def llm_mesh_route(request: LlmMeshRequest) -> dict:
+    return route_prompt(
+        request.prompt,
+        mode=request.mode,
+        local_only=request.local_only,
+        prefer_speed=request.prefer_speed,
+        edge_device=request.edge_device,
+    )
+
+
+@app.post("/llm-mesh/query")
+async def llm_mesh_query(request: LlmMeshRequest) -> dict:
+    return await run_llm_request(
+        request.prompt,
+        mode=request.mode,
+        local_only=request.local_only,
+        prefer_speed=request.prefer_speed,
+        edge_device=request.edge_device,
+        max_tokens=request.max_tokens,
+        temperature=request.temperature,
+    )
 
 
 @app.post("/models/query")

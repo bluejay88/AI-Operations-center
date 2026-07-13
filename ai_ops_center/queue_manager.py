@@ -12,6 +12,7 @@ HEARTBEAT_STALE_SECONDS = 60
 LEASE_SECONDS = 120
 LEGACY_STALL_SECONDS = 600
 QUEUE_GRACE_SECONDS = 15
+QUEUE_STARVATION_SECONDS = 60
 MAX_MOVES_PER_SWEEP = 50
 STEWARD_LOCK_ID = 2_026_071_301
 
@@ -35,6 +36,16 @@ def task_is_automatic_eligible(metadata: dict[str, Any] | None) -> bool:
     return not bool(metadata.get("no_failover") or metadata.get("pinned_machine") or metadata.get("requires_local_resources"))
 
 
+def task_is_claim_eligible(metadata: dict[str, Any] | None) -> bool:
+    metadata = metadata or {}
+    queue_state = str(metadata.get("queue_state") or "").strip().lower()
+    if queue_state in APPROVAL_HOLD_STATES:
+        return False
+    requires_approval = str(metadata.get("requires_approval") or "false").strip().lower() in {"1", "true", "yes"}
+    approval_status = str(metadata.get("approval_status") or "").strip().lower()
+    return not requires_approval or approval_status in {"approved", "deployed"}
+
+
 def rank_fallback_targets(loads: dict[str, dict[str, int]], source_machine_id: str) -> list[str]:
     candidates = [machine_id for machine_id in loads if machine_id != source_machine_id]
     return sorted(
@@ -45,6 +56,43 @@ def rank_fallback_targets(loads: dict[str, dict[str, int]], source_machine_id: s
             machine_id,
         ),
     )
+
+
+def select_fallback_target(
+    loads: dict[str, dict[str, int]],
+    source_machine_id: str,
+    *,
+    source_unhealthy: bool,
+) -> str | None:
+    ranked = rank_fallback_targets(loads, source_machine_id)
+    if source_unhealthy:
+        return ranked[0] if ranked else None
+    return next(
+        (
+            machine_id
+            for machine_id in ranked
+            if loads[machine_id]["running"] + loads[machine_id]["queued"] < loads[machine_id]["capacity"]
+        ),
+        None,
+    )
+
+
+def should_reroute_task(
+    *,
+    source_unhealthy: bool,
+    source_running: int,
+    assignment_generation: int,
+    target_has_room: bool,
+    balances_backlog: bool,
+    seconds_since_assignment: float,
+) -> bool:
+    """Move portable work when its source is down, imbalanced, or has failed to claim it."""
+    starved = (
+        source_running == 0
+        and assignment_generation < 2
+        and seconds_since_assignment >= QUEUE_STARVATION_SECONDS
+    )
+    return source_unhealthy or (target_has_room and (balances_backlog or starved))
 
 
 def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, Any]:
@@ -63,14 +111,12 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
             counts = {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
             cur.execute(
                 """
-                select
-                    extract(epoch from (now() - min(created_at))) as oldest_queue_age_seconds,
-                    count(*) filter (where next_attempt_at is not null and next_attempt_at > now()) as retry_waiting
+                select id, created_at, next_attempt_at, execution_machine_id, metadata
                 from tasks
                 where status = 'queued'
                 """
             )
-            queue_row = dict(cur.fetchone() or {})
+            queued_rows = [dict(row) for row in cur.fetchall()]
             cur.execute(
                 """
                 select count(*) as count
@@ -111,19 +157,62 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
     queued = int(counts.get("queued", 0))
     running = int(counts.get("running", 0))
     rate_per_minute = completed_5m / 5.0
+    healthy_ids = {str(row["id"]) for row in machine_load}
+    eligible_by_machine = {machine_id: 0 for machine_id in healthy_ids}
+    approval_held = 0
+    retry_waiting = 0
+    machine_bound_unavailable = 0
+    reroutable_backlog = 0
+    eligible_ages: list[float] = []
+    for row in queued_rows:
+        metadata = dict(row.get("metadata") or {})
+        retry_at = row.get("next_attempt_at")
+        if retry_at is not None and retry_at > observed_at:
+            retry_waiting += 1
+            continue
+        if not task_is_claim_eligible(metadata):
+            approval_held += 1
+            continue
+        source = str(row.get("execution_machine_id") or "")
+        if source in healthy_ids:
+            eligible_by_machine[source] += 1
+            if task_is_automatic_eligible(metadata) and len(healthy_ids) > 1:
+                reroutable_backlog += 1
+        elif task_is_automatic_eligible(metadata) and healthy_ids:
+            reroutable_backlog += 1
+        else:
+            machine_bound_unavailable += 1
+            continue
+        created_at = row.get("created_at")
+        if created_at is not None:
+            eligible_ages.append(max(0.0, (observed_at - created_at).total_seconds()))
+    queued_eligible = sum(eligible_by_machine.values()) + sum(
+        1
+        for row in queued_rows
+        if (row.get("next_attempt_at") is None or row["next_attempt_at"] <= observed_at)
+        and task_is_claim_eligible(dict(row.get("metadata") or {}))
+        and str(row.get("execution_machine_id") or "") not in healthy_ids
+        and task_is_automatic_eligible(dict(row.get("metadata") or {}))
+        and bool(healthy_ids)
+    )
     idle_healthy = [
         str(row["id"])
         for row in machine_load
-        if int(row.get("running") or 0) == 0 and int(row.get("queued") or 0) == 0
+        if int(row.get("running") or 0) == 0 and eligible_by_machine.get(str(row["id"]), 0) == 0
     ]
-    drain_eta_minutes = round(queued / rate_per_minute, 1) if queued and rate_per_minute > 0 else (0.0 if queued == 0 else None)
+    drain_eta_minutes = round(queued_eligible / rate_per_minute, 1) if queued_eligible and rate_per_minute > 0 else (0.0 if queued_eligible == 0 else None)
     return {
         "generated_at": observed_at.isoformat(),
         "queued": queued,
+        "queued_total": queued,
+        "queued_eligible": queued_eligible,
+        "approval_held": approval_held,
+        "machine_bound_unavailable": machine_bound_unavailable,
+        "reroutable_backlog": reroutable_backlog,
         "running": running,
         "stalled_running": stalled,
-        "retry_waiting": int(queue_row.get("retry_waiting") or 0),
-        "oldest_queue_age_seconds": float(queue_row.get("oldest_queue_age_seconds") or 0),
+        "retry_waiting": retry_waiting,
+        "oldest_queue_age_seconds": max(eligible_ages, default=0.0),
         "completed_last_5_minutes": completed_5m,
         "throughput_per_minute": round(rate_per_minute, 2),
         "estimated_drain_minutes": drain_eta_minutes,
@@ -137,7 +226,7 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
             "automatic_approval_holds": True,
             "invariants": {
                 "no_stalled_running_tasks": stalled == 0,
-                "no_healthy_machine_idle_while_backlogged": queued == 0 or not idle_healthy,
+                "no_healthy_machine_idle_while_backlogged": reroutable_backlog == 0 or not idle_healthy,
             },
         },
     }
@@ -261,7 +350,7 @@ def steward_queue(
             if healthy:
                 cur.execute(
                     """
-                    select t.id, t.title, t.agent_id, t.category, t.metadata,
+                    select t.id, t.title, t.agent_id, t.category, t.metadata, t.updated_at,
                            coalesce(t.execution_machine_id, a.machine_id) as source_machine_id,
                            t.assignment_generation
                     from tasks t
@@ -285,17 +374,27 @@ def steward_queue(
                         result["held"] += 1
                         continue
                     source = str(task.get("source_machine_id") or "")
-                    targets = rank_fallback_targets(loads, source)
-                    if not targets:
-                        continue
-                    target = targets[0]
-                    target_load = loads[target]["running"] + loads[target]["queued"]
                     source_load = loads.get(source, {"running": 0, "queued": 0})
                     source_total = source_load["running"] + source_load["queued"]
                     source_unhealthy = source not in healthy
+                    target = select_fallback_target(loads, source, source_unhealthy=source_unhealthy)
+                    if target is None:
+                        continue
+                    target_load = loads[target]["running"] + loads[target]["queued"]
                     target_has_room = target_load < loads[target]["capacity"]
                     balances_backlog = source_total > target_load + 1
-                    if not source_unhealthy and not (target_has_room and balances_backlog):
+                    seconds_since_assignment = max(
+                        0.0,
+                        (observed_at - task["updated_at"]).total_seconds(),
+                    )
+                    if not should_reroute_task(
+                        source_unhealthy=source_unhealthy,
+                        source_running=source_load["running"],
+                        assignment_generation=int(task.get("assignment_generation") or 0),
+                        target_has_room=target_has_room,
+                        balances_backlog=balances_backlog,
+                        seconds_since_assignment=seconds_since_assignment,
+                    ):
                         continue
 
                     cur.execute(
@@ -319,7 +418,13 @@ def steward_queue(
                         "to_machine": target,
                         "from_agent": task["agent_id"],
                         "to_agent": target_agent,
-                        "reason": "source_unhealthy" if source_unhealthy else "capacity_balance",
+                        "reason": (
+                            "source_unhealthy"
+                            if source_unhealthy
+                            else "capacity_balance"
+                            if balances_backlog
+                            else "claim_starvation"
+                        ),
                         "generation": generation,
                         "routed_at": observed_at.isoformat(),
                     }

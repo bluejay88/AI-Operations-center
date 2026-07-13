@@ -1,0 +1,120 @@
+profiles:
+  edge_fast:
+    provider: ollama
+    model: llama3.2:3b
+    roles: [chat, qa, summarize, routing]
+    strengths: [speed, edge, offline]
+    max_tokens: 700
+    cost_weight: 0
+    latency_weight: 95
+    quality_weight: 58
+    reliability_weight: 80
+    local_only: true
+  local_coding:
+    provider: ollama
+    model: qwen2.5-coder:7b
+    roles: [coding, debugging, generation, qa]
+    strengths: [coding, local, private]
+    max_tokens: 1400
+    cost_weight: 0
+    latency_weight: 72
+    quality_weight: 76
+    reliability_weight: 78
+    local_only: true
+  local_reasoning:
+    provider: ollama
+    model: llama3.1:8b
+    roles: [reasoning, qa, planning, chat]
+    strengths: [balanced, local, offline]
+    max_tokens: 1200
+    cost_weight: 0
+    latency_weight: 68
+    quality_weight: 74
+    reliability_weight: 76
+    local_only: true
+  cloud_fast:
+    provider: groq
+    model: llama-3.1-8b-instant
+    roles: [chat, qa, summarize, routing, generation]
+    strengths: [speed, fallback, drafts]
+    max_tokens: 1000
+    cost_weight: 78
+    latency_weight: 98
+    quality_weight: 72
+    reliability_weight: 82
+    local_only: false
+  cloud_coding:
+    provider: openai
+    model: gpt-4.1-mini
+    roles: [coding, debugging, generation, reasoning, qa]
+    strengths: [coding, tools, reliable]
+    max_tokens: 1600
+    cost_weight: 65
+    latency_weight: 76
+    quality_weight: 88
+    reliability_weight: 88
+    local_only: false
+  cloud_long_review:
+    provider: claude
+    model: claude-3-haiku-20240307
+    roles: [review, writing, reasoning, critique]
+    strengths: [long_context, critique, writing]
+    max_tokens: 1600
+    cost_weight: 58
+    latency_weight: 68
+    quality_weight: 82
+    reliability_weight: 70
+    local_only: false
+  cloud_research:
+    provider: gemini
+    model: gemini-2.0-flash
+    roles: [research, qa, multimodal, generation]
+    strengths: [research, alternate_critique]
+    max_tokens: 1400
+    cost_weight: 60
+    latency_weight: 72
+    quality_weight: 80
+    reliability_weight: 66
+    local_only: false
+
+policies:
+  chat:
+    prefer_local: true
+    fallback_order: [edge_fast, local_reasoning, cloud_fast, cloud_coding]
+  qa:
+    prefer_local: true
+    fallback_order: [local_reasoning, edge_fast, cloud_fast, cloud_coding]
+  coding:
+    prefer_local: true
+    fallback_order: [local_coding, cloud_coding, cloud_fast, local_reasoning]
+  debugging:
+    prefer_local: true
+    fallback_order: [local_coding, cloud_coding, cloud_fast]
+  generation:
+    prefer_local: false
+    fallback_order: [local_coding, cloud_coding, cloud_fast, cloud_long_review]
+  research:
+    prefer_local: false
+    fallback_order: [cloud_research, cloud_fast, local_reasoning, cloud_coding]
+  edge:
+    prefer_local: true
+    fallback_order: [edge_fast, local_reasoning, local_coding]
+  offline:
+    prefer_local: true
+    fallback_order: [edge_fast, local_reasoning, local_coding]
+
+guardrails:
+  require_human_approval_for:
+    - spending_money
+    - changing_credentials
+    - deploying_publicly
+    - sending_email
+    - legal_or_financial_commitments
+    - destructive_filesystem_changes
+  redact_patterns:
+    - sk-
+    - api_key
+    - password
+    - token
+  default_timeout_seconds: 75
+  max_retries: 2

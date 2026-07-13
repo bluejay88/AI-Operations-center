@@ -210,6 +210,18 @@ def create_peer_request(
                 ),
             )
             peer_request = dict(cur.fetchone())
+            if task_id is not None:
+                cur.execute(
+                    """
+                    update tasks
+                    set metadata = metadata || jsonb_build_object('peer_request_id', %s::bigint),
+                        updated_at = now()
+                    where id = %s and execution_machine_id = %s
+                    """,
+                    (peer_request["id"], task_id, to_machine_id),
+                )
+                if cur.rowcount != 1:
+                    raise ValueError(f"task {task_id} is not assigned to {to_machine_id}")
         conn.commit()
 
     message_id = create_speaker_message(

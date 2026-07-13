@@ -334,11 +334,11 @@ function renderReleaseAssurance() {
     .filter((machineId) => laptopIds.has(machineId)));
   const petCards = els.pets?.querySelectorAll("[data-pet-id][data-capability-status='mixed']").length || 0;
   const queueStalled = Number(state.queueHealth?.stalled_running || 0);
-  const queueBacklog = Number(state.queueHealth?.queued || 0);
-  const queueIdleHealthy = state.queueHealth?.idle_healthy_machines || [];
+  const queueBacklog = Number(state.queueHealth?.queued_eligible ?? state.queueHealth?.queued ?? 0);
+  const queueFlowInvariant = state.queueHealth?.contract?.invariants?.no_healthy_machine_idle_while_backlogged;
   const queueFlowStatus = !state.queueHealth
     ? "pending"
-    : queueStalled > 0 ? "failed" : queueBacklog > 0 && queueIdleHealthy.length > 0 ? "pending" : "passed";
+    : queueStalled > 0 ? "failed" : queueFlowInvariant === false ? "pending" : "passed";
   const petProfilesComplete = Object.values(PET_CAPABILITY_PROFILES).every((profile) =>
     profile.attributes.length && profile.operational.length && profile.governed.length && profile.featureLanes.length === 5
   );
@@ -722,6 +722,8 @@ function renderPets() {
         ...mascot,
         machineId: machine.id,
         animation,
+        workload: (counts.running || 0) >= 3 || (counts.queued || 0) >= 8 ? "critical" : (counts.running || 0) || (counts.queued || 0) >= 3 ? "busy" : (counts.queued || 0) ? "ready" : "calm",
+        signal: readiness.state === "online" || readiness.state?.startsWith("reachable") ? "strong" : readiness.state?.includes("stale") ? "limited" : "lost",
         stateClass: petStateClass(animation, readiness.state),
         completedCluster,
         status: readiness.state || "unknown",
@@ -772,9 +774,12 @@ function petMarkup(pet) {
   const profile = pet.capabilities || { attributes: [], operational: [], governed: [], featureLanes: [] };
   const petId = `pet-${String(pet.machineId).replace(/[^a-z0-9-]/gi, "-")}`;
   return `
-    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}" id="${escapeHtml(petId)}" data-pet-id="${escapeHtml(pet.machineId)}" data-capability-status="mixed" aria-labelledby="${escapeHtml(petId)}-title">
+    <article class="pet-panel ${escapeHtml(pet.className)} ${escapeHtml(pet.stateClass || "")}" id="${escapeHtml(petId)}" data-pet-id="${escapeHtml(pet.machineId)}" data-capability-status="mixed" data-workload="${escapeHtml(pet.workload || "calm")}" data-signal="${escapeHtml(pet.signal || "strong")}" aria-labelledby="${escapeHtml(petId)}-title">
       <div class="pet-stage" aria-hidden="true">
         <div class="pet ${animationClass}" title="${escapeHtml(pet.name)} is ${escapeHtml(pet.animation)}">
+          <span class="pet-signal-orbit"><i></i><i></i><i></i></span>
+          <span class="pet-work-stream"><i></i><i></i><i></i></span>
+          <span class="pet-task-flare"></span>
           <span class="pet-fx pet-fx-left"></span>
           <span class="pet-fx pet-fx-right"></span>
           <span class="pet-roll-burst"></span>

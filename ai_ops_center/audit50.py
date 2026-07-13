@@ -57,12 +57,18 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "ai_ops_center/approval_processor.py",
         "ai_ops_center/tasks.py",
         "ai_ops_center/settings.py",
+        "ai_ops_center/llm_mesh.py",
+        "ai_ops_center/team_chat.py",
+        "ai_ops_center/node_contract.py",
         "config/agents.yaml",
         "config/ai_factory.yaml",
+        "config/llm_mesh.yaml",
         "prompts/AGENT_PROMPTS.md",
         "docker/publish-laptop-telemetry.ps1",
         "docker/show-heavy-work-overlay.ps1",
         "docker/start-laptop-operations.ps1",
+        "docker/laptop-recovery-bundle.ps1",
+        "docs/LLM_MESH_AND_LAPTOP_RECOVERY.md",
     ]
     for rel in files:
         add(f"file exists: {rel}", (ROOT / rel).exists())
@@ -74,6 +80,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     tasks_py = (ROOT / "ai_ops_center/tasks.py").read_text(encoding="utf-8")
     agents_yaml = (ROOT / "config/agents.yaml").read_text(encoding="utf-8")
     factory_yaml = (ROOT / "config/ai_factory.yaml").read_text(encoding="utf-8")
+    llm_mesh_yaml = (ROOT / "config/llm_mesh.yaml").read_text(encoding="utf-8")
+    docker_compose = _read_text("docker-compose.yml")
 
     add("dashboard password screen present", "dashboard-login-form" in index_html)
     add("dashboard API base detection present", "DEFAULT_BRAIN_API" in app_js and "aiOpsApiBase" in app_js)
@@ -96,6 +104,22 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("API chat task intake configured", "/tasks/intake" in api_py)
     add("API external model workflow configured", "/integrations/workflow" in api_py)
     add("API governed model query configured", "/models/query" in api_py)
+    add("API LLM mesh status configured", "/llm-mesh/status" in api_py)
+    add("API LLM mesh route configured", "/llm-mesh/route" in api_py)
+    add("API LLM mesh query configured", "/llm-mesh/query" in api_py)
+    add("API team room chat configured", "/team-chat" in api_py and "/team-chat/brain-decision" in api_py)
+    add("API laptop agent contract configured", "/laptop-agents/{machine_id}/contract" in api_py)
+    add("team room schema migration configured", "team_chat_messages" in _read_text("sql/migrations/005_team_chat_messages.sql"))
+    add("listener and speaker mirror to team room", "post_team_chat_message" in _read_text("ai_ops_center/brain_bus.py"))
+    add("laptop recovery downloads node contract", "/laptop-agents/$MachineId/contract" in _read_text("docker/laptop-recovery-bundle.ps1"))
+    add("LLM mesh local coding profile configured", "local_coding" in llm_mesh_yaml and "qwen2.5-coder:7b" in llm_mesh_yaml)
+    add("LLM mesh edge profile configured", "edge_fast" in llm_mesh_yaml and "llama3.2:3b" in llm_mesh_yaml)
+    add("LLM mesh guarded cloud fallback configured", "cloud_fast" in llm_mesh_yaml and "require_human_approval_for" in llm_mesh_yaml)
+    add("Docker LLM router service configured", not docker_compose or ("ai-ops-llm-router" in docker_compose and "8091:8091" in docker_compose))
+    add("worker uses LLM mesh executor", "run_llm_request" in _read_text("ai_ops_center/worker.py"))
+    add("laptop recovery bundle repairs SSH", "setup-worker-openssh-tailscale-admin.ps1" in _read_text("docker/laptop-recovery-bundle.ps1"))
+    add("laptop recovery bundle starts workload listener", "start-laptop-operations.ps1" in _read_text("docker/laptop-recovery-bundle.ps1"))
+    add("laptop recovery bundle can queue probe", "/tasks" in _read_text("docker/laptop-recovery-bundle.ps1"))
     add("API Brain Mesh configured", "/node-mesh" in api_py)
     add("API peer requests configured", "/collaboration/peer-requests" in api_py)
     add("API enterprise features configured", "/enterprise-features" in api_py)
@@ -129,9 +153,13 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("NOC endpoint", "/ops2/noc"),
         ("approvals endpoint", "/approvals"),
         ("listener endpoint", "/listener/events"),
+        ("team room endpoint", "/team-chat"),
+        ("team room digest endpoint", "/team-chat/digest"),
         ("operator requests endpoint", "/operator-requests"),
         ("integrations endpoint", "/integrations/status"),
         ("model solutions endpoint", "/models/solutions"),
+        ("LLM mesh status endpoint", "/llm-mesh/status"),
+        ("laptop contract endpoint", "/laptop-agents/dev-laptop/contract"),
         ("business os endpoint", "/business-os"),
         ("enterprise org endpoint", "/enterprise-org"),
         ("enterprise features endpoint", "/enterprise-features"),

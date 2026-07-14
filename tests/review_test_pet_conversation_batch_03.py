@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "laptop_packages" / "shared" / "mini-dashboard.js").read_text(encoding="utf-8")
 STYLE = (ROOT / "laptop_packages" / "shared" / "mini-dashboard.css").read_text(encoding="utf-8")
+API = (ROOT / "ai_ops_center" / "api.py").read_text(encoding="utf-8")
 CATALOG = json.loads((ROOT / "config" / "pet_feature_catalog_v1.json").read_text(encoding="utf-8"))
 FEATURE_IDS = {"PET-03-01", "PET-03-03", "PET-03-04", "PET-03-08", "PET-03-10"}
 
@@ -76,7 +77,10 @@ def test_cancel_boundary_is_honestly_client_side_and_preserves_context():
     assert "state.chatAbortController.abort()" in SCRIPT
     assert 'error.name === "AbortError"' in SCRIPT
     assert "context kept" in SCRIPT
-    assert "/models/cancel" not in SCRIPT
+    assert "/models/query/${encodeURIComponent(requestId)}/cancel" in SCRIPT
+    assert "upstream completion is unknown" in SCRIPT
+    assert "upstream_cancellation_guaranteed" in API
+    assert '"scope": "request_only"' in API
 
 
 def test_accessibility_and_reduced_motion_contracts_are_present():
@@ -93,17 +97,17 @@ def test_release_gate_detects_automatic_voice_interruption():
     assert "onaudiostart" in SCRIPT and "speechSynthesis.cancel()" in SCRIPT
 
 
-@pytest.mark.xfail(strict=True, reason="AbortController does not prove the upstream Brain/model computation was cancelled")
-def test_release_gate_proves_server_side_model_cancellation():
-    assert "/models/cancel" in SCRIPT
+def test_ui_labels_explicit_interruption_without_claiming_automatic_barge_in():
+    assert "Interruption · explicit controls; no automatic barge-in" in SCRIPT
 
 
-@pytest.mark.xfail(strict=True, reason="The UI does not disclose that browser speech recognition may use an external speech service")
 def test_release_gate_discloses_speech_processing_boundary():
-    assert "speech service" in SCRIPT.lower() or "browser provider" in SCRIPT.lower()
+    assert "browser or operating-system speech provider may process audio" in SCRIPT
+    assert "does not intentionally store raw audio" in SCRIPT
 
 
-@pytest.mark.xfail(strict=True, reason="No secure-context readiness check is exposed before physical microphone certification")
 def test_release_gate_checks_secure_context_for_microphone_use():
     assert "window.isSecureContext" in SCRIPT
-
+    assert 'navigator.permissions.query({ name: "microphone" })' in SCRIPT
+    assert "secure context required" in SCRIPT
+    assert "microphone=(self)" in API

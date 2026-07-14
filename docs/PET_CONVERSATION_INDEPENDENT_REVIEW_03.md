@@ -2,7 +2,7 @@
 
 ## Decision
 
-**Development evidence accepted; release certification withheld.** All five reviewed catalog features must remain `planned` (`P`). The implementation provides a useful, accessible browser conversation surface, but physical speech evidence and stronger interruption/privacy boundaries are still required.
+**Code-level remediation accepted; physical release certification withheld.** All five reviewed catalog features must remain `planned` (`P`). The implementation provides an accessible browser conversation surface with explicit speech privacy and request-scoped cancellation boundaries, but physical speech evidence and automatic barge-in remain outstanding.
 
 ## Rubric
 
@@ -11,9 +11,9 @@ Each feature is scored out of 100: functional behavior 30, safety/privacy 25, ac
 | Feature | Score | Review result |
 |---|---:|---|
 | `PET-03-01` Text chat | 84 | Escaped transcript rendering, accessible composer/log, bounded request, and no automatic task creation. Needs authenticated live-model and physical mini-dashboard proof. |
-| `PET-03-03` Speech-to-text | 68 | User-initiated, non-continuous dictation with typed fallback and permission-error messaging. Missing secure-context check, browser speech-provider privacy disclosure, and physical microphone proof. |
+| `PET-03-03` Speech-to-text | 80 | User-initiated, non-continuous dictation with typed fallback, secure-context/permission readiness, privacy disclosure, and permission-error messaging. Physical microphone/browser proof remains required. |
 | `PET-03-04` Text-to-speech | 78 | Explicit playback, per-message controls, stop behavior, unavailable-browser state, and reduced-motion support. Needs physical speaker/headphone, voice availability, and assistive-technology coexistence proof. |
-| `PET-03-08` Detect interruptions | 55 | Explicit Stop Voice, Cancel Response, Escape, and dictation-over-playback cancellation are useful. This is not automatic spoken interruption detection; fetch abort does not prove server-side model cancellation. |
+| `PET-03-08` Detect interruptions | 70 | Explicit Stop Voice, Escape, dictation-over-playback cancellation, and request-ID-scoped API cancellation are useful and honestly labeled. This is still not automatic spoken interruption detection, and upstream provider cancellation is not guaranteed. |
 | `PET-03-10` Remember context | 76 | Ten-message outbound context, thirty-message session bound, visible count, and clear control. Context is still readable by same-origin scripts and is transmitted to the Brain/model workflow; no sensitive-data warning or per-message deletion exists. |
 
 ## Verified boundaries
@@ -23,32 +23,34 @@ Each feature is scored out of 100: functional behavior 30, safety/privacy 25, ac
 - Microphone recognition begins only from the Dictate button and uses `continuous = false`; there is no always-on microphone.
 - Playback begins only from explicit user controls; replies do not auto-speak.
 - Unsupported recognition/playback disables the relevant control while typed chat remains available.
+- Dictation is disabled outside a secure context and when current microphone permission is denied; permission changes refresh the readiness label.
+- The interface discloses possible browser/OS speech-provider processing and states that the app does not intentionally store raw audio.
 - Context uses `sessionStorage`, not persistent `localStorage`, is truncated to thirty messages, and sends only the latest ten messages.
 - Clear Transcript removes the stored conversation context for the current machine/tab.
-- Cancel Response uses `AbortController`, catches `AbortError`, and retains the conversation context.
+- Cancel Response immediately aborts the browser wait and sends a stop request for only the unpredictable active request ID. API receipts explicitly set `scope=request_only` and `upstream_cancellation_guaranteed=false`.
 - Screen-reader status, transcript labeling, keyboard cancellation/submission, 40-pixel controls, and reduced-motion behavior are present.
 
 ## Boundary findings
 
-### High: cancellation wording exceeds provable scope
+### Remediated boundary: request-scoped cancellation is honest
 
-`AbortController` cancels the browser's wait for `/models/query`. Once the server accepts the request, upstream provider work may continue. The UI must not be interpreted as proof that Brain/model computation stopped. Server cancellation correlation and receipt evidence are required for that claim.
+The UI now aborts its own wait and sends a cancellation request keyed to the active unpredictable request ID only. The API cancels the matching in-process task and explicitly reports that upstream cancellation is not guaranteed. Provider-specific cancellation and physical log correlation remain release evidence, not a code-level claim.
 
 ### High: PET-03-08 is explicit interruption control, not interruption detection
 
 The implementation detects button/Escape intent and cancels playback when dictation starts. It does not listen for user speech while the PET is speaking or automatically detect barge-in. Full feature certification requires a consented, device-tested barge-in design or a narrower feature claim.
 
-### Medium: browser speech privacy boundary is not disclosed
+### Remediated boundary: browser speech privacy is disclosed
 
-Depending on browser/OS, speech recognition may be processed by a browser-vendor service. The UI says voice is ready but does not explain that boundary before microphone use. No raw audio is intentionally stored by this application, but that does not describe browser-provider processing.
+The UI now explains before use that a browser/OS speech provider may process audio and that this application does not intentionally store raw audio. Provider-specific policy verification and user consent behavior still require physical-browser review.
 
 ### Medium: session context is bounded, not confidential storage
 
 `sessionStorage` limits persistence to the tab/session but is not encrypted application storage and remains accessible to same-origin scripts. The latest ten messages are sent to the model workflow. Users should avoid credentials, secrets, regulated data, and unrelated private content.
 
-### Medium: secure-context and permission behavior needs physical proof
+### Remediated code gate; physical secure-context and permission behavior still needs proof
 
-Speech APIs vary by browser, operating system, policy, locale, installed voices, and whether the dashboard is delivered in a secure context. Constructor detection alone does not prove microphone permission or service availability.
+The client now checks `window.isSecureContext`, inspects microphone permission where the Permissions API supports it, reacts to permission changes, and preserves typed fallback. The server permission policy allows microphone access only to the same origin. These checks still do not prove device/service availability.
 
 ### Low: visual labels contain encoding artifacts in the reviewed checkout
 
@@ -73,4 +75,4 @@ Run:
 python -m pytest tests/review_test_pet_conversation_batch_03.py -q -rxX
 ```
 
-Expected result: eight passing review controls and four strict expected failures representing unresolved release gates. Expected failures must not be converted to passing assertions without corresponding implementation and physical evidence.
+Expected result: eleven passing review controls and one strict expected failure for unresolved automatic voice interruption detection. The expected failure must not be converted to a passing assertion without corresponding implementation, consent design, and physical evidence.

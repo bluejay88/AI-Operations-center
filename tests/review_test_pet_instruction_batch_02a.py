@@ -69,7 +69,6 @@ def test_review_requires_malformed_non_json_payload_to_fail_closed():
     assert decision.code == "malformed_instruction"
 
 
-@pytest.mark.xfail(strict=True, reason="Evaluator trusts uncorrelated numeric IDs, reviewer names, scores, report text, and Brain decision")
 def test_review_requires_evidence_to_be_resolved_from_authoritative_records():
     result = evaluate_capability_batch(_apparently_complete_submission(), repository_root=ROOT)
     assert result["release_candidate"] is False
@@ -78,7 +77,6 @@ def test_review_requires_evidence_to_be_resolved_from_authoritative_records():
     assert result["gates"]["brain_release_decision"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="Caller can disable the required peer-response gate")
 def test_review_requires_peer_evidence_for_this_batch_without_submitter_override():
     submission = _apparently_complete_submission()
     submission["requires_peer_response"] = False
@@ -87,7 +85,6 @@ def test_review_requires_peer_evidence_for_this_batch_without_submitter_override
     assert result["gates"]["physical_machine_evidence"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="Generic max-five check does not enforce the exact certified five-feature manifest")
 def test_review_requires_exact_batch_manifest_for_batch_02a_certificate():
     submission = _apparently_complete_submission()
     submission["feature_ids"] = ["PET-02-04"]

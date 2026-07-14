@@ -35,6 +35,9 @@ def test_dictation_is_user_initiated_and_fails_to_typed_input():
     assert 'addEventListener("click", startDictation)' in SCRIPT
     assert "Dictation is unavailable. Type your message instead." in SCRIPT
     assert "recognition.interimResults = true" in SCRIPT
+    assert "window.isSecureContext" in SCRIPT
+    assert 'navigator.permissions.query({ name: "microphone" })' in SCRIPT
+    assert "browser or operating-system speech provider may process audio" in SCRIPT
 
 
 def test_playback_and_interruption_have_explicit_controls():
@@ -44,6 +47,9 @@ def test_playback_and_interruption_have_explicit_controls():
     assert "state.chatAbortController.abort()" in SCRIPT
     assert 'event.key === "Escape"' in SCRIPT
     assert "window.speechSynthesis.cancel()" in SCRIPT
+    assert "no automatic barge-in" in SCRIPT
+    assert "/models/query/${encodeURIComponent(requestId)}/cancel" in SCRIPT
+    assert "upstream completion is unknown" in SCRIPT
 
 
 def test_context_is_bounded_session_only_and_clearable():
@@ -59,4 +65,3 @@ def test_voice_ui_has_accessible_state_and_reduced_motion_fallback():
     assert 'aria-pressed="false"' in SCRIPT
     assert "@media (prefers-reduced-motion: reduce)" in STYLE
     assert ".sr-only" in STYLE
-

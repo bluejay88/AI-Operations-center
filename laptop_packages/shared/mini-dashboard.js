@@ -26,9 +26,11 @@ const state = {
   refreshInFlight: false,
   chatSending: false,
   chatAbortController: null,
+  chatRequestId: null,
   recognition: null,
   isListening: false,
   isSpeaking: false,
+  microphonePermission: "unknown",
   chatHistory: (() => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(`aiops.${config.machineId}.petChat`) || "[]");
@@ -255,7 +257,9 @@ function mountConversation() {
     <div class="pet-conversation-meta" aria-label="Conversation capabilities">
       <span id="pet-chat-context">Session context · 0 messages</span>
       <span id="pet-voice-support">Checking browser voice support</span>
+      <span id="pet-interruption-scope">Interruption · explicit controls; no automatic barge-in</span>
     </div>
+    <p class="pet-voice-privacy"><strong>Voice privacy:</strong> Dictation starts only when you press Start dictation. Your browser or operating-system speech provider may process audio; this app does not intentionally store raw audio. Review the transcript before sending.</p>
     <div id="pet-chat-log" class="pet-chat-log" role="log" aria-live="off" aria-label="PET conversation transcript"></div>
     <form id="pet-chat-form" class="pet-chat-form">
       <label for="pet-chat-input">Message</label>
@@ -294,17 +298,52 @@ function renderVoiceSupport() {
   const voice = $("#pet-voice-support");
   const dictate = $("#pet-chat-dictate");
   const speak = $("#pet-chat-speak");
-  const canListen = Boolean(recognitionConstructor());
+  const secureContext = window.isSecureContext === true;
+  const permissionReady = state.microphonePermission !== "denied";
+  const canListen = Boolean(recognitionConstructor()) && secureContext && permissionReady;
   const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-  if (voice) voice.textContent = `Voice · ${canListen ? "dictation ready" : "dictation unavailable"} · ${canSpeak ? "playback ready" : "playback unavailable"}`;
+  const dictationState = !secureContext ? "secure context required" : state.microphonePermission === "denied" ? "microphone denied" : canListen ? `dictation ready (${state.microphonePermission})` : "dictation unavailable";
+  if (voice) voice.textContent = `Voice · ${dictationState} · ${canSpeak ? "playback ready" : "playback unavailable"}`;
   if (dictate) {
     dictate.disabled = !canListen;
-    dictate.title = canListen ? "Transcribe microphone input into the message field" : "Speech recognition is not supported by this browser";
+    dictate.title = canListen ? "Transcribe microphone input into the message field" : !secureContext ? "Dictation requires a secure HTTPS browser context" : state.microphonePermission === "denied" ? "Microphone permission is denied; update browser site permissions or type instead" : "Speech recognition is not supported by this browser";
   }
   if (speak) {
     speak.disabled = !canSpeak;
     speak.title = canSpeak ? "Read the latest PET reply aloud" : "Speech playback is not supported by this browser";
   }
+}
+
+async function updateMicrophoneReadiness() {
+  if (!window.isSecureContext) {
+    state.microphonePermission = "unavailable";
+    renderVoiceSupport();
+    return;
+  }
+  if (!navigator.permissions?.query) {
+    state.microphonePermission = "unknown";
+    renderVoiceSupport();
+    return;
+  }
+  try {
+    const permission = await navigator.permissions.query({ name: "microphone" });
+    state.microphonePermission = permission.state;
+    permission.onchange = () => {
+      state.microphonePermission = permission.state;
+      renderVoiceSupport();
+      announceConversation(`Microphone permission is now ${permission.state}.`);
+    };
+  } catch {
+    state.microphonePermission = "unknown";
+  }
+  renderVoiceSupport();
+}
+
+function createModelRequestId() {
+  const values = new Uint32Array(4);
+  if (!window.crypto?.getRandomValues) throw new Error("Secure request identifiers are unavailable in this browser.");
+  window.crypto.getRandomValues(values);
+  return `pet_${Array.from(values, (value) => value.toString(16).padStart(8, "0")).join("")}`;
 }
 
 function chatTime(timestamp) {
@@ -435,10 +474,17 @@ function startDictation() {
   }
 }
 
-function cancelPetResponse() {
+async function cancelPetResponse() {
   if (!state.chatAbortController) return;
+  const requestId = state.chatRequestId;
+  const stopRequest = requestId
+    ? postJson(`/models/query/${encodeURIComponent(requestId)}/cancel`, {}).catch(() => null)
+    : Promise.resolve(null);
   state.chatAbortController.abort();
-  announceConversation("PET response cancelled. Your conversation context is preserved.");
+  const stopReceipt = await stopRequest;
+  const serverScope = stopReceipt?.cancellation_requested ? "Request-scoped stop sent; provider completion is not guaranteed." : "Browser wait dismissed; upstream completion is unknown.";
+  $("#pet-chat-state").textContent = "Response dismissed · context kept";
+  announceConversation(`${serverScope} Your conversation context is preserved.`);
 }
 
 async function sendPetChat(event) {
@@ -450,8 +496,18 @@ async function sendPetChat(event) {
   const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
   state.chatHistory.push({ role: "user", text: message, name: "You", timestamp: Date.now() });
   input.value = "";
+  let requestId;
+  try {
+    requestId = createModelRequestId();
+  } catch (error) {
+    state.chatHistory.push({ role: "pet", text: error.message, name: personality.codename, timestamp: Date.now() });
+    saveChat();
+    renderChat();
+    return;
+  }
   state.chatSending = true;
   state.chatAbortController = new AbortController();
+  state.chatRequestId = requestId;
   $("#pet-chat-send").disabled = true;
   $("#pet-chat-cancel").disabled = false;
   $("#pet-chat-state").textContent = `${personality.codename} is thinking`;
@@ -468,6 +524,7 @@ async function sendPetChat(event) {
       auto_create_tasks: false,
       require_approval: false,
       options: { max_tokens: 420, interaction: "pet_chat", pet: personality.codename },
+      request_id: requestId,
     }, { signal: state.chatAbortController.signal });
     const reply = String(response.synthesized_response || "I recorded your message, but no model response was available.").trim();
     state.chatHistory.push({ role: "pet", text: reply, name: personality.codename, timestamp: Date.now() });
@@ -482,6 +539,7 @@ async function sendPetChat(event) {
   } finally {
     state.chatSending = false;
     state.chatAbortController = null;
+    state.chatRequestId = null;
     $("#pet-chat-send").disabled = false;
     $("#pet-chat-cancel").disabled = true;
     saveChat();
@@ -780,6 +838,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $(".specialty").textContent = state.specialty;
   $("#brain-host").value = state.brainHost;
   bindControls();
+  updateMicrophoneReadiness();
   renderCapabilityProfile();
   refreshAll();
   setInterval(refreshAll, 5000);

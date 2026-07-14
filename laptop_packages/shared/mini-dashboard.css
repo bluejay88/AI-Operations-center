@@ -238,6 +238,8 @@ small {
 #pet-chat-state { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 999px; padding: 5px 9px; font-size: .76rem; }
 .pet-conversation-meta { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: .7rem; }
 .pet-conversation-meta span { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, var(--line)); padding: 3px 8px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.pet-voice-privacy { margin: 0; padding: 10px 12px; border-left: 2px solid color-mix(in srgb, var(--accent) 65%, var(--line)); color: var(--muted); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: .74rem; line-height: 1.55; }
+.pet-voice-privacy strong { color: var(--text); }
 .pet-chat-log { display: grid; gap: 12px; max-height: min(52svh, 440px); overflow-y: auto; padding: clamp(10px, 2vw, 16px); border: 1px solid var(--line); border-radius: calc(var(--radius) - 2px); background: color-mix(in srgb, var(--bg) 82%, transparent); scrollbar-gutter: stable; overscroll-behavior: contain; }
 .pet-chat-message { width: fit-content; max-width: min(86%, 760px); padding: 11px 13px; border: 1px solid var(--line); border-radius: 14px; content-visibility: auto; contain-intrinsic-size: 110px; }
 .pet-chat-message:last-child { animation: pet-reply-arrive 220ms ease-out both; }

@@ -67,6 +67,7 @@ from .phoenix import phoenix_briefing, phoenix_snapshot
 from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, ingest_pet_performance_samples, record_pet_release_decision, submit_pet_release_candidate
 from .pet_catalog import pet_feature_detail, pet_feature_summary
 from .brain_catalog import brain_feature_detail, brain_feature_summary
+from .brain_runtime_profile import laptop_runtime_profile, runtime_profile, runtime_profile_readiness
 from .project_intake import audit_project_paths, import_scan as import_project_scan, route_project_intake, workspace_snapshot
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
@@ -92,6 +93,7 @@ app = FastAPI(
 )
 logger = logging.getLogger(__name__)
 _queue_steward_task: asyncio.Task | None = None
+_model_query_tasks: dict[str, asyncio.Task] = {}
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_DIR = ROOT / "dashboard"
 LAPTOP_PACKAGES_DIR = ROOT / "laptop_packages"
@@ -113,7 +115,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=()")
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -521,6 +523,7 @@ class ModelQueryRequest(BaseModel):
     auto_create_tasks: bool = False
     require_approval: bool | None = None
     options: dict = Field(default_factory=dict)
+    request_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{16,80}$")
 
 
 class LaptopPackageDispatchRequest(BaseModel):
@@ -1182,6 +1185,24 @@ def brain_features_detail(feature_id: str) -> dict:
     return {"feature": feature}
 
 
+@app.get("/brain-runtime-profile")
+def brain_runtime_profile_endpoint() -> dict:
+    return runtime_profile()
+
+
+@app.get("/brain-runtime-profile/readiness")
+def brain_runtime_profile_readiness_endpoint() -> dict:
+    return runtime_profile_readiness()
+
+
+@app.get("/brain-runtime-profile/laptops/{machine_id}")
+def brain_laptop_runtime_profile_endpoint(machine_id: str) -> dict:
+    profile = laptop_runtime_profile(machine_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Laptop runtime profile {machine_id} was not found")
+    return {"profile": profile}
+
+
 @app.post("/pet-releases/submissions")
 def pet_release_submission(request: PetReleaseSubmissionRequest) -> dict:
     return submit_pet_release_candidate(request.model_dump())
@@ -1455,19 +1476,57 @@ async def llm_mesh_query(request: LlmMeshRequest) -> dict:
 
 @app.post("/models/query")
 async def models_query(request: ModelQueryRequest) -> dict:
-    return await submit_model_query(
-        purpose=request.purpose,
-        prompt=request.prompt,
-        requester=request.requester,
-        target_id=request.target_id,
-        providers=request.providers or None,
-        project_id=request.project_id,
-        task_id=request.task_id,
-        priority=request.priority,
-        auto_create_tasks=request.auto_create_tasks,
-        require_approval=request.require_approval,
-        options=request.options,
+    query = asyncio.create_task(
+        submit_model_query(
+            purpose=request.purpose,
+            prompt=request.prompt,
+            requester=request.requester,
+            target_id=request.target_id,
+            providers=request.providers or None,
+            project_id=request.project_id,
+            task_id=request.task_id,
+            priority=request.priority,
+            auto_create_tasks=request.auto_create_tasks,
+            require_approval=request.require_approval,
+            options=request.options,
+        )
     )
+    if request.request_id:
+        if request.request_id in _model_query_tasks:
+            query.cancel()
+            raise HTTPException(status_code=409, detail="model request id is already active")
+        _model_query_tasks[request.request_id] = query
+    try:
+        response = await query
+        if request.request_id:
+            response["request_id"] = request.request_id
+        return response
+    finally:
+        if request.request_id and _model_query_tasks.get(request.request_id) is query:
+            _model_query_tasks.pop(request.request_id, None)
+
+
+@app.post("/models/query/{request_id}/cancel")
+async def cancel_model_query(request_id: str) -> dict:
+    if not request_id or len(request_id) > 80 or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for character in request_id):
+        raise HTTPException(status_code=422, detail="invalid model request id")
+    query = _model_query_tasks.get(request_id)
+    if query is None or query.done():
+        return {
+            "request_id": request_id,
+            "cancellation_requested": False,
+            "status": "not_active",
+            "scope": "request_only",
+            "upstream_cancellation_guaranteed": False,
+        }
+    cancellation_requested = query.cancel()
+    return {
+        "request_id": request_id,
+        "cancellation_requested": cancellation_requested,
+        "status": "stop_requested" if cancellation_requested else "already_stopping",
+        "scope": "request_only",
+        "upstream_cancellation_guaranteed": False,
+    }
 
 
 @app.get("/laptop-packages")

@@ -4,6 +4,19 @@ Date: 2026-07-13
 Scope: `BRAIN-01-01` through `BRAIN-01-10`  
 Reviewer role: independent Quality/Security review; no implementation ownership, ledger mutation, or release authority
 
+## Remediation addendum
+
+The code-level findings in the original review below have now been remediated and the addendum supersedes their earlier open disposition:
+
+- **SEC-01 closed:** `LaptopPersonalityPolicy` defensively copies caller input into a read-only mapping and validates every mapped value.
+- **QA-01 closed:** PET names are limited to one-to-three conservative display-name tokens and are JSON-serialized as data in prompt context.
+- **QA-02 closed at the abstraction boundary:** device registration now uses atomic `DeviceIdentityRegistry.reserve()` semantics. The locked in-memory adapter passes a 40-way race with exactly one winner. A future durable adapter must preserve this with a normalized unique constraint; no database implementation is claimed.
+- **QA-03 closed for silent drift:** every laptop personality policy carries a nonempty inventory version, preserves it across adjustments, and exposes it in the evidence payload. Runtime integration must supply a trusted configuration hash/version.
+
+Post-remediation disposition: all ten domain modules are ready for a separately reviewed runtime-integration branch. The strict review suite has no expected failures. This does not certify operation: rendering, speech, model routing, persistence, physical Brain evidence, listener receipts, release identity, and ledger transition remain absent. All ten rows remain **Planned (`P`)**.
+
+Updated readiness scores: `BRAIN-01-01` 68/100, `BRAIN-01-02` 66/100, `BRAIN-01-03` 50/100, `BRAIN-01-04` 50/100, `BRAIN-01-05` 57/100, `BRAIN-01-06` through `BRAIN-01-09` 59/100 each, and `BRAIN-01-10` 66/100. Scores measure software readiness only and cannot authorize ledger promotion.
+
 ## Executive summary
 
 The two modules are useful, well-bounded **domain-model prototypes** with strong input validation and focused automated tests. The exact catalog IDs and titles are correctly mapped. None of the ten features is operationally certified: no module is integrated into the live Brain API/model/speech/dashboard path, no physical Brain execution was observed, and the catalog-required listener receipt, evidence manifest, operational release, and verification data are absent.

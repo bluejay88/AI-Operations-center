@@ -18,6 +18,7 @@ from .migrations import apply_migrations
 from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
 from .pet_instruction_protocol import InstructionDecision, PostgresReplayGuard, verify_instruction
 from .pet_machine_capabilities import MachineCapabilityExecutor, machine_receipt_exists, record_machine_receipt
+from .pet_target_handlers import built_in_handlers
 from .queue_manager import steward_queue
 from .settings import get_settings
 
@@ -120,13 +121,16 @@ def _consume_pet_capability_execution(message: dict, machine_id: str, local: boo
     if machine_receipt_exists(request_id, machine_id, local=local):
         acknowledge_speaker_message(message["id"], actor=machine_id, local=local)
         return True
+    handlers = _enabled_machine_capability_handlers()
     executor = MachineCapabilityExecutor(
         machine_id,
-        browser_handler=MACHINE_CAPABILITY_HANDLERS.get("browser_navigation"),
-        music_handler=MACHINE_CAPABILITY_HANDLERS.get("music_playback"),
-        model_handler=MACHINE_CAPABILITY_HANDLERS.get("device_model_chat"),
+        browser_handler=handlers.get("browser_navigation"),
+        music_handler=handlers.get("music_playback"),
+        music_library_handler=handlers.get("music_library"),
+        model_handler=handlers.get("device_model_chat"),
         enable_browser=_env_enabled("PET_ENABLE_BROWSER_NAVIGATION"),
         enable_music=_env_enabled("PET_ENABLE_MUSIC_PLAYBACK"),
+        enable_music_library=_env_enabled("PET_ENABLE_MUSIC_LIBRARY"),
         enable_model_chat=_env_enabled("PET_ENABLE_DEVICE_MODEL_CHAT"),
     )
     receipt = executor.execute(envelope)
@@ -144,9 +148,24 @@ def _consume_pet_capability_execution(message: dict, machine_id: str, local: boo
 
 
 def register_machine_capability_handler(capability_type: str, handler: object) -> None:
-    if capability_type not in {"browser_navigation", "music_playback", "device_model_chat"}:
+    if capability_type not in {"browser_navigation", "music_playback", "music_library", "device_model_chat"}:
         raise ValueError("unknown machine capability handler")
     MACHINE_CAPABILITY_HANDLERS[capability_type] = handler
+
+
+def _enabled_machine_capability_handlers() -> dict[str, object]:
+    handlers = dict(MACHINE_CAPABILITY_HANDLERS)
+    builtins = built_in_handlers()
+    flags = {
+        "browser_navigation": "PET_ENABLE_BROWSER_NAVIGATION",
+        "music_playback": "PET_ENABLE_MUSIC_PLAYBACK",
+        "music_library": "PET_ENABLE_MUSIC_LIBRARY",
+        "device_model_chat": "PET_ENABLE_DEVICE_MODEL_CHAT",
+    }
+    for capability, flag in flags.items():
+        if _env_enabled(flag):
+            handlers.setdefault(capability, builtins[capability])
+    return handlers
 
 
 def _env_enabled(name: str) -> bool:

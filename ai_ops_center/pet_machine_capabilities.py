@@ -37,6 +37,10 @@ MUSIC_COMMANDS = frozenset({"play", "pause", "resume", "stop", "next", "previous
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
+class CapabilityHeld(RuntimeError):
+    """A safe target-host refusal that should produce a held, not failed, receipt."""
+
+
 def capability_contracts() -> dict[str, Any]:
     return {
         "capability_types": sorted(CAPABILITY_TYPES),
@@ -272,7 +276,10 @@ class MachineCapabilityExecutor:
             return self._receipt(envelope, "held", "Target-host capability is disabled; no action ran.")
         try:
             result = handler(dict(envelope.get("payload") or {}))
-            return self._receipt(envelope, "completed", str(result)[:1000])
+            detail = json.dumps(result, default=str) if isinstance(result, (dict, list)) else str(result)
+            return self._receipt(envelope, "completed", detail[:4000])
+        except CapabilityHeld as exc:
+            return self._receipt(envelope, "held", str(exc)[:1000])
         except Exception as exc:
             return self._receipt(envelope, "failed", str(exc)[:1000])
 

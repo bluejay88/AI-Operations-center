@@ -8,6 +8,13 @@ from .brain_bus import create_speaker_message, submit_listener_event
 from .db import connect
 
 
+GOVERNED_DEVICE_OPERATIONS = {
+    "open_local_browser_url",
+    "local_music_play",
+    "local_music_pause",
+    "local_music_stop",
+}
+
 ROLE_ALLOWED_OPERATIONS = {
     "brain": {
         "publish_update",
@@ -22,13 +29,14 @@ ROLE_ALLOWED_OPERATIONS = {
         "remote_browser_view",
         "remote_file_browse",
         "open_mini_dashboard",
+        *GOVERNED_DEVICE_OPERATIONS,
     },
-    "development": {"publish_update", "run_audit", "run_tests", "git_pull", "git_status", "build_project", "restart_worker", "open_mini_dashboard"},
-    "research": {"publish_update", "run_audit", "git_pull", "git_status", "research_task", "sync_files", "restart_worker", "open_mini_dashboard"},
-    "business": {"publish_update", "run_audit", "git_pull", "git_status", "business_task", "sync_files", "restart_worker", "open_mini_dashboard"},
+    "development": {"publish_update", "run_audit", "run_tests", "git_pull", "git_status", "build_project", "restart_worker", "open_mini_dashboard", *GOVERNED_DEVICE_OPERATIONS},
+    "research": {"publish_update", "run_audit", "git_pull", "git_status", "research_task", "sync_files", "restart_worker", "open_mini_dashboard", *GOVERNED_DEVICE_OPERATIONS},
+    "business": {"publish_update", "run_audit", "git_pull", "git_status", "business_task", "sync_files", "restart_worker", "open_mini_dashboard", *GOVERNED_DEVICE_OPERATIONS},
 }
 
-SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine", "remote_browser_view", "remote_file_browse"}
+SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine", "remote_browser_view", "remote_file_browse", *GOVERNED_DEVICE_OPERATIONS}
 DESTRUCTIVE_WORDS = {"delete", "remove", "format", "wipe", "reset", "credential", "password", "secret", "send email", "payment", "browser", "files", "take over", "remote control"}
 
 

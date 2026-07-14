@@ -175,7 +175,7 @@ def evaluate_capability_batch(
         for action in action_contracts
     ]
     actions_shape_ok = isinstance(manifest.get("actions", []), list) and len(action_contracts) == len(manifest.get("actions", []))
-    audited_actions_ok = actions_shape_ok and all(item["valid"] for item in action_results)
+    audited_actions_ok = manifest_ok and actions_shape_ok and all(item["valid"] for item in action_results)
 
     gates = {
         "content_addressed_manifest": manifest_ok,

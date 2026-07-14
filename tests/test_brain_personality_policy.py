@@ -51,6 +51,15 @@ def test_policy_rejects_missing_unknown_and_duplicate_laptop_profiles():
         LaptopPersonalityPolicy(profiles={machine_id: same for machine_id in KNOWN_LAPTOPS})
 
 
+def test_policy_defensively_freezes_caller_and_exposed_mapping():
+    raw = dict(LaptopPersonalityPolicy.default().profiles)
+    policy = LaptopPersonalityPolicy(profiles=raw)
+    raw["dev-laptop"] = SpeakingProfile(style="executive", humor=0.99)
+    assert policy.for_laptop("dev-laptop").style == "concise"
+    with pytest.raises(TypeError):
+        policy.profiles["dev-laptop"] = SpeakingProfile(style="executive")  # type: ignore[index]
+
+
 def test_resolution_fails_closed_and_instruction_preserves_authority_boundary():
     policy = LaptopPersonalityPolicy.default()
     with pytest.raises(ValueError, match="no authorized personality"):
@@ -64,5 +73,6 @@ def test_public_payload_is_ordered_and_does_not_claim_certification():
     payload = LaptopPersonalityPolicy.default().public_payload()
     assert payload["feature_ids"] == list(FEATURE_IDS)
     assert list(payload["profiles"]) == list(KNOWN_LAPTOPS)
+    assert payload["inventory_version"] == "machines.yaml:laptops-v1"
     assert "status" not in payload
     assert "operational" not in str(payload).lower()

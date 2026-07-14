@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
+from types import MappingProxyType
 from typing import Any, Mapping
 
 
@@ -15,6 +16,7 @@ FEATURE_IDS = (
 )
 
 KNOWN_LAPTOPS = ("business-laptop", "research-laptop", "dev-laptop")
+DEFAULT_INVENTORY_VERSION = "machines.yaml:laptops-v1"
 SPEAKING_STYLES = frozenset({"concise", "coaching", "technical", "executive"})
 
 
@@ -70,21 +72,28 @@ class SpeakingProfile:
 @dataclass(frozen=True)
 class LaptopPersonalityPolicy:
     profiles: Mapping[str, SpeakingProfile]
+    inventory_version: str = DEFAULT_INVENTORY_VERSION
 
     def __post_init__(self) -> None:
-        machine_ids = set(self.profiles)
+        if not self.inventory_version.strip() or len(self.inventory_version) > 120:
+            raise ValueError("inventory_version must be 1-120 characters")
+        frozen_profiles = {str(machine_id): profile for machine_id, profile in self.profiles.items()}
+        if not all(isinstance(profile, SpeakingProfile) for profile in frozen_profiles.values()):
+            raise TypeError("every laptop profile must be a SpeakingProfile")
+        object.__setattr__(self, "profiles", MappingProxyType(frozen_profiles))
+        machine_ids = set(frozen_profiles)
         unknown = machine_ids - set(KNOWN_LAPTOPS)
         missing = set(KNOWN_LAPTOPS) - machine_ids
         if unknown:
             raise ValueError(f"unknown laptop identities: {', '.join(sorted(unknown))}")
         if missing:
             raise ValueError(f"missing laptop personalities: {', '.join(sorted(missing))}")
-        fingerprints = {profile.fingerprint() for profile in self.profiles.values()}
+        fingerprints = {profile.fingerprint() for profile in frozen_profiles.values()}
         if len(fingerprints) != len(KNOWN_LAPTOPS):
             raise ValueError("each laptop must have a distinct personality profile")
 
     @classmethod
-    def default(cls) -> "LaptopPersonalityPolicy":
+    def default(cls, inventory_version: str = DEFAULT_INVENTORY_VERSION) -> "LaptopPersonalityPolicy":
         return cls(
             profiles={
                 "business-laptop": SpeakingProfile(
@@ -96,12 +105,18 @@ class LaptopPersonalityPolicy:
                 "dev-laptop": SpeakingProfile(
                     style="concise", formality=0.45, humor=0.22, verbosity=0.38, warmth=0.68, directness=0.94
                 ),
-            }
+            },
+            inventory_version=inventory_version,
         )
 
     @classmethod
-    def from_mapping(cls, values: Mapping[str, Mapping[str, Any]]) -> "LaptopPersonalityPolicy":
-        return cls(profiles={machine_id: SpeakingProfile(**dict(profile)) for machine_id, profile in values.items()})
+    def from_mapping(
+        cls, values: Mapping[str, Mapping[str, Any]], inventory_version: str
+    ) -> "LaptopPersonalityPolicy":
+        return cls(
+            profiles={machine_id: SpeakingProfile(**dict(profile)) for machine_id, profile in values.items()},
+            inventory_version=inventory_version,
+        )
 
     def for_laptop(self, machine_id: str) -> SpeakingProfile:
         try:
@@ -113,10 +128,11 @@ class LaptopPersonalityPolicy:
         current = self.for_laptop(machine_id)
         updated = dict(self.profiles)
         updated[machine_id] = current.adjust(**changes)
-        return LaptopPersonalityPolicy(profiles=updated)
+        return LaptopPersonalityPolicy(profiles=updated, inventory_version=self.inventory_version)
 
     def public_payload(self) -> dict[str, Any]:
         return {
             "feature_ids": list(FEATURE_IDS),
+            "inventory_version": self.inventory_version,
             "profiles": {machine_id: asdict(self.profiles[machine_id]) for machine_id in KNOWN_LAPTOPS},
         }

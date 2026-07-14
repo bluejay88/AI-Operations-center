@@ -394,6 +394,7 @@ function startDictation() {
   const input = $("#pet-chat-input");
   const preview = $("#pet-dictation-preview");
   const original = String(input?.value || "").trim();
+  const recognizedSegments = [];
   recognition.lang = document.documentElement.lang || navigator.language || "en-US";
   recognition.interimResults = true;
   recognition.continuous = false;
@@ -408,8 +409,8 @@ function startDictation() {
     announceConversation("Dictation started. Speak now.");
   };
   recognition.onresult = (event) => {
-    let transcript = "";
-    for (let index = event.resultIndex; index < event.results.length; index += 1) transcript += event.results[index][0].transcript;
+    for (let index = event.resultIndex; index < event.results.length; index += 1) recognizedSegments[index] = event.results[index][0].transcript;
+    const transcript = recognizedSegments.join(" ").replace(/\s+/g, " ").trim();
     if (input) input.value = [original, transcript.trim()].filter(Boolean).join(original ? " " : "");
     if (preview) preview.textContent = transcript.trim() || "Listening…";
   };

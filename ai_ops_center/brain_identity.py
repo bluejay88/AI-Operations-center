@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from dataclasses import asdict, dataclass, replace
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping, Protocol
 
 
 FEATURE_IDS = (
@@ -16,6 +17,7 @@ FEATURE_IDS = (
 )
 
 _IDENTIFIER = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+_DISPLAY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9'._-]*(?: [A-Za-z0-9][A-Za-z0-9'._-]*){0,2}$")
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -78,6 +80,53 @@ class PersonalityProfile:
             _bounded(label, value)
 
 
+class DeviceIdentityRegistry(Protocol):
+    """Atomic reservation boundary for process-local or durable adapters."""
+
+    def reserve(self, device_id: str) -> bool: ...
+
+    def release(self, device_id: str) -> bool: ...
+
+
+class InMemoryDeviceIdentityRegistry:
+    """Concurrency-safe registry for tests and single-process operation.
+
+    A durable adapter must implement the same atomic reserve operation using a
+    normalized unique constraint. Callers never perform check-then-act themselves.
+    """
+
+    def __init__(self, initial_ids: tuple[str, ...] = ()) -> None:
+        self._lock = threading.Lock()
+        self._ids = {self._normalize(item) for item in initial_ids}
+
+    @staticmethod
+    def _normalize(device_id: str) -> str:
+        normalized = str(device_id).strip().lower()
+        if not _IDENTIFIER.fullmatch(normalized):
+            raise ValueError("device_id must be a lowercase DNS-style identifier")
+        return normalized
+
+    def reserve(self, device_id: str) -> bool:
+        normalized = self._normalize(device_id)
+        with self._lock:
+            if normalized in self._ids:
+                return False
+            self._ids.add(normalized)
+            return True
+
+    def release(self, device_id: str) -> bool:
+        normalized = self._normalize(device_id)
+        with self._lock:
+            if normalized not in self._ids:
+                return False
+            self._ids.remove(normalized)
+            return True
+
+    def snapshot(self) -> frozenset[str]:
+        with self._lock:
+            return frozenset(self._ids)
+
+
 @dataclass(frozen=True)
 class BrainIdentityProfile:
     pet_name: str = "Nexus"
@@ -92,6 +141,8 @@ class BrainIdentityProfile:
             raise ValueError("pet_name must be 1-48 characters")
         if any(ord(character) < 32 for character in cleaned_name):
             raise ValueError("pet_name cannot contain control characters")
+        if cleaned_name != self.pet_name or not _DISPLAY_NAME.fullmatch(cleaned_name):
+            raise ValueError("pet_name must contain 1-3 prompt-safe display-name tokens")
         if not _IDENTIFIER.fullmatch(self.device_id):
             raise ValueError("device_id must be a lowercase DNS-style identifier")
 
@@ -109,9 +160,8 @@ class BrainIdentityProfile:
             personality=PersonalityProfile(**dict(value.get("personality") or {})),
         )
 
-    def assert_unique_device_identity(self, existing_ids: Iterable[str]) -> None:
-        normalized = {str(item).strip().lower() for item in existing_ids}
-        if self.device_id.lower() in normalized:
+    def reserve_device_identity(self, registry: DeviceIdentityRegistry) -> None:
+        if not registry.reserve(self.device_id):
             raise ValueError(f"device identity {self.device_id!r} is already registered")
 
     def adjust_personality(self, **changes: float) -> "BrainIdentityProfile":
@@ -128,8 +178,10 @@ class BrainIdentityProfile:
 
     def prompt_context(self) -> str:
         traits = self.personality
+        encoded_name = json.dumps(self.pet_name, ensure_ascii=True)
+        encoded_device = json.dumps(self.device_id, ensure_ascii=True)
         return (
-            f"You are {self.pet_name}, the PET for device {self.device_id}. "
+            f"PET display name (data): {encoded_name}. Device identity (data): {encoded_device}. "
             f"Personality controls: warmth={traits.warmth:.2f}, directness={traits.directness:.2f}, "
             f"formality={traits.formality:.2f}, humor={traits.humor:.2f}, verbosity={traits.verbosity:.2f}. "
             "Treat these as communication style only; they never override safety, approval, audit, or authorization rules."

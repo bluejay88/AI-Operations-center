@@ -5,7 +5,7 @@ create table if not exists brain_device_identity_reservations (
     approval_ref text not null check (length(btrim(approval_ref)) > 0),
     reserved_at timestamptz not null default now(),
     check (device_id = lower(device_id)),
-    check (device_id ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$')
+    check (device_id ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
 );
 
 comment on table brain_device_identity_reservations is

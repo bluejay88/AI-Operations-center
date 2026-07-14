@@ -68,6 +68,7 @@ from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, inge
 from .pet_catalog import pet_feature_detail, pet_feature_summary
 from .brain_catalog import brain_feature_detail, brain_feature_summary
 from .brain_runtime_profile import laptop_runtime_profile, runtime_profile, runtime_profile_readiness
+from .pet_machine_capabilities import capability_contracts, submit_capability_request
 from .project_intake import audit_project_paths, import_scan as import_project_scan, route_project_intake, workspace_snapshot
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
@@ -339,6 +340,17 @@ class PetFeatureAssignmentRequest(BaseModel):
     due_at: str | None = None
     priority: int = Field(default=85, ge=1, le=100)
     metadata: dict = Field(default_factory=dict)
+
+
+class PetMachineCapabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    pet_id: str = Field(min_length=2, max_length=120)
+    capability_type: str = Field(pattern="^(browser_navigation|music_playback|device_model_chat)$")
+    payload: dict = Field(default_factory=dict)
+    requester: str = Field(default="mini-dashboard", min_length=2, max_length=120)
+    priority: int = Field(default=60, ge=1, le=100)
 
 
 class PetPerformanceSample(BaseModel):
@@ -629,6 +641,17 @@ class NotificationRequest(BaseModel):
     eta_at: str | None = None
     actions: list = Field(default_factory=lambda: ["acknowledge", "snooze"])
     metadata: dict = Field(default_factory=dict)
+
+
+class PetMachineCapabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    pet_id: str = Field(min_length=2, max_length=80)
+    capability_type: str = Field(pattern="^(browser_navigation|music_playback|device_model_chat)$")
+    payload: dict = Field(default_factory=dict)
+    requester: str = Field(min_length=1, max_length=120)
+    priority: int = Field(default=60, ge=1, le=100)
 
 
 def _normalize_workstation_update(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1172,6 +1195,19 @@ def pet_features_detail(feature_id: str) -> dict:
     return {"feature": feature}
 
 
+@app.get("/pet-machine-capabilities/contracts")
+def pet_machine_capability_contracts() -> dict:
+    return capability_contracts()
+
+
+@app.post("/pet-machine-capabilities/requests")
+def pet_machine_capability_request(request: PetMachineCapabilityRequest) -> dict:
+    try:
+        return submit_capability_request(**request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/brain-features/summary")
 def brain_features_summary() -> dict:
     return brain_feature_summary()
@@ -1201,6 +1237,19 @@ def brain_laptop_runtime_profile_endpoint(machine_id: str) -> dict:
     if profile is None:
         raise HTTPException(status_code=404, detail=f"Laptop runtime profile {machine_id} was not found")
     return {"profile": profile}
+
+
+@app.get("/pet-machine-capabilities/contracts")
+def pet_machine_capability_contracts_endpoint() -> dict:
+    return capability_contracts()
+
+
+@app.post("/pet-machine-capabilities/requests")
+def pet_machine_capability_request_endpoint(request: PetMachineCapabilityRequest) -> dict:
+    try:
+        return submit_capability_request(**request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/pet-releases/submissions")

@@ -328,6 +328,7 @@ def create_laptop_model_session(
     local: bool = False,
 ) -> dict[str, Any]:
     providers = providers or ["openai", "groq"]
+    local_only = providers == ["ollama"]
     with connect(local=local) as conn:
         with conn.cursor() as cur:
             _ensure_schema_once(cur)
@@ -349,12 +350,17 @@ def create_laptop_model_session(
         message_type="model_chat_session",
         subject=f"Model support session: {purpose}",
         body=(
-            "Use the Brain model router/provider workflow for this task. "
-            "Return evidence, model recommendations, risks, and next action.\n\n"
+            (
+                "Use only the Ollama model service hosted on this laptop. Do not fall back to a cloud provider. "
+                "If the local model is unavailable, report that failure without claiming a response. "
+                if local_only
+                else "Use the Brain model router/provider workflow for this task. "
+            )
+            + "Return evidence, model recommendations, risks, and next action.\n\n"
             f"Prompt:\n{prompt}"
         ),
         priority=priority,
-        metadata={"model_session_id": session["id"], "providers": providers, "requested_by": requested_by},
+        metadata={"model_session_id": session["id"], "providers": providers, "requested_by": requested_by, "local_only": local_only},
         local=local,
     )
     session["speaker_message_id"] = message_id

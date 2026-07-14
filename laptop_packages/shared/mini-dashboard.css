@@ -276,6 +276,37 @@ small {
   #pet-chat-dictate[aria-pressed="true"] { animation: none; }
 }
 
+.pet-device-tools { display: grid; gap: 16px; }
+.device-tools-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.device-tools-heading h2, .device-tools-heading p { margin: 0; }
+.device-governance { padding: 5px 9px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 999px; color: var(--accent); font-size: .72rem; white-space: nowrap; }
+.device-readiness { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: calc(var(--radius) - 3px); background: var(--line); }
+.device-readiness div { min-width: 0; padding: 10px; background: color-mix(in srgb, var(--panel) 96%, var(--accent)); }
+.device-readiness dt { color: var(--muted); font-size: .65rem; }
+.device-readiness dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: .76rem; }
+.device-tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border-block: 1px solid var(--line); background: var(--line); }
+.device-tool { display: grid; align-content: start; gap: 9px; min-width: 0; padding: clamp(12px, 2vw, 18px); background: var(--panel); }
+.device-tool h3, .device-tool p { margin: 0; }
+.device-tool input, .device-tool textarea { width: 100%; }
+.device-tool-note { min-height: 2.8em; color: var(--muted); font-size: .7rem; line-height: 1.45; }
+.device-music-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.device-music-actions button { min-width: 0; padding-inline: 7px; }
+.device-action-receipt { display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr); gap: 10px 18px; align-items: center; min-height: 48px; padding: 10px 12px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.device-action-receipt[data-tone="blocked"] { border-left-color: #ff6f91; }
+.device-action-receipt span { color: var(--muted); overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .device-readiness { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .device-tool-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .device-tools-heading { display: grid; }
+  .device-governance { justify-self: start; }
+  .device-readiness { grid-template-columns: 1fr; }
+  .device-action-receipt { grid-template-columns: 1fr; }
+}
+
 .shield-pet {
   width: 68px;
   height: 74px;

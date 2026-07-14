@@ -174,3 +174,71 @@ def test_uncorrelated_database_rows_do_not_satisfy_physical_gate():
     result = _evaluate(manifest, authority)
     assert result["gates"]["physical_machine_evidence"] is False
     assert result["release_candidate"] is False
+
+
+def test_caller_asserted_browser_success_cannot_replace_machine_receipt_and_approval():
+    manifest = _manifest(
+        actions=[
+            {
+                "action_key": "open-research-source",
+                "action_type": "browser_navigation",
+                "target_machine_id": "dev-laptop",
+                "task_id": 100,
+                "listener_event_id": 101,
+            }
+        ]
+    )
+    _, authority = _authority(manifest)
+    result = evaluate_capability_batch(
+        {
+            "manifest_sha256": manifest_sha256(manifest),
+            "actions": [{"action_key": "open-research-source", "status": "completed", "approved": True}],
+        },
+        repository_root=ROOT,
+        evidence_resolver=lambda _: authority,
+    )
+    assert result["gates"]["audited_machine_actions"] is False
+    assert result["release_candidate"] is False
+
+
+def test_remote_or_external_navigation_requires_correlated_approval_record():
+    action = {
+        "action_key": "remote-browser",
+        "action_type": "remote_control",
+        "target_machine_id": "dev-laptop",
+        "task_id": 100,
+        "listener_event_id": 101,
+    }
+    manifest = _manifest(actions=[action])
+    digest, authority = _authority(manifest)
+    authority["action_receipts"] = [
+        {
+            "manifest_sha256": digest,
+            **action,
+            "status": "completed",
+            "result_sha256": "a" * 64,
+            "approval_request_id": 55,
+        }
+    ]
+    authority["action_approvals"] = []
+    result = _evaluate(manifest, authority)
+    assert result["action_results"][0]["receipt_correlated"] is True
+    assert result["action_results"][0]["approval_correlated"] is False
+    assert result["gates"]["audited_machine_actions"] is False
+
+
+def test_local_model_action_requires_machine_receipt_but_not_remote_approval():
+    action = {
+        "action_key": "local-model-summary",
+        "action_type": "local_model",
+        "target_machine_id": "dev-laptop",
+        "task_id": 100,
+        "listener_event_id": 101,
+    }
+    manifest = _manifest(actions=[action])
+    digest, authority = _authority(manifest)
+    authority["action_receipts"] = [
+        {"manifest_sha256": digest, **action, "status": "completed", "result_sha256": "b" * 64}
+    ]
+    result = _evaluate(manifest, authority)
+    assert result["gates"]["audited_machine_actions"] is True

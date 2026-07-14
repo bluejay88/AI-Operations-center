@@ -18,6 +18,7 @@ const state = {
   tasks: [],
   approvals: [],
   remoteOps: [],
+  collaboration: null,
   readiness: null,
   noc: null,
   lastHeartbeat: null,
@@ -278,6 +279,150 @@ function mountConversation() {
   workspace.insertBefore(section, feedGrid);
   renderChat();
   renderVoiceSupport();
+}
+
+function mountDeviceTools() {
+  const workspace = $(".workspace");
+  const feedGrid = $(".feed-grid");
+  if (!workspace || !feedGrid || $("#pet-device-tools")) return;
+  const personality = PERSONALITIES[state.machineId] || PERSONALITIES["dev-laptop"];
+  const section = document.createElement("section");
+  section.id = "pet-device-tools";
+  section.className = "panel panel-pad pet-device-tools";
+  section.setAttribute("data-audit", "governed-device-capabilities");
+  section.innerHTML = `
+    <div class="device-tools-heading"><div><p class="eyebrow">Machine-targeted tools</p><h2>${escapeHtml(personality.codename)} device controls</h2></div><span class="device-governance">Governed requests only</span></div>
+    <p class="muted">These controls submit work to ${escapeHtml(state.machineId)}. Queued or approved is not the same as completed; only a device receipt can confirm execution.</p>
+    <dl class="device-readiness" aria-label="Device capability readiness">
+      <div><dt>Governed API</dt><dd id="device-api-ready">checking</dd></div>
+      <div><dt>Node worker</dt><dd id="device-worker-ready">checking</dd></div>
+      <div><dt>Browser executor</dt><dd id="device-browser-ready">unverified</dd></div>
+      <div><dt>Music executor</dt><dd id="device-music-ready">unverified</dd></div>
+      <div><dt>Hosted model</dt><dd id="device-model-ready">not reported</dd></div>
+    </dl>
+    <div class="device-tool-grid">
+      <form id="device-browser-form" class="device-tool" novalidate>
+        <h3>Open a URL locally</h3>
+        <label for="device-browser-url">HTTP(S) URL</label>
+        <input id="device-browser-url" type="url" inputmode="url" maxlength="2048" placeholder="https://example.com" required>
+        <p id="device-url-validation" class="device-tool-note">Only HTTP(S), without embedded credentials. Approval is required.</p>
+        <button type="submit">Request open URL</button>
+      </form>
+      <section class="device-tool" aria-labelledby="device-music-title">
+        <h3 id="device-music-title">Local music session</h3>
+        <p class="device-tool-note">Requests control the active local media session. They do not claim playback until the node reports completion.</p>
+        <div class="device-music-actions"><button type="button" data-music-action="play">Request play</button><button type="button" data-music-action="pause">Request pause</button><button type="button" data-music-action="stop">Request stop</button></div>
+      </section>
+      <form id="device-model-form" class="device-tool">
+        <h3>Chat with this device's model</h3>
+        <label for="device-model-prompt">Local-model prompt</label>
+        <textarea id="device-model-prompt" rows="3" maxlength="4000" placeholder="Ask the model hosted on this laptop…" required></textarea>
+        <p class="device-tool-note">Queues an Ollama-only session for this machine. Cloud fallback is not requested.</p>
+        <button type="submit">Queue local-model chat</button>
+      </form>
+    </div>
+    <div id="device-action-receipt" class="device-action-receipt" role="status" aria-live="polite"><strong>No request submitted.</strong><span>Choose an explicit action above.</span></div>`;
+  workspace.insertBefore(section, feedGrid);
+}
+
+function validateDeviceUrl(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value || value.length > 2048 || /[\u0000-\u001f\u007f]/.test(value)) return { allowed: false, reason: "Enter a valid URL up to 2,048 characters." };
+  let parsed;
+  try { parsed = new URL(value); } catch { return { allowed: false, reason: "The URL could not be parsed." }; }
+  if (!new Set(["http:", "https:"]).has(parsed.protocol)) return { allowed: false, reason: "Denied: only HTTP(S) URLs are allowed." };
+  if (parsed.username || parsed.password) return { allowed: false, reason: "Denied: URLs cannot contain embedded credentials." };
+  if (!parsed.hostname) return { allowed: false, reason: "Denied: a destination host is required." };
+  return { allowed: true, url: parsed.href, reason: "Validated HTTP(S) destination; Brain approval is still required." };
+}
+
+function showDeviceReceipt(title, detail, tone = "pending") {
+  const receipt = $("#device-action-receipt");
+  if (!receipt) return;
+  receipt.dataset.tone = tone;
+  receipt.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span>`;
+}
+
+function latestDeviceOperation(operationTypes) {
+  return state.remoteOps.find((item) => item.machine_id === state.machineId && operationTypes.includes(item.operation_type));
+}
+
+function executorTruth(operationTypes) {
+  const operation = latestDeviceOperation(operationTypes);
+  if (!operation) return "unverified";
+  if (operation.status === "completed") return `reported complete #${operation.id}`;
+  return `${operation.status} #${operation.id}`;
+}
+
+function renderDeviceTools() {
+  if (!$("#pet-device-tools")) return;
+  const machine = currentMachine();
+  const machineState = String(machine.state || "unknown").toLowerCase();
+  $("#device-api-ready").textContent = state.apiConnected ? "request path online" : "offline";
+  $("#device-worker-ready").textContent = machineState;
+  $("#device-browser-ready").textContent = executorTruth(["open_local_browser_url"]);
+  $("#device-music-ready").textContent = executorTruth(["local_music_play", "local_music_pause", "local_music_stop"]);
+  const reportedModel = String(machine.current_ai_model || machine.metadata?.current_ai_model || "").trim();
+  const session = (state.collaboration?.model_sessions || []).find((item) => item.machine_id === state.machineId && (item.providers || []).includes("ollama"));
+  $("#device-model-ready").textContent = reportedModel || (session ? `${session.status} session #${session.id}` : "not reported");
+}
+
+async function submitBrowserUrl(event) {
+  event.preventDefault();
+  const input = $("#device-browser-url");
+  const validation = validateDeviceUrl(input?.value);
+  $("#device-url-validation").textContent = validation.reason;
+  if (!validation.allowed) {
+    showDeviceReceipt("URL request denied locally", validation.reason, "blocked");
+    return;
+  }
+  showDeviceReceipt("Submitting browser request", "Waiting for a governed API receipt; the browser has not been opened.");
+  try {
+    const response = await requestRemoteOperation(
+      "open_local_browser_url",
+      `Open validated URL on ${state.machineId}: ${validation.url}`,
+      { validated_url: validation.url, url_policy: "http_https_no_credentials", external_action: true },
+    );
+    const record = response.request || {};
+    showDeviceReceipt(`Browser request #${record.id || "pending"}: ${record.status || "recorded"}`, `Policy: ${record.approval_policy || "review required"}. This is not an execution receipt.`, record.status === "blocked" ? "blocked" : "pending");
+  } catch (error) {
+    showDeviceReceipt("Browser request failed", error.message, "blocked");
+  }
+}
+
+async function submitMusicAction(action) {
+  const operationType = `local_music_${action}`;
+  showDeviceReceipt(`Submitting music ${action}`, "Waiting for the governed API; no playback state is assumed.");
+  try {
+    const response = await requestRemoteOperation(operationType, `Request ${action} for the active local media session on ${state.machineId}.`, { media_scope: "active_local_session", remote_control: true });
+    const record = response.request || {};
+    showDeviceReceipt(`Music ${action} request #${record.id || "pending"}: ${record.status || "recorded"}`, `Policy: ${record.approval_policy || "review required"}. Await a node completion receipt.`, record.status === "blocked" ? "blocked" : "pending");
+  } catch (error) {
+    showDeviceReceipt(`Music ${action} request failed`, error.message, "blocked");
+  }
+}
+
+async function submitDeviceModelChat(event) {
+  event.preventDefault();
+  const input = $("#device-model-prompt");
+  const prompt = String(input?.value || "").trim();
+  if (!prompt) return;
+  showDeviceReceipt("Queuing local-model session", "Targeting this machine with Ollama only; no response is claimed yet.");
+  try {
+    const session = await postJson("/collaboration/model-session", {
+      machine_id: state.machineId,
+      purpose: `Local PET model chat for ${state.machineId}`,
+      prompt,
+      providers: ["ollama"],
+      requested_by: `${state.machineId}/mini-dashboard`,
+      priority: 70,
+    });
+    input.value = "";
+    showDeviceReceipt(`Local-model session #${session.id}: ${session.status}`, `Queued for ${state.machineId}; speaker message #${session.speaker_message_id || "pending"}. Await the laptop's model response.`, "pending");
+    await refreshAll();
+  } catch (error) {
+    showDeviceReceipt("Local-model session failed", error.message, "blocked");
+  }
 }
 
 function saveChat() {
@@ -727,14 +872,14 @@ async function publishDashboardPresence() {
   await postJson("/ops2/device-telemetry", payload);
 }
 
-async function requestRemoteOperation(operationType, summary) {
+async function requestRemoteOperation(operationType, summary, metadata = {}) {
   const response = await postJson("/remote-ops", {
     machine_id: state.machineId,
     requested_by: `${state.machineId}/mini-dashboard`,
     operation_type: operationType,
     command_summary: summary,
     priority: operationType === "open_mini_dashboard" ? 72 : 88,
-    metadata: { requested_from: "mini-dashboard", pet: state.pet, approval_expected: operationType !== "open_mini_dashboard" },
+    metadata: { requested_from: "mini-dashboard", pet: state.pet, approval_expected: operationType !== "open_mini_dashboard", ...metadata },
   });
   await postJson("/listener/events", {
     source_type: "machine",
@@ -746,6 +891,7 @@ async function requestRemoteOperation(operationType, summary) {
     metadata: { machine_id: state.machineId, operation_type: operationType, response },
   });
   await refreshAll();
+  return response;
 }
 
 async function refreshAll() {
@@ -761,15 +907,17 @@ async function refreshAll() {
       getJson("/readiness.json"),
       getJson("/approvals"),
       getJson("/remote-ops"),
+      getJson("/collaboration"),
     ]);
     const values = results.map((result) => result.status === "fulfilled" ? result.value : null);
-    const [tasks, speaker, noc, readiness, approvals, remoteOps] = values;
+    const [tasks, speaker, noc, readiness, approvals, remoteOps, collaboration] = values;
     if (tasks) state.tasks = (tasks.tasks || []).filter((task) => task.machine_id === state.machineId);
     if (speaker) state.messages = speaker.messages || [];
     if (noc) state.noc = noc;
     if (readiness) state.readiness = readiness;
     if (approvals) state.approvals = approvals.approvals || [];
     if (remoteOps) state.remoteOps = remoteOps.requests || [];
+    if (collaboration) state.collaboration = collaboration;
     const available = results.filter((result) => result.status === "fulfilled").length;
     if (!available) throw results.find((result) => result.status === "rejected")?.reason || new Error("Brain API is not responding.");
     const unavailable = results.length - available;
@@ -788,6 +936,7 @@ async function refreshAll() {
   renderApprovals();
   renderRemoteOps();
   renderSecurity();
+  renderDeviceTools();
 }
 
 function speakUpdate() {
@@ -815,11 +964,15 @@ function bindControls() {
     if (event.key === "Escape") { stopVoice(); cancelPetResponse(); }
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") $("#pet-chat-form").requestSubmit();
   });
+  $("#device-browser-form").addEventListener("submit", submitBrowserUrl);
+  $("#device-model-form").addEventListener("submit", submitDeviceModelChat);
+  document.querySelectorAll("[data-music-action]").forEach((button) => button.addEventListener("click", () => submitMusicAction(button.dataset.musicAction)));
 }
 
 window.addEventListener("DOMContentLoaded", () => {
   mountShield();
   mountConversation();
+  mountDeviceTools();
   document.body.dataset.machineId = state.machineId;
   document.body.dataset.auditReady = "true";
   const auditHooks = [

@@ -74,6 +74,10 @@ if ([string]::IsNullOrWhiteSpace($postgresPassword)) {
 foreach ($name in @("API_CONTROL_TOKEN", "DASHBOARD_SESSION_SECRET", "BRAIN_INSTRUCTION_SECRET")) {
     if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines $name))) { Set-EnvValue $lines $name (New-Secret) }
 }
+$n8nKey = Get-EnvValue $lines "N8N_ENCRYPTION_KEY"
+if ([string]::IsNullOrWhiteSpace($n8nKey) -or $n8nKey -eq "replace-with-a-long-random-secret") {
+    Set-EnvValue $lines "N8N_ENCRYPTION_KEY" (New-Secret)
+}
 
 Set-EnvValue $lines "PET_KEY_REGISTRY_REQUIRED" "true"
 if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "PET_BROWSER_ALLOWED_SCHEMES"))) {
@@ -110,7 +114,8 @@ if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "DASHBOARD_PASSWORD_HASH")
     $dashboardPassword = New-Secret 24
     Set-EnvValue $lines "DASHBOARD_PASSWORD_HASH" ("'" + (New-PasswordHash $dashboardPassword) + "'")
     Set-Content -LiteralPath $passwordFile -Value $dashboardPassword -Encoding ascii
-    icacls $passwordFile /inheritance:r /grant:r "${env:USERNAME}:R" "SYSTEM:F" | Out-Null
+    $currentUser = if ($env:USERDOMAIN) { "$env:USERDOMAIN\$env:USERNAME" } else { $env:USERNAME }
+    icacls $passwordFile /inheritance:r /grant:r "${currentUser}:R" "SYSTEM:F" | Out-Null
     $dashboardPassword = $null
 }
 $storedPasswordHash = Get-EnvValue $lines "DASHBOARD_PASSWORD_HASH"
@@ -123,6 +128,13 @@ if ([string]::IsNullOrWhiteSpace($existingDeviceTokens) -or $existingDeviceToken
     $deviceTokens = [ordered]@{}
     foreach ($machineId in @("dev-laptop", "research-laptop", "business-laptop")) { $deviceTokens[$machineId] = New-Secret }
     Set-EnvValue $lines "DEVICE_API_TOKENS_JSON" ($deviceTokens | ConvertTo-Json -Compress)
+}
+
+$existingBrokerKeys = Get-EnvValue $lines "SSH_BROKER_ENVELOPE_KEYS_JSON"
+if ([string]::IsNullOrWhiteSpace($existingBrokerKeys) -or $existingBrokerKeys -eq "{}") {
+    $brokerKeys = [ordered]@{}
+    foreach ($machineId in @("dev-laptop", "research-laptop", "business-laptop")) { $brokerKeys[$machineId] = New-Secret }
+    Set-EnvValue $lines "SSH_BROKER_ENVELOPE_KEYS_JSON" ($brokerKeys | ConvertTo-Json -Compress)
 }
 
 Set-Content -LiteralPath $EnvFile -Value $lines -Encoding utf8

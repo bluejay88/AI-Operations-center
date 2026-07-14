@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -188,8 +189,14 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("hourly report endpoint", "/reports/hourly"),
     ]
     live_payloads: dict[str, Any] = {}
-    for name, path in live_checks:
+    def fetch_live_check(item: tuple[str, str]) -> tuple[str, str, bool, Any, str]:
+        name, path = item
         ok, payload, detail = _get_json(f"{base_url}{path}")
+        return name, path, ok, payload, detail
+
+    with ThreadPoolExecutor(max_workers=8, thread_name_prefix="audit50") as executor:
+        live_results = list(executor.map(fetch_live_check, live_checks))
+    for name, path, ok, payload, detail in live_results:
         live_payloads[path] = payload
         add(name, ok, detail)
 

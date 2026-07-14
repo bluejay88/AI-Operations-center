@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     api_auth_required: bool = False
     api_control_token: str = ""
     device_api_tokens_json: str = "{}"
+    ssh_broker_envelope_keys_json: str = "{}"
     dashboard_password: str = ""
     dashboard_password_hash: str = ""
     dashboard_session_secret: str = ""
@@ -67,6 +68,19 @@ class Settings(BaseSettings):
             str(machine_id): str(token)
             for machine_id, token in parsed.items()
             if isinstance(machine_id, str) and isinstance(token, str) and token
+        }
+
+    def ssh_broker_envelope_keys(self) -> dict[str, str]:
+        try:
+            parsed = json.loads(self.ssh_broker_envelope_keys_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        return {
+            str(machine_id): str(secret)
+            for machine_id, secret in parsed.items()
+            if isinstance(machine_id, str) and isinstance(secret, str) and len(secret) >= 32
         }
 
 

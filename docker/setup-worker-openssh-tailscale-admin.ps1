@@ -23,6 +23,12 @@ if ($BrainPublicKeyFile) {
     $BrainPublicKey = (Get-Content -LiteralPath $BrainPublicKeyFile -Raw).Trim()
 }
 if ([string]::IsNullOrWhiteSpace($BrainPublicKey)) { throw "Provide BrainPublicKey or BrainPublicKeyFile." }
+$brokerKeyPath = Join-Path $env:ProgramData "AI-Ops\ssh-broker-envelope-key"
+$machineIdPath = Join-Path $env:ProgramData "AI-Ops\machine-id"
+if (-not (Test-Path -LiteralPath $brokerKeyPath) -or (Get-Content -LiteralPath $brokerKeyPath -Raw).Trim().Length -lt 32) {
+    throw "Install the target-specific SSH broker envelope key before hardening SSH."
+}
+if (-not (Test-Path -LiteralPath $machineIdPath)) { throw "Install the target machine identity before hardening SSH." }
 
 if ($AllowedRemoteAddress -eq "100.64.0.0/10") {
     throw "The whole-tailnet SSH scope is prohibited. Pass the Brain Tailscale /32 address."
@@ -138,6 +144,8 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
     if ($adminMembers.Name -match "\\$([regex]::Escape($UserName))$") {
         throw "Diagnostic account '$UserName' must not be a local administrator. Remove it from Administrators before continuing."
     }
+    icacls $brokerKeyPath /inheritance:r /grant:r "Administrators:F" "SYSTEM:F" "${UserName}:R" | Out-Null
+    icacls $machineIdPath /inheritance:r /grant:r "Administrators:F" "SYSTEM:F" "${UserName}:R" | Out-Null
 
     $profileRoot = Join-Path "C:\Users" $UserName
     $sshDir = Join-Path $profileRoot ".ssh"

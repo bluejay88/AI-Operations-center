@@ -27,6 +27,7 @@ from .registry import seed_registry
 from .reports import generate_report
 from .security_guardian import security_guardian_audit
 from .settings import get_settings
+from .ssh_broker import execute_approved_diagnostic
 from .tasks import create_business_continuity, create_dev_kickoff
 from .worker import run_worker
 
@@ -65,6 +66,9 @@ def main() -> None:
     subparsers.add_parser("model-solutions")
     subparsers.add_parser("github-defaults")
     subparsers.add_parser("remote-ops")
+    ssh_broker_parser = subparsers.add_parser("ssh-broker-execute")
+    ssh_broker_parser.add_argument("--operation-id", type=int, required=True)
+    ssh_broker_parser.add_argument("--actor", default="jayla-operator")
     subparsers.add_parser("security-guardian")
     subparsers.add_parser("business-os")
     subparsers.add_parser("business-os-seed")
@@ -277,6 +281,8 @@ def main() -> None:
         print(json.dumps(github_defaults_dict(), indent=2))
     elif args.command == "remote-ops":
         print(json.dumps({"requests": remote_operation_snapshot(local=args.local_db)}, indent=2, default=str))
+    elif args.command == "ssh-broker-execute":
+        print(json.dumps(execute_approved_diagnostic(args.operation_id, args.actor, local=args.local_db), indent=2, default=str))
     elif args.command == "security-guardian":
         print(json.dumps(security_guardian_audit(local=args.local_db), indent=2, default=str))
     elif args.command == "business-os":

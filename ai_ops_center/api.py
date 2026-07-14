@@ -97,7 +97,7 @@ from .registry import registry_snapshot
 from .reports import generate_report
 from .security_guardian import security_guardian_audit
 from .settings import get_settings
-from .ssh_broker import broker_status, execute_approved_diagnostic, request_ssh_diagnostic, set_kill_switch
+from .ssh_broker import approved_diagnostic_for_broker, broker_status, request_ssh_diagnostic, set_kill_switch
 from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_accounting_audit, task_detail, task_snapshot, task_summary
 from .team_chat import post_team_chat_message, team_chat_digest, team_chat_snapshot
 
@@ -1545,9 +1545,9 @@ def ssh_broker_request(request: SshDiagnosticRequest, http_request: Request) -> 
 
 @app.post("/ssh-broker/execute")
 def ssh_broker_execute(request: SshBrokerExecuteRequest, http_request: Request) -> dict:
-    principal = require_fleet_controller(http_request)
+    require_human_operator(http_request)
     try:
-        return execute_approved_diagnostic(request.operation_id, principal.principal_id)
+        return approved_diagnostic_for_broker(request.operation_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:

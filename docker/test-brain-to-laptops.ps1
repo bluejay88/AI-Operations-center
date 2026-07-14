@@ -83,11 +83,14 @@ foreach ($target in $targets) {
         "-F", "NUL", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
         "-o", "UserKnownHostsFile=$KnownHostsFile", "-o", "IdentitiesOnly=yes",
         "-o", "ClearAllForwardings=yes", "-o", "ConnectionAttempts=1", "-o", "ConnectTimeout=8",
-        "-i", $identityFile, "$LaptopUser@$($target.Ip)", "aiops-diagnostic hostname"
+        "-i", $identityFile, "$LaptopUser@$($target.Ip)", "aiops-auth-probe"
     )
     $output = ssh @sshArgs 2>&1
-    $ok = $LASTEXITCODE -eq 0
-    Write-Host "SSHKeyLogin=$ok"
+    $outputText = ($output -join "`n")
+    # A successful authentication reaches ForceCommand, which intentionally
+    # rejects this unsigned probe with the diagnostic JSON schema.
+    $ok = $outputText -match 'ai-ops\.ssh-diagnostic\.v1' -and $outputText -match 'signed diagnostic envelope is required'
+    Write-Host "SSHRestrictedBrokerReached=$ok"
     Write-Host ($output -join "`n")
 
     if ($ok) {
@@ -97,13 +100,12 @@ foreach ($target in $targets) {
             ip = $target.Ip
             user = $LaptopUser
             port22 = $portOpen
-            ssh_key_login = $ok
+            ssh_restricted_broker_reached = $ok
             host_key_trusted = $true
-            command = "hostname"
+            command = "unsigned authentication probe (expected denial)"
             output = ($output -join "`n")
         }
     } else {
-        $outputText = ($output -join "`n")
         $localKeyInaccessible = $outputText -match "Identity file .* not accessible"
         $reason = Get-AiOpsSshFailureCode -Output $outputText -PortOpen $portOpen -IdentityPresent (-not $localKeyInaccessible -and (Test-Path $identityFile))
         $presentedFingerprint = if ($reason -eq "SSH_HOST_KEY_UNVERIFIED") { Get-PresentedHostKeyFingerprint -HostName $target.Ip } else { $null }

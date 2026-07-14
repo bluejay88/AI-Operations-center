@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import base64
 import json
 import os
@@ -114,7 +115,23 @@ def execute_approved_diagnostic(operation_id: int, executed_by: str, *, local: b
         raise PermissionError(f"signed diagnostic envelope was rejected: {decision.code}")
 
     execution_id = uuid.uuid4()
-    remote_command = " ".join(["aiops-diagnostic", command_id, *arguments])
+    broker_key = settings.ssh_broker_envelope_keys().get(str(operation["machine_id"]), "").encode("utf-8")
+    if len(broker_key) < 32:
+        raise PermissionError("target-specific SSH broker envelope key is not provisioned")
+    target_envelope = {
+        "schema": "ai-ops.ssh-envelope.v1",
+        "target_machine_id": str(operation["machine_id"]),
+        "command_id": command_id,
+        "arguments": arguments,
+        "nonce": str(unsigned["nonce"]),
+        "issued_at": int(now.timestamp()),
+        "expires_at": int((now + timedelta(minutes=5)).timestamp()),
+    }
+    encoded_envelope = base64.urlsafe_b64encode(
+        json.dumps(target_envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    target_signature = hmac.new(broker_key, encoded_envelope.encode("ascii"), hashlib.sha256).hexdigest()
+    remote_command = f"aiops-diagnostic-v1 {encoded_envelope} {target_signature}"
     ssh_args = [
         "ssh", "-F", "NUL", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
         "-o", f"UserKnownHostsFile={target['known_hosts_file']}", "-o", "IdentitiesOnly=yes",
@@ -142,7 +159,7 @@ def execute_approved_diagnostic(operation_id: int, executed_by: str, *, local: b
         executed_by=executed_by,
         command_id=command_id,
         arguments=arguments,
-        envelope_sha256=str(decision.verified_envelope_sha256),
+        envelope_sha256=_sha256(encoded_envelope.encode("ascii")),
         target=target,
         status=status,
         exit_code=exit_code,
@@ -159,6 +176,20 @@ def execute_approved_diagnostic(operation_id: int, executed_by: str, *, local: b
         "exit_code": exit_code,
         "duration_ms": duration_ms,
         "output": redacted,
+    }
+
+
+def approved_diagnostic_for_broker(operation_id: int, *, local: bool = False) -> dict[str, Any]:
+    """Return non-secret readiness data; execution remains host-broker only."""
+    operation, approval = _load_approved_operation(operation_id, local=local)
+    metadata = dict(operation.get("metadata") or {})
+    validate_command(str(metadata.get("command_id") or ""), list(metadata.get("arguments") or []))
+    return {
+        "operation_id": int(operation["id"]),
+        "approval_request_id": int(approval["id"]),
+        "machine_id": str(operation["machine_id"]),
+        "status": "authorized_for_isolated_host_broker",
+        "api_execution": False,
     }
 
 

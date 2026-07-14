@@ -109,6 +109,10 @@ def validate_security_settings(settings: Settings) -> None:
         missing.append("DASHBOARD_SESSION_SECRET")
     if not settings.dashboard_password_hash:
         missing.append("DASHBOARD_PASSWORD_HASH")
+    broker_keys = settings.ssh_broker_envelope_keys()
+    for machine_id in ("dev-laptop", "research-laptop", "business-laptop"):
+        if machine_id not in broker_keys:
+            missing.append(f"SSH_BROKER_ENVELOPE_KEYS_JSON[{machine_id}]")
     if missing:
         raise RuntimeError("Production control-plane authentication is missing: " + ", ".join(missing))
 

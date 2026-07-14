@@ -21,6 +21,9 @@ def test_ssh_execution_is_pinned_noninteractive_and_never_uses_a_shell():
     assert '"ClearAllForwardings=yes"' in source
     assert "shell=False" in source
     assert "accept-new" not in source
+    api_source = Path(ssh_broker.__file__).with_name("api.py").read_text(encoding="utf-8")
+    assert "return execute_approved_diagnostic" not in api_source
+    assert "authorized_for_isolated_host_broker" in source
 
 
 def test_worker_sshd_setup_is_brain_only_nonadmin_and_forced_command():

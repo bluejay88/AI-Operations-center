@@ -96,6 +96,23 @@ def test_database_migration_uses_atomic_unique_nonce_claim_and_rejects_expired_r
     assert "get diagnostics inserted = row_count" in sql
 
 
+def test_hardening_migration_binds_hash_restricts_access_and_archives_before_pruning():
+    sql = (
+        Path(__file__).resolve().parents[1]
+        / "sql"
+        / "migrations"
+        / "011_harden_pet_instruction_replay_evidence.sql"
+    ).read_text(encoding="utf-8").lower()
+    assert "envelope_sha256" in sql
+    assert "before update or delete on pet_instruction_nonces" in sql
+    assert "revoke all on table pet_instruction_nonces from public" in sql
+    assert "revoke all on function consume_pet_instruction_nonce" in sql
+    assert "to aiops_replay_consumer" in sql
+    assert "to aiops_replay_maintainer" in sql
+    assert "insert into public.pet_instruction_nonce_archive" in sql
+    assert "p_retention < interval '1 day'" in sql
+
+
 def test_postgres_guard_calls_single_atomic_database_function(monkeypatch):
     calls = []
 
@@ -132,6 +149,33 @@ def test_invalid_signature_does_not_poison_replay_guard():
     invalid = sign_instruction(_unsigned(), b"different-signing-secret-with-32-byte-minimum")
     assert _verify(invalid, guard).code == "invalid_signature"
     assert _verify(sign_instruction(_unsigned(), SECRET), guard).accepted is True
+
+
+def test_verified_decision_and_replay_store_are_bound_to_same_envelope_hash():
+    observed = []
+
+    class Guard:
+        def consume(self, *args):
+            observed.append(args)
+            return True
+
+    envelope = sign_instruction(_unsigned(), SECRET)
+    decision = _verify(envelope, Guard())
+    assert decision.accepted is True
+    assert decision.signer_id == "brain-gaming-pc"
+    assert len(decision.verified_envelope_sha256) == 64
+    assert observed[0][-1] == decision.verified_envelope_sha256
+
+
+def test_replay_store_failure_denies_instruction_without_raising():
+    class UnavailableGuard:
+        def consume(self, *args):
+            raise ConnectionError("database unavailable")
+
+    decision = _verify(sign_instruction(_unsigned(), SECRET), UnavailableGuard())
+    assert decision.accepted is False
+    assert decision.code == "replay_store_unavailable"
+    assert decision.feature_id == "PET-02-08"
 
 
 def test_naive_clock_is_rejected_by_verifier():

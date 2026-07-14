@@ -42,9 +42,20 @@ def test_verified_instruction_enters_existing_receipt_path(monkeypatch):
     monkeypatch.setattr(
         worker,
         "verify_instruction",
-        lambda *args, **kwargs: InstructionDecision(True, "accepted", "PET-02-05", "instruction-0001", "dev-laptop"),
+        lambda *args, **kwargs: InstructionDecision(
+            True,
+            "accepted",
+            "PET-02-05",
+            "instruction-0001",
+            "dev-laptop",
+            "brain-gaming-pc",
+            "a" * 64,
+        ),
     )
     monkeypatch.setattr(worker, "submit_listener_event", lambda **kwargs: events.append(kwargs) or {"event_id": 1})
     monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda *args, **kwargs: None)
     assert worker._consume_machine_messages("dev-laptop") == 1
     assert events[0]["event_type"] == "speaker_message_received"
+    assert events[0]["metadata"]["instruction_decision"]["instruction_id"] == "instruction-0001"
+    assert events[0]["metadata"]["instruction_decision"]["signer_id"] == "brain-gaming-pc"
+    assert events[0]["metadata"]["verified_envelope_sha256"] == "a" * 64

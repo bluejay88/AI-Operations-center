@@ -95,15 +95,14 @@ def test_review_requires_exact_batch_manifest_for_batch_02a_certificate():
     assert result["gates"]["catalog_contract"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="Nonce table/function do not enforce append-only evidence or least-privilege execution")
 def test_review_requires_database_replay_evidence_to_be_append_only_and_restricted():
-    sql = (ROOT / "sql" / "migrations" / "010_pet_instruction_replay_guard.sql").read_text(encoding="utf-8").lower()
-    assert "before update or delete" in sql
-    assert "revoke all on pet_instruction_nonces from public" in sql
-    assert "revoke execute on function consume_pet_instruction_nonce" in sql
+    sql = (ROOT / "sql" / "migrations" / "011_harden_pet_instruction_replay_evidence.sql").read_text(encoding="utf-8").lower()
+    assert "before update or delete on pet_instruction_nonces" in sql
+    assert "revoke all on table pet_instruction_nonces from public" in sql
+    assert "revoke all on function consume_pet_instruction_nonce" in sql
+    assert "to aiops_replay_consumer" in sql
 
 
-@pytest.mark.xfail(strict=True, reason="Accepted listener receipt does not bind the verified instruction ID/decision or envelope hash")
 def test_review_requires_accepted_receipt_to_bind_verified_instruction(monkeypatch):
     events = []
     message = {
@@ -119,7 +118,15 @@ def test_review_requires_accepted_receipt_to_bind_verified_instruction(monkeypat
     monkeypatch.setattr(
         worker,
         "verify_instruction",
-        lambda *args, **kwargs: worker.InstructionDecision(True, "accepted", "PET-02-05", "instruction-0001", "dev-laptop"),
+        lambda *args, **kwargs: worker.InstructionDecision(
+            True,
+            "accepted",
+            "PET-02-05",
+            "instruction-0001",
+            "dev-laptop",
+            "brain-gaming-pc",
+            "a" * 64,
+        ),
     )
     monkeypatch.setattr(worker, "submit_listener_event", lambda **kwargs: events.append(kwargs) or {"event_id": 1})
     monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda *args, **kwargs: None)

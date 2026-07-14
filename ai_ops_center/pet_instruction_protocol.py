@@ -30,6 +30,7 @@ class ReplayGuard(Protocol):
         target_machine_id: str,
         expires_at: datetime,
         now: datetime,
+        envelope_sha256: str,
     ) -> bool:
         """Atomically return True once for a nonce and False for every replay."""
 
@@ -52,6 +53,7 @@ class InMemoryReplayGuard:
         target_machine_id: str,
         expires_at: datetime,
         now: datetime,
+        envelope_sha256: str,
     ) -> bool:
         with self._lock:
             self._seen = {key: expiry for key, expiry in self._seen.items() if expiry > now}
@@ -76,14 +78,15 @@ class PostgresReplayGuard:
         target_machine_id: str,
         expires_at: datetime,
         now: datetime,
+        envelope_sha256: str,
     ) -> bool:
         from .db import connect
 
         with connect(local=self.local) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "select consume_pet_instruction_nonce(%s, %s, %s, %s, %s)",
-                    (signer_id, nonce, instruction_id, target_machine_id, expires_at),
+                    "select consume_pet_instruction_nonce(%s, %s, %s, %s, %s, %s)",
+                    (signer_id, nonce, instruction_id, target_machine_id, expires_at, envelope_sha256),
                 )
                 accepted = bool(cur.fetchone()["consume_pet_instruction_nonce"])
             conn.commit()
@@ -97,6 +100,8 @@ class InstructionDecision:
     feature_id: str
     instruction_id: str | None = None
     target_machine_id: str | None = None
+    signer_id: str | None = None
+    verified_envelope_sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +110,8 @@ class InstructionDecision:
             "feature_id": self.feature_id,
             "instruction_id": self.instruction_id,
             "target_machine_id": self.target_machine_id,
+            "signer_id": self.signer_id,
+            "verified_envelope_sha256": self.verified_envelope_sha256,
         }
 
 
@@ -149,9 +156,37 @@ def verify_instruction(
         return _deny("expired_or_invalid_time", "PET-02-06", instruction_id, target)
     if expires_at - issued_at > maximum_ttl:
         return _deny("ttl_exceeds_policy", "PET-02-06", instruction_id, target)
-    if not replay_guard.consume(signer_id, nonce, instruction_id, target, expires_at, current):
+    verified_envelope_sha256 = hashlib.sha256(_canonical(envelope)).hexdigest()
+    try:
+        consumed = replay_guard.consume(
+            signer_id,
+            nonce,
+            instruction_id,
+            target,
+            expires_at,
+            current,
+            verified_envelope_sha256,
+        )
+    except Exception:
+        return InstructionDecision(
+            False,
+            "replay_store_unavailable",
+            "PET-02-08",
+            instruction_id,
+            target,
+            signer_id,
+        )
+    if not consumed:
         return _deny("replayed_instruction", "PET-02-08", instruction_id, target)
-    return InstructionDecision(True, "accepted", "PET-02-05", instruction_id, target)
+    return InstructionDecision(
+        True,
+        "accepted",
+        "PET-02-05",
+        instruction_id,
+        target,
+        signer_id,
+        verified_envelope_sha256,
+    )
 
 
 def _parse(envelope: Mapping[str, Any]) -> tuple[str, str, str, str, datetime, datetime, str] | InstructionDecision:

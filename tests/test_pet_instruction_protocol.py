@@ -113,10 +113,17 @@ def test_postgres_guard_calls_single_atomic_database_function(monkeypatch):
 
     monkeypatch.setattr("ai_ops_center.db.connect", lambda local=False: Connection())
     accepted = PostgresReplayGuard(local=True).consume(
-        "brain-gaming-pc", "nonce-00000001", "instruction-0001", "dev-laptop", NOW + timedelta(minutes=5), NOW
+        "brain-gaming-pc",
+        "nonce-00000001",
+        "instruction-0001",
+        "dev-laptop",
+        NOW + timedelta(minutes=5),
+        NOW,
+        "a" * 64,
     )
     assert accepted is True
-    assert calls[0][0] == "select consume_pet_instruction_nonce(%s, %s, %s, %s, %s)"
+    assert calls[0][0] == "select consume_pet_instruction_nonce(%s, %s, %s, %s, %s, %s)"
+    assert calls[0][1][-1] == "a" * 64
     assert calls[-1] == ("commit", None)
 
 

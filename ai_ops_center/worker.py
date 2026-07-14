@@ -82,7 +82,18 @@ def _consume_machine_messages(machine_id: str, local: bool = False) -> int:
                 subject=f"Received: {message['subject']}",
                 body=f"{machine_id} received speaker message {message['id']} and is listening.",
                 priority=int(message.get("priority") or 50),
-                metadata={"speaker_message_id": message["id"], "machine_id": machine_id},
+                metadata={
+                    "speaker_message_id": message["id"],
+                    "machine_id": machine_id,
+                    **(
+                        {
+                            "instruction_decision": decision.as_dict(),
+                            "verified_envelope_sha256": decision.verified_envelope_sha256,
+                        }
+                        if decision is not None
+                        else {}
+                    ),
+                },
                 local=local,
             )
             acknowledge_speaker_message(message["id"], actor=machine_id, local=local)

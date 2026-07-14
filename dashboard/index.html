@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI Operations Center</title>
-    <link rel="stylesheet" href="./styles.css?v=command-center-pets-20260713h-motion2" />
+    <link rel="stylesheet" href="./styles.css?v=command-center-pets-20260713h-motion4" />
   </head>
   <body>
     <a class="skip-link" href="#command-workspace">Skip to command workspace</a>
@@ -39,11 +39,12 @@
           <span class="nav-label">Operate</span>
           <a href="#phoenix"><span>05</span>Phoenix</a>
           <a href="#operator-requests"><span>06</span>Requests</a>
-          <a href="#brain-bus"><span>07</span>Brain Bus</a>
-          <a href="#agents"><span>08</span>Agents</a>
-          <a href="#tasks"><span>09</span>Tasks</a>
-          <a href="#reports"><span>10</span>Reports</a>
-          <a href="#actions"><span>11</span>Actions</a>
+          <a href="#project-intake"><span>07</span>Projects</a>
+          <a href="#brain-bus"><span>08</span>Brain Bus</a>
+          <a href="#agents"><span>09</span>Agents</a>
+          <a href="#tasks"><span>10</span>Tasks</a>
+          <a href="#reports"><span>11</span>Reports</a>
+          <a href="#actions"><span>12</span>Actions</a>
         </nav>
         <div class="sidebar-footer">
           <span id="last-refresh">Waiting for data</span>
@@ -139,6 +140,14 @@
               </div>
             </div>
           </div>
+          <section id="brain-feature-counter" class="brain-feature-counter" aria-labelledby="brain-feature-counter-title" aria-live="polite">
+            <div class="brain-feature-counter-heading">
+              <div><p class="eyebrow">Brain 500 catalog</p><h3 id="brain-feature-counter-title">Capability ledger</h3></div>
+              <span id="brain-feature-integrity" class="brain-feature-integrity pending">Awaiting ledger</span>
+            </div>
+            <div id="brain-feature-counts" class="brain-feature-counts"><span class="muted">Counts load independently from lifetime task totals.</span></div>
+            <p id="brain-feature-evidence" class="brain-feature-evidence">No catalog evidence snapshot yet.</p>
+          </section>
           <div id="pet-capability-overview" class="pet-capability-overview" aria-label="PET capability overview"></div>
           <div class="pet-grid" id="pet-grid"></div>
           <div class="animation-bank">
@@ -241,6 +250,47 @@
             <p>Assigned agents grouped by the machine responsible for their work.</p>
           </div>
           <div class="agent-matrix" id="agent-matrix"></div>
+        </section>
+
+        <section id="project-intake" class="workspace-section project-intake-section">
+          <div class="section-heading">
+            <h2>Project Intake</h2>
+            <p>Select Codex workspaces, paste or drop project paths, scan them, and route clean work packages to the laptop teams.</p>
+          </div>
+          <div class="project-intake-grid">
+            <form id="project-intake-form" class="task-form project-intake-form">
+              <h3>Add Projects</h3>
+              <label>
+                Project paths
+                <textarea id="project-paths" name="paths" rows="7" placeholder="Paste one path per line, or drop folders/files here. Example: C:\Users\jayla\OneDrive\Desktop\Race Aid"></textarea>
+              </label>
+              <div id="project-drop-zone" class="project-drop-zone" tabindex="0">
+                <strong>Drop project folders or files here</strong>
+                <span>Folder drops work in Chromium-based browsers; otherwise paste the path above.</span>
+              </div>
+              <label>
+                Mode
+                <select id="project-route-mode" name="mode">
+                  <option value="audit-and-improve">Audit, improve, and secure</option>
+                  <option value="feature-roadmap">Feature roadmap</option>
+                  <option value="security-hardening">Security hardening</option>
+                  <option value="business-monetization">Business monetization</option>
+                </select>
+              </label>
+              <div class="mini-actions">
+                <button id="scan-projects" type="submit">Scan Selected</button>
+                <button id="route-projects" type="button">Route To Laptop Teams</button>
+              </div>
+              <small>For laptops or paths Docker cannot see, run <code>docker\scan-projects-to-brain.ps1 -IncludeDesktop -PostToBrain</code>.</small>
+            </form>
+            <div>
+              <div class="section-heading compact-heading">
+                <h3>Detected Workspaces</h3>
+                <button id="refresh-project-intake" type="button">Refresh</button>
+              </div>
+              <div id="project-intake-list" class="compact-list project-intake-list"></div>
+            </div>
+          </div>
         </section>
 
         <section id="brain-bus" class="workspace-section">
@@ -408,6 +458,6 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=command-center-pets-20260713h-motion2"></script>
+    <script src="./app.js?v=command-center-pets-20260713h-motion4"></script>
   </body>
 </html>

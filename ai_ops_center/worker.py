@@ -15,9 +15,13 @@ from .integrations import integration_status
 from .llm_mesh import run_llm_request
 from .migrations import apply_migrations
 from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
+from .pet_instruction_protocol import InstructionDecision, PostgresReplayGuard, verify_instruction
 from .queue_manager import steward_queue
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+SIGNED_INSTRUCTION_MESSAGE_TYPES = {"brain_instruction", "signed_instruction"}
 
 
 def run_worker(machine_id: str, once: bool = False, sleep_seconds: int = 15, work_seconds: int = 4, local: bool = False) -> None:
@@ -67,6 +71,10 @@ def _consume_machine_messages(machine_id: str, local: bool = False) -> int:
         if message.get("target_id") != machine_id or message.get("status") == "acknowledged":
             continue
         try:
+            decision = _verify_brain_instruction_message(message, machine_id, local=local)
+            if decision is not None and not decision.accepted:
+                _report_instruction_rejection(message, machine_id, decision, local=local)
+                continue
             submit_listener_event(
                 source_type="machine",
                 source_id=machine_id,
@@ -82,6 +90,49 @@ def _consume_machine_messages(machine_id: str, local: bool = False) -> int:
         except Exception:
             logger.exception("Unable to acknowledge speaker message %s", message.get("id"))
     return acknowledged
+
+
+def _verify_brain_instruction_message(message: dict, machine_id: str, local: bool = False) -> InstructionDecision | None:
+    metadata = dict(message.get("metadata") or {})
+    envelope = metadata.get("instruction_envelope")
+    requires_signature = message.get("message_type") in SIGNED_INSTRUCTION_MESSAGE_TYPES or envelope is not None
+    if not requires_signature:
+        return None
+    if not isinstance(envelope, dict):
+        return InstructionDecision(False, "malformed_instruction", "PET-02-04", target_machine_id=machine_id)
+
+    configured_secret = get_settings().brain_instruction_secret.encode("utf-8")
+    signer_id = str(envelope.get("signer_id") or "")
+    return verify_instruction(
+        envelope,
+        expected_machine_id=machine_id,
+        secret_for_signer=lambda requested_signer: (
+            configured_secret if requested_signer == "brain-gaming-pc" and requested_signer == signer_id else None
+        ),
+        replay_guard=PostgresReplayGuard(local=local),
+    )
+
+
+def _report_instruction_rejection(
+    message: dict,
+    machine_id: str,
+    decision: InstructionDecision,
+    local: bool = False,
+) -> None:
+    submit_listener_event(
+        source_type="machine",
+        source_id=machine_id,
+        event_type="speaker_message_rejected",
+        subject=f"Rejected Brain instruction: {message.get('subject') or message.get('id')}",
+        body=f"Instruction was not acknowledged or executed: {decision.code}.",
+        priority=max(90, int(message.get("priority") or 50)),
+        metadata={
+            "speaker_message_id": message.get("id"),
+            "machine_id": machine_id,
+            "instruction_decision": decision.as_dict(),
+        },
+        local=local,
+    )
 
 
 def _report_task_completion(machine_id: str, task: dict, result: str, local: bool = False) -> None:

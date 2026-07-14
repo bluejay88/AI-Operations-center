@@ -8,7 +8,7 @@ from pathlib import Path
 import hmac
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -65,6 +65,9 @@ from .operator_requests import create_operator_request, operator_request_snapsho
 from .failover import evaluate_failover, evaluate_stale_workers, failover_recommendation
 from .phoenix import phoenix_briefing, phoenix_snapshot
 from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, ingest_pet_performance_samples, record_pet_release_decision, submit_pet_release_candidate
+from .pet_catalog import pet_feature_detail, pet_feature_summary
+from .brain_catalog import brain_feature_detail, brain_feature_summary
+from .project_intake import audit_project_paths, import_scan as import_project_scan, route_project_intake, workspace_snapshot
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
 from .remote_ops import remote_operation_snapshot, request_remote_operation, update_remote_operation_from_approval
@@ -453,6 +456,34 @@ class CodexPipelineRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class ProjectIntakeAuditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(default_factory=list)
+    source: str = Field(default="dashboard", min_length=2, max_length=120)
+
+
+class ProjectIntakeImportRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    source: str = Field(default="external-scanner", min_length=2, max_length=120)
+    machine_id: str | None = Field(default=None, max_length=80)
+    generated_at: str | None = None
+    projects: list[dict] = Field(default_factory=list)
+
+
+class ProjectIntakeRouteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    projects: list[dict] = Field(default_factory=list)
+    requester: str = Field(default="project-intake", min_length=2, max_length=120)
+    mode: str = Field(default="audit-and-improve", min_length=2, max_length=80)
+    target_machines: list[str] = Field(default_factory=lambda: ["brain-gaming-pc", "dev-laptop", "research-laptop"])
+    delivery_methods: list[str] = Field(default_factory=lambda: ["dashboard", "github"])
+    priority: int = Field(default=88, ge=1, le=100)
+    create_peer_requests: bool = True
+
+
 class IntegrationDispatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -670,6 +701,10 @@ def endpoint_contract() -> dict:
         {"name": "Task intake", "method": "POST", "path": "/tasks/intake", "purpose": "Submit chat/request work for Brain routing."},
         {"name": "Codex pipeline", "method": "POST", "path": "/codex/pipeline", "purpose": "Pipe Codex chat requests into dashboard-visible operator requests, task queues, team room, speaker feeds, and optional laptop peer requests."},
         {"name": "Codex pipeline snapshot", "method": "GET", "path": "/codex/pipeline", "purpose": "Read recent Codex-piped work and the contract for laptop feedback into Brain/team/dashboards."},
+        {"name": "Project intake workspaces", "method": "GET", "path": "/project-intake/workspaces", "purpose": "Read detected Codex workspaces and imported laptop/project scans for dashboard selection."},
+        {"name": "Project intake audit", "method": "POST", "path": "/project-intake/audit", "purpose": "Scan selected project paths when reachable from the Brain host and store redacted audit metadata."},
+        {"name": "Project intake import", "method": "POST", "path": "/project-intake/import-scan", "purpose": "Receive host/laptop scanner output from docker/scan-projects-to-brain.ps1."},
+        {"name": "Project intake route", "method": "POST", "path": "/project-intake/route", "purpose": "Route selected scanned projects into Codex pipeline tasks for Brain, Dev, Research, and Business teams."},
         {"name": "Listener events", "method": "POST", "path": "/listener/events", "purpose": "Publish laptop progress, logs, errors, recommendations, and requests to the Brain."},
         {"name": "Listener snapshot", "method": "GET", "path": "/listener/events", "purpose": "Read recent inbound workstation and workflow events."},
         {"name": "Speaker feed", "method": "GET", "path": "/speaker/feed/{machine_id}", "purpose": "Pull Brain assignments, approvals, feedback, and package install instructions."},
@@ -828,6 +863,7 @@ async def stream() -> StreamingResponse:
                 "speaker": speaker_feed("brain-gaming-pc"),
                 "team_chat": team_chat_digest(limit=30),
                 "codex_pipeline": codex_pipeline_snapshot(limit=20),
+                "project_intake": workspace_snapshot(limit=40),
                 "collaboration": collaboration_snapshot(limit=20),
                 "integrations": integration_status(),
                 "model_solutions": model_solution_snapshot(limit=10),
@@ -1120,6 +1156,32 @@ def pet_release_rubric() -> dict:
     }
 
 
+@app.get("/pet-features/summary")
+def pet_features_summary() -> dict:
+    return pet_feature_summary()
+
+
+@app.get("/pet-features/{feature_id}")
+def pet_features_detail(feature_id: str) -> dict:
+    feature = pet_feature_detail(feature_id)
+    if feature is None:
+        raise HTTPException(status_code=404, detail=f"PET feature {feature_id} was not found")
+    return {"feature": feature}
+
+
+@app.get("/brain-features/summary")
+def brain_features_summary() -> dict:
+    return brain_feature_summary()
+
+
+@app.get("/brain-features/{feature_id}")
+def brain_features_detail(feature_id: str) -> dict:
+    feature = brain_feature_detail(feature_id)
+    if feature is None:
+        raise HTTPException(status_code=404, detail=f"Brain feature {feature_id} was not found")
+    return {"feature": feature}
+
+
 @app.post("/pet-releases/submissions")
 def pet_release_submission(request: PetReleaseSubmissionRequest) -> dict:
     return submit_pet_release_candidate(request.model_dump())
@@ -1305,6 +1367,26 @@ def codex_pipeline(limit: int = Query(default=50, ge=1, le=500)) -> dict:
 @app.post("/codex/pipeline")
 def create_codex_pipeline(request: CodexPipelineRequest) -> dict:
     return pipe_codex_request(request.model_dump())
+
+
+@app.get("/project-intake/workspaces")
+def project_intake_workspaces(limit: int = Query(default=80, ge=1, le=200)) -> dict:
+    return workspace_snapshot(limit=limit)
+
+
+@app.post("/project-intake/audit")
+def project_intake_audit(request: ProjectIntakeAuditRequest) -> dict:
+    return audit_project_paths(request.paths, source=request.source)
+
+
+@app.post("/project-intake/import-scan")
+def project_intake_import(request: ProjectIntakeImportRequest) -> dict:
+    return import_project_scan(request.model_dump())
+
+
+@app.post("/project-intake/route")
+def project_intake_route(request: ProjectIntakeRouteRequest) -> dict:
+    return route_project_intake(request.model_dump())
 
 
 @app.get("/integrations/health")

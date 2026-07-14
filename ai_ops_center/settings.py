@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     worker_machine_id: str = "brain-gaming-pc"
     worker_sleep_seconds: int = 10
     worker_work_seconds: int = 4
+    brain_instruction_secret: str = ""
     report_timezone: str = "America/Chicago"
     brain_host: str = "100.70.49.32"
     github_owner: str = "bluejay88"

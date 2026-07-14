@@ -1252,6 +1252,22 @@ svg {
   margin: 0.35rem 0 0;
 }
 
+.message-stream { gap: 0; border-top: 1px solid var(--line); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.compact-list .message-stream-item { min-width: 0; padding: .85rem .15rem .9rem; border-top: 0; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: 112px; }
+.message-stream-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .65rem; }
+.message-stream-head strong { min-width: 0; overflow-wrap: anywhere; font-size: .86rem; }
+.message-avatar { display: grid !important; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--accent); font: 700 .55rem ui-monospace, "Cascadia Code", monospace; letter-spacing: .04em; }
+.speaker-stream .message-avatar { color: var(--blue); }
+.message-meta { display: flex !important; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 0 2.95rem; }
+.message-meta b, .message-meta i { padding: .18rem .38rem; border: 1px solid var(--line); border-radius: 999px; font-size: .62rem; font-style: normal; font-weight: 600; line-height: 1.2; }
+.message-meta b { color: var(--text); }
+.message-stream-item > p { margin-left: 2.95rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.speaker-stream .message-stream-item.is-acknowledged .message-avatar { color: var(--good); border-color: color-mix(in srgb, var(--good) 44%, var(--line)); }
+@media (max-width: 520px) {
+  .message-meta, .message-stream-item > p { margin-left: 0; }
+  .message-stream-item > p { margin-top: .65rem; }
+}
+
 .approval-card small {
   display: block;
   margin-top: 0.45rem;
@@ -1384,6 +1400,39 @@ svg {
 .request-layout {
   grid-template-columns: 360px minmax(0, 1fr);
 }
+
+.project-intake-grid {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.project-intake-form textarea {
+  min-height: 9rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.project-drop-zone {
+  display: grid;
+  gap: 0.35rem;
+  align-content: center;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px dashed color-mix(in srgb, var(--accent), var(--line) 40%);
+  background: color-mix(in srgb, var(--panel-2), transparent 20%);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+.project-drop-zone strong { color: var(--text); }
+.project-drop-zone.is-dragging { border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%); }
+.project-intake-list { max-height: 35rem; overflow: auto; }
+.project-intake-card { display: grid; gap: 0.35rem; }
+.project-select-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.55rem; align-items: center; margin: 0; }
+.project-select-row input { width: 1rem; height: 1rem; }
+.project-intake-card p,
+.project-intake-card small { overflow-wrap: anywhere; }
 
 .compact-heading {
   margin-bottom: 0.75rem;
@@ -1553,6 +1602,7 @@ pre {
   .agent-matrix,
   .task-layout,
   .request-layout,
+  .project-intake-grid,
   .phoenix-console {
     grid-template-columns: 1fr;
   }
@@ -1778,6 +1828,29 @@ main { min-width: 0; padding: 0 2rem 3rem; }
 .pet-capability-overview strong { display: block; font-size: 1.5rem; letter-spacing: -0.05em; }
 .pet-capability-overview span { display: block; color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
 
+.brain-feature-counter { display: grid; grid-template-columns: minmax(170px, .58fr) minmax(0, 1.42fr); gap: 1rem 1.5rem; align-items: center; margin-bottom: 1px; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; background: #0b1016; }
+.brain-feature-counter-heading { display: flex; align-items: start; justify-content: space-between; gap: .8rem; min-width: 0; }
+.brain-feature-counter-heading h3, .brain-feature-counter-heading p { margin: 0; }
+.brain-feature-counter-heading h3 { margin-top: .25rem; font-size: 1rem; }
+.brain-feature-integrity { flex: 0 0 auto; padding: .25rem .45rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .62rem; white-space: nowrap; }
+.brain-feature-integrity.passed { color: var(--good); border-color: color-mix(in srgb, var(--good) 42%, var(--line)); }
+.brain-feature-integrity.attention { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 42%, var(--line)); }
+.brain-feature-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; min-width: 0; background: var(--line); }
+.brain-feature-counts > div { display: grid; grid-template-columns: auto 1fr; gap: .12rem .5rem; min-width: 0; padding: .65rem .7rem; background: var(--panel); }
+.brain-feature-counts > div > span { grid-row: 1 / 3; align-self: center; color: var(--accent); font: 800 .7rem ui-monospace, "Cascadia Code", monospace; }
+.brain-feature-counts strong { font-size: 1.05rem; line-height: 1; }
+.brain-feature-counts small { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: .62rem; }
+.brain-feature-evidence { grid-column: 2; margin: -.45rem 0 0; color: var(--muted); font-size: .66rem; line-height: 1.45; }
+@media (max-width: 900px) {
+  .brain-feature-counter { grid-template-columns: 1fr; }
+  .brain-feature-evidence { grid-column: 1; margin: 0; }
+}
+@media (max-width: 520px) {
+  .brain-feature-counter-heading { display: grid; }
+  .brain-feature-integrity { justify-self: start; }
+  .brain-feature-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .pet-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
@@ -1967,6 +2040,7 @@ pre { border-radius: var(--radius); }
   .pet-capability-overview,
   .task-layout,
   .request-layout,
+  .project-intake-grid,
   .phoenix-console { grid-template-columns: minmax(0, 1fr); }
   .pet-panel,
   .pet-panel:first-child { grid-template-columns: 1fr; }
@@ -1985,9 +2059,99 @@ pre { border-radius: var(--radius); }
   .noc-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* PET dimensional skin: composited depth without image or markup overhead. */
+.pet-stage {
+  perspective: 760px;
+  perspective-origin: 50% 38%;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 50% 82%, rgba(0,0,0,.58) 0 13%, transparent 40%),
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--pet-accent, var(--accent)) 8%, transparent), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.045), transparent 48%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.03) 0 1px, transparent 1px 28px),
+    #0b1117;
+}
+
+.pet-stage::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 22%;
+  right: 22%;
+  bottom: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pet-accent, var(--accent)) 16%, rgba(0,0,0,.72));
+  filter: blur(12px);
+  opacity: .68;
+  transform: rotateX(68deg) translateZ(-18px);
+  animation: pet-ground-pulse 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.pet-stage .pet {
+  z-index: 1;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 16px 13px rgba(0,0,0,.42));
+}
+
+.pet-aura { transform: translateZ(-18px) scale(.97); }
+.pet-halo, .pet-siren { transform: translateZ(22px); }
+.pet-screenplate {
+  transform: translateZ(14px);
+  border-color: color-mix(in srgb, var(--pet-accent) 82%, white);
+  background:
+    linear-gradient(112deg, rgba(255,255,255,.18), transparent 24% 68%, rgba(255,255,255,.05)),
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--pet-accent-2) 34%, transparent), transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--pet-dark) 76%, #26394a), var(--pet-dark));
+  box-shadow:
+    inset 1px 1px 0 rgba(255,255,255,.24),
+    inset -5px -9px 16px rgba(0,0,0,.38),
+    0 0 24px color-mix(in srgb, var(--pet-accent) 24%, transparent),
+    0 16px 18px rgba(0,0,0,.3);
+  transition: transform 220ms ease, filter 220ms ease;
+}
+
+.pet-keyboard {
+  transform: translateZ(8px) rotateX(14deg);
+  transform-origin: 50% 0;
+  box-shadow: inset 0 1px rgba(255,255,255,.16), inset 0 -7px 12px rgba(0,0,0,.34), 0 10px 13px rgba(0,0,0,.34);
+  transition: transform 220ms ease;
+}
+
+.pet-base { transform: translateZ(-3px); }
+.pet-eye, .pet-mouth, .pet-badge, .pet-status-light, .pet-tool { transform: translateZ(25px); }
+.pet-stage:hover .pet-screenplate { transform: translateZ(22px) translateY(-2px) rotateX(-1.5deg); filter: brightness(1.08) saturate(1.12); }
+.pet-stage:hover .pet-keyboard { transform: translateZ(13px) rotateX(19deg) translateY(1px); }
+
+.pet-security .pet-screenplate {
+  border-color: #ff8787;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,.2), transparent 24% 65%, rgba(255,100,100,.12)),
+    radial-gradient(circle at 50% 22%, rgba(255,212,212,.18), transparent 42%),
+    linear-gradient(180deg, #3b1a1d, #160b0d);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.05), inset 0 -12px 20px rgba(0,0,0,.48), 0 0 28px rgba(255,100,100,.3), 0 18px 20px rgba(0,0,0,.42);
+}
+
+.pet-security .pet-aura { border-style: double; animation-duration: 1.9s; }
+.pet-security .pet-scanline { height: 3px; box-shadow: 0 0 10px #ff6464; animation-duration: 1.45s; }
+.pet-security .pet-base { box-shadow: 0 0 24px rgba(255,100,100,.52); }
+
+@keyframes pet-ground-pulse {
+  0%, 100% { opacity: .46; transform: rotateX(68deg) translateZ(-18px) scale(.88); }
+  50% { opacity: .78; transform: rotateX(68deg) translateZ(-18px) scale(1.05); }
+}
+
+@media (max-width: 720px) {
+  .pet-stage { perspective: 620px; background-size: auto; }
+  .pet-stage::after { left: 29%; right: 29%; bottom: 10%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .pet-stage:hover .pet-screenplate { transform: translateZ(14px); filter: none; }
+  .pet-stage:hover .pet-keyboard { transform: translateZ(8px) rotateX(14deg); }
 }
 
 /* Telemetry-driven PET motion rig. Transform/opacity-only loops keep repaint cost low. */

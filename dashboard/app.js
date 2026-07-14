@@ -20,6 +20,10 @@ const state = {
   enterpriseFeatures: null,
   nodeMesh: null,
   operatorRequests: [],
+  projectIntake: null,
+  projectIntakeScan: null,
+  petFeatureSummary: null,
+  brainFeatureSummary: null,
   noc: null,
   mascotAnimations: [
     "sleeping", "working", "thinking", "running", "building", "editing", "researching", "emailing",
@@ -131,6 +135,9 @@ const els = {
   nocCollaboration: document.querySelector("#noc-collaboration"),
   pets: document.querySelector("#pet-grid"),
   petCapabilityOverview: document.querySelector("#pet-capability-overview"),
+  brainFeatureCounts: document.querySelector("#brain-feature-counts"),
+  brainFeatureIntegrity: document.querySelector("#brain-feature-integrity"),
+  brainFeatureEvidence: document.querySelector("#brain-feature-evidence"),
   animationBankCount: document.querySelector("#animation-bank-count"),
   ops2Seed: document.querySelector("#ops2-seed"),
   ops2SeedLaptopWork: document.querySelector("#ops2-seed-laptop-work"),
@@ -141,6 +148,14 @@ const els = {
   operatorRequestForm: document.querySelector("#operator-request-form"),
   operatorRequestList: document.querySelector("#operator-request-list"),
   refreshOperatorRequests: document.querySelector("#refresh-operator-requests"),
+  projectIntakeForm: document.querySelector("#project-intake-form"),
+  projectPaths: document.querySelector("#project-paths"),
+  projectDropZone: document.querySelector("#project-drop-zone"),
+  projectRouteMode: document.querySelector("#project-route-mode"),
+  projectIntakeList: document.querySelector("#project-intake-list"),
+  refreshProjectIntake: document.querySelector("#refresh-project-intake"),
+  scanProjects: document.querySelector("#scan-projects"),
+  routeProjects: document.querySelector("#route-projects"),
   refreshApprovals: document.querySelector("#refresh-approvals"),
   refreshListener: document.querySelector("#refresh-listener"),
   refreshIntegrations: document.querySelector("#refresh-integrations"),
@@ -356,6 +371,7 @@ function renderReleaseAssurance() {
   const petProfilesComplete = Object.values(PET_CAPABILITY_PROFILES).every((profile) =>
     profile.attributes.length && profile.operational.length && profile.governed.length && profile.featureLanes.length === 5
   );
+  const featureLedger = state.petFeatureSummary || {};
   const gates = [
     {
       id: "task-accounting",
@@ -408,8 +424,10 @@ function renderReleaseAssurance() {
     {
       id: "pet-ui",
       label: "PET spec / UI",
-      status: petProfilesComplete && petCards >= Object.keys(PET_CAPABILITY_PROFILES).length ? "passed" : "pending",
-      detail: `${petCards}/${Object.keys(PET_CAPABILITY_PROFILES).length} profiles / responsive gates`,
+      status: petProfilesComplete && petCards >= Object.keys(PET_CAPABILITY_PROFILES).length && featureLedger.integrity ? "passed" : "pending",
+      detail: featureLedger.total !== undefined
+        ? `${featureLedger.operational || 0} operational / ${featureLedger.approval_gated || 0} gated / ${featureLedger.planned || 0} planned`
+        : `${petCards}/${Object.keys(PET_CAPABILITY_PROFILES).length} profiles / ledger pending`,
     },
   ];
   const failed = gates.filter((gate) => gate.status === "failed").length;
@@ -793,13 +811,52 @@ function renderPets() {
     const profiles = Object.values(PET_CAPABILITY_PROFILES);
     const operational = profiles.reduce((total, profile) => total + profile.operational.length, 0);
     const governed = profiles.reduce((total, profile) => total + profile.governed.length, 0);
-    els.petCapabilityOverview.innerHTML = `
-      <div><strong>500</strong><span>features governed by the PET specification</span></div>
-      <div><strong>${operational}</strong><span>operational capability signals shown live</span></div>
-      <div><strong>${governed}</strong><span>governed / planned capability groups</span></div>
+    const ledger = state.petFeatureSummary;
+    els.petCapabilityOverview.innerHTML = ledger ? `
+      <div><strong>${ledger.operational || 0}</strong><span>release-certified operational abilities</span></div>
+      <div><strong>${ledger.approval_gated || 0}</strong><span>certified approval-gated abilities</span></div>
+      <div><strong>${ledger.planned || 0}</strong><span>planned abilities awaiting item evidence</span></div>
+      <div><strong>${ledger.total || 0}/${ledger.expected_total || 500}</strong><span>catalog integrity ${ledger.integrity ? "verified" : "attention"}</span></div>
+    ` : `
+      <div><strong>500</strong><span>catalog loading from the Brain ledger</span></div>
+      <div><strong>${operational}</strong><span>operational UI capability signals shown live</span></div>
+      <div><strong>${governed}</strong><span>governed / planned UI capability groups</span></div>
       <div><strong>${profiles.length * 5}</strong><span>feature lanes mapped across companions</span></div>
     `;
   }
+}
+
+function renderBrainFeatureSummary() {
+  if (!els.brainFeatureCounts || !els.brainFeatureIntegrity || !els.brainFeatureEvidence) return;
+  const summary = state.brainFeatureSummary;
+  if (!summary) {
+    els.brainFeatureCounts.innerHTML = `<span class="muted">Brain capability ledger unavailable.</span>`;
+    els.brainFeatureIntegrity.textContent = "Ledger unavailable";
+    els.brainFeatureIntegrity.className = "brain-feature-integrity pending";
+    els.brainFeatureEvidence.textContent = "Counts are separate from lifetime completed-task totals.";
+    return;
+  }
+  const count = (key) => Number.isFinite(Number(summary[key])) ? Number(summary[key]) : 0;
+  const total = count("total");
+  const expected = count("expected_total") || 500;
+  const integrity = summary.integrity;
+  const integrityOk = typeof integrity === "boolean"
+    ? integrity
+    : typeof integrity === "object" && integrity !== null
+      ? Boolean(integrity.ok ?? integrity.valid ?? integrity.complete)
+      : String(integrity || "").toLowerCase() === "pass";
+  const integrityLabel = integrityOk ? "Integrity verified" : "Integrity attention";
+  const entries = [
+    ["O", "Operational", count("operational")],
+    ["G", "Approval-gated", count("approval_gated")],
+    ["P", "Planned", count("planned")],
+    ["R", "Rejected", count("rejected")],
+  ];
+  els.brainFeatureCounts.innerHTML = entries.map(([short, label, value]) => `
+    <div><span aria-hidden="true">${short}</span><strong>${value}</strong><small>${label}</small></div>`).join("");
+  els.brainFeatureIntegrity.textContent = `${integrityLabel} · ${total}/${expected}`;
+  els.brainFeatureIntegrity.className = `brain-feature-integrity ${integrityOk && total === expected ? "passed" : "attention"}`;
+  els.brainFeatureEvidence.textContent = `${count("implemented")} implemented · ${count("evidence_verified")} evidence-verified · ${count("released")} released · ${count("verification_expired")} verification expired · ${count("version_count")} versions · ${count("event_count")} events`;
 }
 
 function petStateClass(animation, readinessState) {
@@ -933,13 +990,15 @@ function renderApprovals() {
 }
 
 function renderListenerEvents() {
+  els.listenerEvents.classList.add("message-stream", "listener-stream");
+  els.listenerEvents.setAttribute("role", "list");
   els.listenerEvents.innerHTML = (state.listenerEvents || [])
     .slice(0, 12)
     .map(
       (item) => `
-        <article>
-          <strong>${escapeHtml(item.subject)}</strong>
-          <span>${escapeHtml(item.event_type)} / ${escapeHtml(item.source_id)}</span>
+        <article class="message-stream-item" role="listitem">
+          <div class="message-stream-head"><span class="message-avatar" aria-hidden="true">IN</span><strong>${escapeHtml(item.subject)}</strong></div>
+          <span class="message-meta"><b>${escapeHtml(item.event_type)}</b><i>${escapeHtml(item.source_id)}</i></span>
           <p>${escapeHtml(item.body || "")}</p>
         </article>
       `
@@ -949,13 +1008,15 @@ function renderListenerEvents() {
 
 function renderSpeakerFeed() {
   const feed = state.speakerFeed || {};
+  els.speakerList.classList.add("message-stream", "speaker-stream");
+  els.speakerList.setAttribute("role", "list");
   els.speakerList.innerHTML = (feed.messages || [])
     .slice(0, 12)
     .map(
       (item) => `
-        <article>
-          <strong>${escapeHtml(item.subject)}</strong>
-          <span>${escapeHtml(item.message_type)} / ${escapeHtml(item.status)} / P${escapeHtml(item.priority)}</span>
+        <article class="message-stream-item is-${escapeHtml(item.status || "pending")}" role="listitem">
+          <div class="message-stream-head"><span class="message-avatar" aria-hidden="true">OUT</span><strong>${escapeHtml(item.subject)}</strong></div>
+          <span class="message-meta"><b>${escapeHtml(item.message_type)}</b><i>${escapeHtml(item.status)}</i><i>P${escapeHtml(item.priority)}</i></span>
           <p>${escapeHtml(item.body || "")}</p>
         </article>
       `
@@ -1068,6 +1129,45 @@ function renderOperatorRequests() {
     .join("") || `<p class="muted">No operator requests yet.</p>`;
 }
 
+function projectIntakeProjects() {
+  const imported = (state.projectIntake?.imported || []).flatMap((scan) => scan.payload?.projects || []);
+  const scanned = state.projectIntakeScan?.projects || [];
+  const detected = state.projectIntake?.detected || [];
+  const merged = [...scanned, ...imported, ...detected];
+  const seen = new Set();
+  return merged.filter((project) => {
+    const key = String(project.path || project.name || "").toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderProjectIntake() {
+  if (!els.projectIntakeList) return;
+  const projects = projectIntakeProjects();
+  els.projectIntakeList.innerHTML = projects
+    .slice(0, 80)
+    .map((project, index) => {
+      const flags = project.flag_counts || {};
+      const flagText = Object.entries(flags).map(([key, value]) => `${key}: ${value}`).join(", ") || "no scan flags yet";
+      const buildFiles = (project.build_files || []).slice(0, 3).join(", ") || "build files not scanned";
+      return `
+        <article class="project-intake-card">
+          <label class="project-select-row">
+            <input type="checkbox" class="project-select" data-project-index="${index}">
+            <strong>${escapeHtml(project.name || "Unnamed project")}</strong>
+          </label>
+          <span>${escapeHtml(project.kind || "unknown")} / ${escapeHtml(project.status || "detected")} / ${escapeHtml(project.file_count_sampled ?? "not scanned")} files</span>
+          <p>${escapeHtml(project.path || "")}</p>
+          <small>Flags: ${escapeHtml(flagText)}</small>
+          <small>Build: ${escapeHtml(buildFiles)}</small>
+        </article>
+      `;
+    })
+    .join("") || `<p class="muted">No projects detected yet. Paste paths or run the scanner script from a laptop.</p>`;
+}
+
 async function loadReport(type = state.selectedReport) {
   state.selectedReport = type;
   const data = await safeApi(`/reports/${type}`, { report: "Report data is not available yet." }, `${type} report`);
@@ -1109,6 +1209,11 @@ async function loadEndpoints() {
   renderEndpoints();
 }
 
+async function loadProjectIntake() {
+  state.projectIntake = await safeApi("/project-intake/workspaces", { detected: [], imported: [] }, "project intake");
+  renderProjectIntake();
+}
+
 async function loadCollaboration() {
   state.collaboration = await safeApi("/collaboration", { peer_requests: [], handoffs: [], model_sessions: [] }, "collaboration");
   renderCollaboration();
@@ -1143,13 +1248,15 @@ async function loadNoc() {
 
 async function refresh() {
   setConnectionStatus(`Connecting to Brain API ${API_BASE || window.location.origin}`, "warning");
-  const [registry, readiness, tasks, connections, factory, noc] = await Promise.all([
+  const [registry, readiness, tasks, connections, factory, noc, petFeatureSummary, brainFeatureSummary] = await Promise.all([
     safeApi("/registry", { machines: [], agents: [] }, "registry"),
     api("/readiness.json"),
     safeApi("/tasks", { tasks: [] }, "tasks"),
     safeApi("/connections", { connections: [] }, "connections"),
     safeApi("/factory", { factory: { machines: [], handoff_gates: [] } }, "factory"),
     safeApi("/ops2/noc", {}, "NOC"),
+    safeApi("/pet-features/summary", null, "PET feature ledger"),
+    safeApi("/brain-features/summary", null, "Brain 500 capability ledger"),
   ]);
   state.registry = registry;
   state.readiness = readiness;
@@ -1161,6 +1268,8 @@ async function refresh() {
   state.connectionSummary = connections?.connection_summary || state.connectionSummary;
   state.factory = normalizeFactory(factory);
   state.noc = noc;
+  state.petFeatureSummary = petFeatureSummary || state.petFeatureSummary;
+  state.brainFeatureSummary = brainFeatureSummary || state.brainFeatureSummary;
   safeRender("summary", renderSummary);
   safeRender("machines", renderMachines);
   safeRender("factory", renderFactory);
@@ -1168,6 +1277,7 @@ async function refresh() {
   safeRender("tasks", renderTasks);
   safeRender("NOC", renderNoc);
   safeRender("pets", renderPets);
+  safeRender("Brain 500 capability ledger", renderBrainFeatureSummary);
   safeRender("release assurance", renderReleaseAssurance);
   await loadReport(state.selectedReport);
   await loadPhoenixBriefing();
@@ -1182,6 +1292,7 @@ async function refresh() {
     loadEnterpriseFeatures(),
     loadNodeMesh(),
     loadOperatorRequests(),
+    loadProjectIntake(),
   ]);
   setConnectionStatus(`Connected to Brain API ${API_BASE || window.location.origin}`, "online");
   els.lastRefresh.textContent = `Refreshed ${new Date().toLocaleTimeString()}`;
@@ -1203,6 +1314,7 @@ function applyRealtimePayload(payload) {
   state.collaboration = payload.collaboration || state.collaboration;
   state.teamChat = payload.team_chat || state.teamChat;
   state.codexPipeline = payload.codex_pipeline || state.codexPipeline;
+  state.projectIntake = payload.project_intake || state.projectIntake;
   if (payload.integrations) {
     state.integrations = Array.isArray(payload.integrations)
       ? payload.integrations
@@ -1218,6 +1330,7 @@ function applyRealtimePayload(payload) {
   safeRender("speaker", renderSpeakerFeed);
   safeRender("integrations", renderIntegrations);
   safeRender("collaboration", renderCollaboration);
+  safeRender("project intake", renderProjectIntake);
   safeRender("enterprise features", renderEnterpriseFeatures);
   safeRender("node mesh", renderNodeMesh);
   safeRender("NOC", renderNoc);
@@ -1460,6 +1573,84 @@ els.operatorRequestForm.addEventListener("submit", async (event) => {
   toast(`Request ${data.request.id} routed to task ${data.task_ids.join(", ")}`);
   event.currentTarget.reset();
   await refresh();
+});
+
+function projectPathsFromTextarea() {
+  return (els.projectPaths?.value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function selectedProjectIntakeItems() {
+  const projects = projectIntakeProjects();
+  return Array.from(document.querySelectorAll(".project-select:checked"))
+    .map((input) => projects[Number(input.dataset.projectIndex)])
+    .filter(Boolean);
+}
+
+els.projectIntakeForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const paths = projectPathsFromTextarea();
+  if (!paths.length) {
+    toast("Paste at least one project path or run the scanner script from that machine.");
+    return;
+  }
+  const data = await api("/project-intake/audit", {
+    method: "POST",
+    body: JSON.stringify({ paths, source: "dashboard" }),
+  });
+  state.projectIntakeScan = data;
+  toast(`Scanned ${data.projects?.length || 0} project(s)`);
+  renderProjectIntake();
+  await loadTeamRoom();
+});
+
+els.routeProjects?.addEventListener("click", async () => {
+  const selected = selectedProjectIntakeItems();
+  if (!selected.length) {
+    toast("Select at least one scanned or detected project first.");
+    return;
+  }
+  const data = await api("/project-intake/route", {
+    method: "POST",
+    body: JSON.stringify({
+      projects: selected,
+      mode: els.projectRouteMode?.value || "audit-and-improve",
+      target_machines: ["brain-gaming-pc", "dev-laptop", "research-laptop"],
+      delivery_methods: ["dashboard", "github"],
+      priority: 88,
+      create_peer_requests: true,
+    }),
+  });
+  toast(`Routed ${data.routed || 0} project package(s)`);
+  await refresh();
+});
+
+els.refreshProjectIntake?.addEventListener("click", () => loadProjectIntake().catch((error) => toast(error.message)));
+
+els.projectDropZone?.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  els.projectDropZone.classList.add("is-dragging");
+});
+
+els.projectDropZone?.addEventListener("dragleave", () => {
+  els.projectDropZone.classList.remove("is-dragging");
+});
+
+els.projectDropZone?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  els.projectDropZone.classList.remove("is-dragging");
+  const paths = Array.from(event.dataTransfer?.files || [])
+    .map((file) => file.path || file.webkitRelativePath || "")
+    .filter(Boolean);
+  if (!paths.length) {
+    toast("Browser did not expose folder paths. Paste the path or run docker\\scan-projects-to-brain.ps1.");
+    return;
+  }
+  const current = projectPathsFromTextarea();
+  els.projectPaths.value = [...new Set([...current, ...paths])].join("\n");
+  toast(`Added ${paths.length} dropped path(s)`);
 });
 
 initializeDashboardGate();

@@ -61,6 +61,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "ai_ops_center/team_chat.py",
         "ai_ops_center/node_contract.py",
         "ai_ops_center/codex_pipeline.py",
+        "ai_ops_center/project_intake.py",
         "config/agents.yaml",
         "config/ai_factory.yaml",
         "config/llm_mesh.yaml",
@@ -70,6 +71,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         "docker/start-laptop-operations.ps1",
         "docker/laptop-recovery-bundle.ps1",
         "docker/pipe-codex-task.ps1",
+        "docker/scan-projects-to-brain.ps1",
         "docs/LLM_MESH_AND_LAPTOP_RECOVERY.md",
     ]
     for rel in files:
@@ -111,11 +113,13 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
     add("API LLM mesh query configured", "/llm-mesh/query" in api_py)
     add("API team room chat configured", "/team-chat" in api_py and "/team-chat/brain-decision" in api_py)
     add("API Codex pipeline configured", "/codex/pipeline" in api_py)
+    add("API project intake configured", "/project-intake/workspaces" in api_py and "/project-intake/route" in api_py)
     add("API laptop agent contract configured", "/laptop-agents/{machine_id}/contract" in api_py)
     add("team room schema migration configured", "team_chat_messages" in _read_text("sql/migrations/005_team_chat_messages.sql"))
     add("listener and speaker mirror to team room", "post_team_chat_message" in _read_text("ai_ops_center/brain_bus.py"))
     add("laptop recovery downloads node contract", "/laptop-agents/$MachineId/contract" in _read_text("docker/laptop-recovery-bundle.ps1"))
     add("Codex pipeline helper script configured", "/codex/pipeline" in _read_text("docker/pipe-codex-task.ps1"))
+    add("project scanner helper script configured", "/project-intake/import-scan" in _read_text("docker/scan-projects-to-brain.ps1"))
     add("laptop contract exposes Codex pipeline", "codex_pipeline" in _read_text("ai_ops_center/node_contract.py"))
     add("LLM mesh local coding profile configured", "local_coding" in llm_mesh_yaml and "qwen2.5-coder:7b" in llm_mesh_yaml)
     add("LLM mesh edge profile configured", "edge_fast" in llm_mesh_yaml and "llama3.2:3b" in llm_mesh_yaml)
@@ -153,6 +157,7 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         ("readiness endpoint", "/readiness.json"),
         ("tasks endpoint", "/tasks"),
         ("Codex pipeline endpoint", "/codex/pipeline"),
+        ("project intake endpoint", "/project-intake/workspaces"),
         ("connections endpoint", "/connections"),
         ("node mesh endpoint", "/node-mesh"),
         ("factory endpoint", "/factory"),

@@ -71,7 +71,8 @@ async def submit_model_query(
     local: bool = False,
 ) -> dict[str, Any]:
     options = options or {}
-    governed_prompt = _governed_prompt(purpose, prompt, auto_create_tasks)
+    interaction = str(options.get("interaction") or "").strip().lower()
+    governed_prompt = _governed_prompt(purpose, prompt, auto_create_tasks, interaction=interaction)
     workflow = await run_external_model_workflow(
         purpose=purpose,
         prompt=governed_prompt,
@@ -81,7 +82,7 @@ async def submit_model_query(
         priority=priority,
         options=options.get("provider_options") or {"max_tokens": options.get("max_tokens", 450)},
     )
-    synthesis = _synthesize(workflow["results"])
+    synthesis = _synthesize(workflow["results"], interaction=interaction)
     risk_level = _risk_level(f"{purpose}\n{prompt}\n{synthesis}")
     needs_approval = require_approval if require_approval is not None else risk_level in {"high", "critical"}
 
@@ -193,7 +194,15 @@ def model_solution_snapshot(limit: int = 25, local: bool = False) -> list[dict[s
             return [dict(row) for row in cur.fetchall()]
 
 
-def _governed_prompt(purpose: str, prompt: str, auto_create_tasks: bool) -> str:
+def _governed_prompt(purpose: str, prompt: str, auto_create_tasks: bool, interaction: str = "") -> str:
+    if interaction == "pet_chat":
+        return (
+            "You are a friendly PET inside a private AI Operations Center. Reply directly to the user in plain language, "
+            "using no more than three short paragraphs. Do not output implementation plans, provider diagnostics, or routing advice. "
+            "Never claim an action ran unless the supplied system evidence proves it. Protected, financial, destructive, credential, "
+            "public-send, and remote-control actions require Brain/Jayla approval. Do not include secrets.\n\n"
+            f"Purpose: {purpose}\nConversation request:\n{prompt}"
+        )
     mode = "The Brain may convert this into queued tasks after safety review." if auto_create_tasks else "The Brain will record this as a solution packet first."
     return (
         "You are advising a private AI Operations Center. Produce an implementation-ready response with:\n"
@@ -204,9 +213,13 @@ def _governed_prompt(purpose: str, prompt: str, auto_create_tasks: bool) -> str:
     )
 
 
-def _synthesize(results: list[dict[str, Any]]) -> str:
+def _synthesize(results: list[dict[str, Any]], interaction: str = "") -> str:
     completed = [item for item in results if item.get("status") == "completed" and item.get("text")]
     failed = [item for item in results if item.get("status") != "completed"]
+    if interaction == "pet_chat":
+        if completed:
+            return str(completed[0].get("text", "")).strip()[:2400]
+        return "I can hear you, but the Brain's model providers are temporarily unavailable. No task was started."
     lines = [
         "Model Router Synthesis",
         f"Completed providers: {len(completed)}",

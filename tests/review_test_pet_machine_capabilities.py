@@ -185,11 +185,20 @@ def test_review_requires_dispatch_side_effect_idempotency(monkeypatch):
     monkeypatch.setenv("PET_DISPATCH_SIGNING_KEY_RESEARCH_LAPTOP", KEY)
     monkeypatch.setattr(caps, "_load_request", lambda *a, **k: _request())
     sent = []
-    monkeypatch.setattr(caps, "create_speaker_message", lambda **k: sent.append(k) or len(sent))
-    monkeypatch.setattr(caps, "_record_dispatch", lambda **k: None)
+    seen = set()
+
+    def publish_once(**kwargs):
+        if kwargs["request_id"] not in seen:
+            seen.add(kwargs["request_id"])
+            sent.append(kwargs)
+            return len(sent), True
+        return len(sent), False
+
+    monkeypatch.setattr(caps, "_publish_dispatch_outbox", publish_once)
     caps.dispatch_approved_request(REQUEST_ID, "brain")
     caps.dispatch_approved_request(REQUEST_ID, "brain")
     assert len(sent) == 1
+    assert sent[0]["request_id"] == REQUEST_ID
 
 
 def test_review_requires_database_receipt_idempotency_contract():

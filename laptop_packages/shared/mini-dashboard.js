@@ -974,7 +974,9 @@ function renderMetrics() {
   $("#metric-running").textContent = running;
   $("#metric-done").textContent = completed;
   const machineState = String(machine.state || "checking");
-  $("#metric-health").textContent = machineState;
+  const metricHealth = $("#metric-health");
+  metricHealth.textContent = machineState.replace(/[_-]+/g, " ");
+  metricHealth.title = machineState;
   $("#metric-latency").textContent = machine.latest_benchmark?.brain_latency_ms ? `${Number(machine.latest_benchmark.brain_latency_ms).toFixed(0)} ms` : "--";
   $("#metric-ssh").textContent = (machine.connections || []).some((conn) => ["ssh-22", "ssh-22-brain-to-laptop"].includes(conn.channel) && conn.status === "online") ? "ready" : "review";
 }

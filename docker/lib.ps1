@@ -44,6 +44,39 @@ function Assert-TailscaleAvailable {
     return $tailscaleExe
 }
 
+function Get-AiOpsApiHeaders {
+    param(
+        [Parameter(Mandatory=$true)][string]$MachineId,
+        [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
+    )
+
+    $token = ""
+    if ($MachineId -eq "brain-gaming-pc") {
+        $token = [string]$env:AI_OPS_CONTROL_TOKEN
+        if ([string]::IsNullOrWhiteSpace($token)) { $token = [string]$env:API_CONTROL_TOKEN }
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            $envFile = Join-Path $RepoRoot ".env"
+            if (Test-Path $envFile) {
+                $line = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^API_CONTROL_TOKEN=' } | Select-Object -Last 1
+                if ($line) { $token = $line.Substring($line.IndexOf('=') + 1).Trim() }
+            }
+        }
+    } else {
+        $token = [string]$env:AI_OPS_DEVICE_TOKEN
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            $tokenFile = Join-Path $env:ProgramData "AI-Ops\device-api-token"
+            if (Test-Path $tokenFile) { $token = (Get-Content -Raw -LiteralPath $tokenFile).Trim() }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        throw "No API credential is installed for $MachineId. Run the secure credential provisioning step."
+    }
+    return @{
+        Authorization = "Bearer $token"
+        "X-AI-Ops-Device-Id" = $MachineId
+    }
+}
+
 function Get-AiOpsSshFailureCode {
     param(
         [string]$Output = "",
@@ -53,6 +86,9 @@ function Get-AiOpsSshFailureCode {
 
     if (-not $IdentityPresent -or $Output -match "Identity file .* not accessible|no such identity") {
         return "SSH_IDENTITY_MISSING"
+    }
+    if ($Output -match "No .* host key is known|not known for .*strict checking") {
+        return "SSH_HOST_KEY_UNVERIFIED"
     }
     if ($Output -match "REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed") {
         return "SSH_HOST_KEY_REJECTED"

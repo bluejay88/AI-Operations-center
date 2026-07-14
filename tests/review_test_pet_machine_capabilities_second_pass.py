@@ -71,15 +71,24 @@ def test_second_pass_effective_receipt_uniqueness_is_declared():
 
 def test_second_pass_dispatch_intent_is_reserved_before_publish():
     source = inspect.getsource(caps.dispatch_approved_request)
-    assert source.index("_reserve_dispatch_intent") < source.index("create_speaker_message")
+    assert "_publish_dispatch_outbox" in source
+    migration = (ROOT / "sql" / "migrations" / "018_pet_machine_capability_runtime_authority.sql").read_text(
+        encoding="utf-8"
+    ).lower()
+    assert "publish_pet_machine_capability_dispatch" in migration
+    assert "pet_machine_capability_dispatch_intents" in migration
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Replay memory is process-local; migration 017 nonce authority is not consumed by the executor",
-)
 def test_second_pass_replay_is_rejected_across_executor_restart():
     calls: list[dict] = []
+    consumed: set[tuple[str, str]] = set()
+    class DurableGuard:
+        def consume(self, **values):
+            identity = (values["machine_id"], values["nonce"])
+            if identity in consumed:
+                return False
+            consumed.add(identity)
+            return True
     envelope = _envelope()
     first = caps.MachineCapabilityExecutor(
         "research-laptop",
@@ -87,6 +96,7 @@ def test_second_pass_replay_is_rejected_across_executor_restart():
         enable_model_chat=True,
         signing_key=RESEARCH_DISPATCH_KEY,
         receipt_signing_key=RESEARCH_RECEIPT_KEY,
+        replay_guard=DurableGuard(),
     )
     second = caps.MachineCapabilityExecutor(
         "research-laptop",
@@ -94,13 +104,13 @@ def test_second_pass_replay_is_rejected_across_executor_restart():
         enable_model_chat=True,
         signing_key=RESEARCH_DISPATCH_KEY,
         receipt_signing_key=RESEARCH_RECEIPT_KEY,
+        replay_guard=DurableGuard(),
     )
     assert first.execute(envelope)["status"] == "completed"
     assert second.execute(envelope)["status"] == "held"
     assert len(calls) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="Dispatch actor is still accepted from the request body")
 def test_second_pass_dispatch_actor_is_derived_from_authentication():
     tree = ast.parse((ROOT / "ai_ops_center" / "api.py").read_text(encoding="utf-8"))
     dispatch_model = next(
@@ -114,9 +124,8 @@ def test_second_pass_dispatch_actor_is_derived_from_authentication():
     assert "actor" not in body_fields
 
 
-@pytest.mark.xfail(strict=True, reason="No durable dispatch outbox or broker idempotency key exists")
 def test_second_pass_publish_uses_transactional_outbox():
-    migration = (ROOT / "sql" / "migrations" / "017_harden_pet_machine_capability_dispatch.sql").read_text(
+    migration = (ROOT / "sql" / "migrations" / "018_pet_machine_capability_runtime_authority.sql").read_text(
         encoding="utf-8"
     ).lower()
     source = inspect.getsource(caps.dispatch_approved_request).lower()
@@ -124,9 +133,8 @@ def test_second_pass_publish_uses_transactional_outbox():
     assert "idempotency" in source
 
 
-@pytest.mark.xfail(strict=True, reason="Static v1 key IDs have no authoritative rotation/revocation registry")
 def test_second_pass_directional_keys_have_lifecycle_authority():
-    migration = (ROOT / "sql" / "migrations" / "017_harden_pet_machine_capability_dispatch.sql").read_text(
+    migration = (ROOT / "sql" / "migrations" / "018_pet_machine_capability_runtime_authority.sql").read_text(
         encoding="utf-8"
     ).lower()
     assert "pet_machine_capability_keys" in migration

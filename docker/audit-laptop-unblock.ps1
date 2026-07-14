@@ -6,11 +6,13 @@ param(
     [string]$BrainHost = "100.70.49.32",
     [string]$BrainUser = "jayla",
     [string]$AgentId = "orchestrator",
-    [string]$IdentityFile = ""
+    [string]$IdentityFile = "",
+    [string]$KnownHostsFile = (Join-Path $env:USERPROFILE ".ssh\ai_ops_known_hosts")
 )
 
 $ErrorActionPreference = "Continue"
 . "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 $diagnosticMarkers = New-Object System.Collections.ArrayList
 
 function Write-Check {
@@ -110,11 +112,11 @@ $sshOk = $false
 $sshAuthState = "unknown"
 $sshFailureCode = "SSH_NOT_TESTED"
 try {
-    $sshArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=8")
+    $sshArgs = @("-F", "NUL", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=$KnownHostsFile", "-o", "IdentitiesOnly=yes", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=8")
     if ($resolvedIdentityFile) {
         $sshArgs += @("-i", $resolvedIdentityFile)
     }
-    $sshArgs += @("$BrainUser@$BrainHost", "hostname")
+    $sshArgs += @("$BrainUser@$BrainHost", "aiops-diagnostic hostname")
     $sshOutput = ssh @sshArgs 2>&1
     $sshOk = $LASTEXITCODE -eq 0
     $sshAuthState = if ($sshOk) { "noninteractive_ready" } elseif ($portOk) { "interactive_login_required" } else { "blocked" }
@@ -171,14 +173,13 @@ try {
             ssh_auth_state = $sshAuthState
             ssh_failure_code = $sshFailureCode
             brain_ssh_user = $BrainUser
-            ssh_identity_file = $resolvedIdentityFile
             tailscale = $tailscaleOk
             git = $gitOk
         }
         diagnostic_markers = @($diagnosticMarkers)
         recommendations = @($recommendations)
     } | ConvertTo-Json -Depth 5
-    $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/workstation-updates" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
+    $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/workstation-updates" -Method Post -Headers $apiHeaders -ContentType "application/json" -Body $payload -TimeoutSec 15
     $sendOk = $null -ne $result.update
     Write-Check "Publish audit to Brain" $sendOk "update_id=$($result.update.id)"
 } catch {

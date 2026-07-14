@@ -17,7 +17,7 @@ from .llm_mesh import run_llm_request
 from .migrations import apply_migrations
 from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
 from .pet_instruction_protocol import InstructionDecision, PostgresReplayGuard, verify_instruction
-from .pet_machine_capabilities import MachineCapabilityExecutor, machine_receipt_exists, record_machine_receipt
+from .pet_machine_capabilities import MachineCapabilityExecutor, PostgresMachineCapabilityReplayGuard, machine_receipt_exists, record_machine_receipt
 from .pet_target_handlers import built_in_handlers
 from .queue_manager import steward_queue
 from .settings import get_settings
@@ -132,6 +132,8 @@ def _consume_pet_capability_execution(message: dict, machine_id: str, local: boo
         enable_music=_env_enabled("PET_ENABLE_MUSIC_PLAYBACK"),
         enable_music_library=_env_enabled("PET_ENABLE_MUSIC_LIBRARY"),
         enable_model_chat=_env_enabled("PET_ENABLE_DEVICE_MODEL_CHAT"),
+        replay_guard=PostgresMachineCapabilityReplayGuard(local=local),
+        local=local,
     )
     receipt = executor.execute(envelope)
     recorded = record_machine_receipt(receipt, local=local)

@@ -1186,6 +1186,12 @@ body[data-machine-id="business-laptop"] { --accent: #d98bff; --accent-2: #edc2ff
 .metric { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; padding: 10px 14px; }
 .metric:first-child { border-left: 0; }
 .metric strong { overflow-wrap: anywhere; font-size: clamp(1.35rem, 2.5vw, 2.15rem); }
+.metric #metric-health {
+  overflow-wrap: normal;
+  word-break: normal;
+  font-size: clamp(.92rem, 1.35vw, 1.15rem);
+  line-height: 1.25;
+}
 
 .toolbar { grid-template-columns: minmax(0, 1fr) repeat(3, auto); }
 .toolbar input { width: 100%; }

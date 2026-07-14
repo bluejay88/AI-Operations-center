@@ -85,6 +85,18 @@ ssh -i "$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops" jayla@100.90.219.88 hostn
 ssh -i "$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops" jayla@100.112.91.61 hostname
 ```
 
+The fleet audit uses strict known-host verification and never auto-accepts a
+new host key. For `SSH_HOST_KEY_UNVERIFIED`, display the ED25519 fingerprint
+locally on that laptop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docker\show-laptop-ssh-fingerprint.ps1
+```
+
+Compare it out of band with the fingerprint discovered by the Brain. Add the
+public host key to the dedicated Brain `known_hosts` file only after an exact
+match. A reachable TCP/22 port is not authenticated SSH evidence.
+
 If port 22 is open but key login says `Permission denied`, rerun the setup script on that laptop as Administrator so the Brain public key is installed.
 
 ## Start Worker/Speaker Pull Mode

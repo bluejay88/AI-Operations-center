@@ -13,6 +13,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -46,7 +48,7 @@ function Get-IdleSeconds {
 
 function Get-RunningTaskCount {
     try {
-        $readiness = Invoke-RestMethod -Uri "http://$BrainHost`:8088/readiness.json" -TimeoutSec 8
+        $readiness = Invoke-RestMethod -Uri "http://$BrainHost`:8088/readiness.json" -Headers $apiHeaders -TimeoutSec 8
         $machine = $readiness.machines | Where-Object { $_.id -eq $MachineId } | Select-Object -First 1
         if ($machine -and $machine.task_counts -and $null -ne $machine.task_counts.running) {
             return [int]$machine.task_counts.running

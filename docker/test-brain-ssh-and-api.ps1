@@ -1,12 +1,19 @@
 param(
     [string]$BrainHost = "100.70.49.32",
-    [string]$BrainUser = $env:USERNAME,
+    [string]$BrainUser = "aiops-diagnostic",
     [ValidateSet("dev-laptop", "research-laptop", "business-laptop")]
     [string]$MachineId = "dev-laptop",
-    [string]$AgentId = "orchestrator"
+    [string]$AgentId = "orchestrator",
+    [string]$IdentityFile = "",
+    [string]$KnownHostsFile = (Join-Path $env:USERPROFILE ".ssh\ai_ops_known_hosts")
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
+if ([string]::IsNullOrWhiteSpace($IdentityFile)) {
+    $IdentityFile = Join-Path $env:USERPROFILE ".ssh\ai_ops_${MachineId}_to_brain"
+}
 $BrainHost = $BrainHost.Trim().Trim('"').Trim("'")
 $BrainHost = $BrainHost -replace "^https?://", ""
 $BrainHost = ($BrainHost -split "/")[0]
@@ -49,7 +56,7 @@ try {
             test = "ssh-api-connectivity"
         }
     } | ConvertTo-Json -Depth 5
-    $listener = Invoke-RestMethod -Method Post -Uri "http://$BrainHost`:8088/listener/events" -ContentType "application/json" -Body $payload -TimeoutSec 15
+    $listener = Invoke-RestMethod -Method Post -Uri "http://$BrainHost`:8088/listener/events" -Headers $apiHeaders -ContentType "application/json" -Body $payload -TimeoutSec 15
     $listenerOk = $null -ne $listener.event_id
     Write-Check "Listener send" $listenerOk ($listener | ConvertTo-Json -Compress)
 } catch {
@@ -58,7 +65,7 @@ try {
 
 $speakerOk = $false
 try {
-    $feed = Invoke-RestMethod -Uri "http://$BrainHost`:8088/speaker/feed/$MachineId" -TimeoutSec 15
+    $feed = Invoke-RestMethod -Uri "http://$BrainHost`:8088/speaker/feed/$MachineId" -Headers $apiHeaders -TimeoutSec 15
     $speakerOk = $null -ne $feed.instructions
     Write-Check "Speaker receive" $speakerOk ("messages=$($feed.messages.Count); instructionsLength=$($feed.instructions.Length)")
 } catch {
@@ -68,7 +75,7 @@ try {
 $sshOk = $false
 $sshAuthState = "unknown"
 try {
-    $sshOutput = ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 "$BrainUser@$BrainHost" hostname 2>&1
+    $sshOutput = ssh -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KnownHostsFile" -o IdentitiesOnly=yes -o ClearAllForwardings=yes -o ConnectTimeout=8 -i $IdentityFile "$BrainUser@$BrainHost" "aiops-diagnostic hostname" 2>&1
     $sshOk = $LASTEXITCODE -eq 0
     $sshAuthState = if ($sshOk) { "noninteractive_ready" } else { "interactive_login_required" }
     Write-Check "SSH to Brain" $sshOk ($sshOutput -join "`n")

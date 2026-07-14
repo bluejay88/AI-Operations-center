@@ -7,6 +7,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 
 function Get-BatteryPercent {
     try {
@@ -67,7 +69,7 @@ $payload = @{
 } | ConvertTo-Json -Depth 5
 
 try {
-    $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/device-telemetry" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
+    $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/device-telemetry" -Method Post -Headers $apiHeaders -ContentType "application/json" -Body $payload -TimeoutSec 15
     Write-Host "Telemetry published for $MachineId"
     if ($result.failover) {
         Write-Host "Failover response:"

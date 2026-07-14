@@ -4,12 +4,17 @@ import pytest
 from fastapi import HTTPException
 
 from ai_ops_center import api
+from ai_ops_center.auth import ANONYMOUS
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "laptop_packages" / "shared" / "mini-dashboard.js").read_text(encoding="utf-8")
 STYLE = (ROOT / "laptop_packages" / "shared" / "mini-dashboard.css").read_text(encoding="utf-8")
 CAPABILITIES = (ROOT / "ai_ops_center" / "pet_machine_capabilities.py").read_text(encoding="utf-8")
+MINI_DASHBOARDS = [
+    (ROOT / "laptop_packages" / machine / "index.html").read_text(encoding="utf-8")
+    for machine in ("dev-laptop", "research-laptop", "business-laptop")
+]
 
 
 def test_all_machine_pets_receive_one_shared_governed_tools_surface():
@@ -81,6 +86,19 @@ def test_capability_readiness_and_receipt_truth_are_accessible():
     assert "@media (max-width: 560px)" in STYLE
 
 
+def test_long_worker_state_is_humanized_without_fragmented_desktop_type():
+    assert 'machineState.replace(/[_-]+/g, " ")' in SCRIPT
+    assert "metricHealth.title = machineState" in SCRIPT
+    assert ".metric #metric-health" in STYLE
+    assert "word-break: normal" in STYLE
+
+
+def test_all_machine_dashboards_load_the_latest_shared_pet_ui_assets():
+    for dashboard in MINI_DASHBOARDS:
+        assert "mini-dashboard.css?v=pet-command-20260713r" in dashboard
+        assert "mini-dashboard.js?v=pet-command-20260713r" in dashboard
+
+
 def test_pet_machine_capability_api_is_unique_and_fails_closed_for_unknown_target():
     paths = [route for route in api.app.routes if route.path == "/pet-machine-capabilities/requests"]
     assert len(paths) == 1
@@ -96,5 +114,5 @@ def test_pet_machine_capability_api_is_unique_and_fails_closed_for_unknown_targe
         requester="test",
     )
     with pytest.raises(HTTPException) as error:
-        api.pet_machine_capability_request(request)
+        api.pet_machine_capability_request(request, type("Request", (), {"state": type("State", (), {"principal": ANONYMOUS})()})())
     assert error.value.status_code == 422

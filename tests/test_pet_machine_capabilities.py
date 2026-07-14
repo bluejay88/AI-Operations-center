@@ -123,13 +123,13 @@ def test_dispatch_rejects_unapproved_remote_action(monkeypatch):
 def test_approved_dispatch_is_signed_but_not_success(monkeypatch):
     monkeypatch.setenv("PET_DISPATCH_SIGNING_KEY_RESEARCH_LAPTOP", "k" * 32)
     request = {"request_id": "00000000-0000-0000-0000-000000000001", "machine_id": "research-laptop", "pet_id": "research-pet", "capability_type": "browser_navigation", "payload": {"url": "https://example.com"}, "approval_request_id": 1, "approval_status": "approved"}
-    sent = []
+    published = []
     monkeypatch.setattr(caps, "_load_request", lambda *a, **k: request)
-    monkeypatch.setattr(caps, "create_speaker_message", lambda **kw: sent.append(kw) or 91)
-    monkeypatch.setattr(caps, "_record_dispatch", lambda **kw: None)
+    monkeypatch.setattr(caps, "_publish_dispatch_outbox", lambda **kw: published.append(kw) or (91, True))
     result = caps.dispatch_approved_request(request["request_id"], "brain")
-    assert len(sent[0]["metadata"]["signature"]) == 64
-    assert sent[0]["metadata"]["execution_authorized"] is True
+    assert len(published[0]["envelope"]["signature"]) == 64
+    assert published[0]["envelope"]["execution_authorized"] is True
+    assert published[0]["actor"] == "brain"
     assert result["success_claimed"] is False and result["machine_receipt_id"] is None
 
 
@@ -195,6 +195,7 @@ def test_worker_consumes_signed_execution_disabled_by_default_and_records_receip
     monkeypatch.setattr(worker, "record_machine_receipt", lambda receipt, **k: receipts.append(receipt) or {"receipt_id": 7})
     monkeypatch.setattr(worker, "submit_listener_event", lambda **k: {"event_id": 8})
     monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda message_id, actor, **k: acks.append((message_id, actor)))
+    monkeypatch.setattr(worker, "PostgresMachineCapabilityReplayGuard", lambda **k: type("Guard", (), {"consume": lambda self, **kw: True})())
     assert worker._consume_pet_capability_execution(message, "dev-laptop") is True
     assert receipts[0]["status"] == "held"
     assert acks == [(9, "dev-laptop")]

@@ -1,4 +1,5 @@
 .env
+.env.pet-secrets*
 flowcheck.py
 .docker/*
 !.docker/config.json

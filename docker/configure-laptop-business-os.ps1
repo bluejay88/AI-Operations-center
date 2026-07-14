@@ -13,6 +13,8 @@ $BrainHost = $BrainHost.TrimEnd("\")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId -RepoRoot $repoRoot
 
 Write-Host "Updating AI Operations Center repo..."
 git pull origin master
@@ -44,6 +46,6 @@ $payload = @{
     }
 } | ConvertTo-Json -Depth 5
 
-Invoke-RestMethod -Method Post "http://$BrainHost`:8088/listener/events" -ContentType "application/json" -Body $payload
+Invoke-RestMethod -Method Post "http://$BrainHost`:8088/listener/events" -Headers $apiHeaders -ContentType "application/json" -Body $payload
 
 Write-Host "Business OS laptop configuration complete for $MachineId."

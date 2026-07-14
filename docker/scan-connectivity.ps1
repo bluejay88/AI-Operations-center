@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $SourceMachineId
 
 $targets = @(
     @{ MachineId = "dev-laptop"; Ip = "100.71.82.122"; Label = "Dev Agent" },
@@ -38,7 +40,7 @@ function Send-Connection {
         metadata = $Metadata
     } | ConvertTo-Json -Depth 8
 
-    Invoke-RestMethod -Method Post -Uri "$BrainApi/connections" -Body $body -ContentType "application/json" | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$BrainApi/connections" -Headers $apiHeaders -Body $body -ContentType "application/json" | Out-Null
 }
 
 foreach ($target in $targets) {
@@ -100,4 +102,4 @@ foreach ($target in $targets) {
         -Metadata @{ ip = $target.Ip; label = $target.Label }
 }
 
-Invoke-RestMethod "$BrainApi/readiness.json" | ConvertTo-Json -Depth 8
+Invoke-RestMethod "$BrainApi/readiness.json" -Headers $apiHeaders | ConvertTo-Json -Depth 8

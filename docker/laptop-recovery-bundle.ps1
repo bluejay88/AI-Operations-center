@@ -6,7 +6,7 @@ param(
     [string]$BrainHost = "100.70.49.32",
     [string]$Branch = "master",
     [string]$RepoUrl = "https://github.com/bluejay88/AI-Operations-center.git",
-    [string]$BrainPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBoby+MkyYxc2aeEgz2npB31pDw5ICYhKhNmpDc3V9dm brain-pc-ai-ops",
+    [string]$BrainPublicKey = "",
     [string]$ExpectedBrainKeyFingerprint = "",
     [switch]$UpdateCode,
     [switch]$RepairSsh,
@@ -18,6 +18,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 
 function Normalize-Host {
     param([string]$Value)
@@ -38,9 +39,9 @@ function Invoke-Json {
         [int]$TimeoutSec = 15
     )
     if ($Body -ne $null) {
-        return Invoke-RestMethod -Method $Method -Uri $Uri -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10) -TimeoutSec $TimeoutSec
+        return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10) -TimeoutSec $TimeoutSec
     }
-    return Invoke-RestMethod -Method $Method -Uri $Uri -TimeoutSec $TimeoutSec
+    return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders -TimeoutSec $TimeoutSec
 }
 
 function Resolve-AgentId {
@@ -102,9 +103,11 @@ try {
         if (-not (Test-Admin)) {
             throw "SSH repair needs Administrator PowerShell. Rerun as Administrator or omit -RepairSsh."
         }
-        Write-Host "Repairing OpenSSH as Tailscale-only with Brain public key..."
+        if ([string]::IsNullOrWhiteSpace($BrainPublicKey)) { throw "RepairSsh requires this node's unique Brain public key." }
+        Write-Host "Repairing OpenSSH for the non-administrator diagnostic account and Brain-only /32..."
         powershell -ExecutionPolicy Bypass -File ".\docker\setup-worker-openssh-tailscale-admin.ps1" `
-            -UserName $env:USERNAME `
+            -UserName "aiops-diagnostic" `
+            -AllowedRemoteAddress "$BrainHost/32" `
             -BrainPublicKey $BrainPublicKey
     }
 

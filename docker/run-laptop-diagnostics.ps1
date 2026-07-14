@@ -16,6 +16,7 @@ param(
 
 $ErrorActionPreference = "Continue"
 . "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 
 function Add-Check {
     param(
@@ -53,9 +54,9 @@ function Invoke-Json {
         [int]$TimeoutSec = 12
     )
     if ($Body -ne $null) {
-        return Invoke-RestMethod -Method $Method -Uri $Uri -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 8) -TimeoutSec $TimeoutSec
+        return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 8) -TimeoutSec $TimeoutSec
     }
-    return Invoke-RestMethod -Method $Method -Uri $Uri -TimeoutSec $TimeoutSec
+    return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders -TimeoutSec $TimeoutSec
 }
 
 $BrainHost = Normalize-Host $BrainHost
@@ -173,7 +174,7 @@ try {
     $svc = Get-Service sshd -ErrorAction SilentlyContinue
     $sshServiceInstalled = $null -ne $svc
     $localSshServiceOk = $svc -and $svc.Status -eq "Running"
-    Add-Check $checks "Local OpenSSH server" $localSshServiceOk "status=$($svc.Status)" "Run PowerShell as Administrator: docker\setup-worker-openssh-tailscale-admin.ps1 -UserName $env:USERNAME"
+    Add-Check $checks "Local OpenSSH server" $localSshServiceOk "status=$($svc.Status)" "Run the hardened worker SSH setup with the node's unique public key."
 } catch {
     Add-Check $checks "Local OpenSSH server" $false $_.Exception.Message "Install OpenSSH Server and start sshd."
 }

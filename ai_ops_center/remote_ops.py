@@ -28,6 +28,7 @@ ROLE_ALLOWED_OPERATIONS = {
         "model_workflow",
         "remote_browser_view",
         "remote_file_browse",
+        "ssh_diagnostic",
         "open_mini_dashboard",
         *GOVERNED_DEVICE_OPERATIONS,
     },
@@ -36,7 +37,7 @@ ROLE_ALLOWED_OPERATIONS = {
     "business": {"publish_update", "run_audit", "git_pull", "git_status", "business_task", "sync_files", "restart_worker", "open_mini_dashboard", *GOVERNED_DEVICE_OPERATIONS},
 }
 
-SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine", "remote_browser_view", "remote_file_browse", *GOVERNED_DEVICE_OPERATIONS}
+SENSITIVE_OPERATIONS = {"deploy", "push_git", "install_software", "change_credentials", "send_email", "delete_files", "shutdown", "restart_machine", "remote_browser_view", "remote_file_browse", "ssh_diagnostic", *GOVERNED_DEVICE_OPERATIONS}
 DESTRUCTIVE_WORDS = {"delete", "remove", "format", "wipe", "reset", "credential", "password", "secret", "send email", "payment", "browser", "files", "take over", "remote control"}
 
 
@@ -95,6 +96,13 @@ def request_remote_operation(
             local=local,
         )
         request["approval_request_id"] = approval_id
+        with connect(local=local) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update remote_operation_requests set metadata = metadata || %s::jsonb, updated_at = now() where id = %s",
+                    (json.dumps({"approval_request_id": approval_id}), request["id"]),
+                )
+            conn.commit()
     else:
         message_id = create_speaker_message(
             target_id=machine_id,

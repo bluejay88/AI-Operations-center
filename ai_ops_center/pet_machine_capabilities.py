@@ -66,7 +66,38 @@ def capability_contracts() -> dict[str, Any]:
             "executor_description": "device-hosted model-chat executor",
         },
         "success_policy": "A request is never success. Only a later machine-originated receipt may report completion.",
+        "runtime_authority": {
+            "durable_replay_guard": True,
+            "transactional_speaker_outbox": True,
+            "authenticated_dispatch_actor": True,
+            "managed_directional_key_lifecycle": True,
+            "executors_enabled": _enabled_executor_names(),
+        },
     }
+
+
+def validate_machine_capability_settings(*, production: bool) -> None:
+    """Production refuses partially provisioned machine-control authority."""
+    if not production:
+        return
+    missing: list[str] = []
+    if not _key_registry_required():
+        missing.append("PET_KEY_REGISTRY_REQUIRED=true")
+    if not _configured_allowed_domains():
+        missing.append("PET_BROWSER_ALLOWED_DOMAINS")
+    for machine_id in MACHINE_PETS:
+        suffix = machine_id.upper().replace("-", "_")
+        for name in (
+            f"PET_DISPATCH_SIGNING_KEY_{suffix}", f"PET_DISPATCH_VERIFY_KEY_{suffix}",
+            f"PET_RECEIPT_SIGNING_KEY_{suffix}", f"PET_RECEIPT_VERIFY_KEY_{suffix}",
+            f"PET_DISPATCH_KEY_ID_{suffix}", f"PET_RECEIPT_KEY_ID_{suffix}",
+        ):
+            value = os.getenv(name, "")
+            minimum = 1 if "KEY_ID" in name else 32
+            if len(value) < minimum:
+                missing.append(name)
+    if missing:
+        raise RuntimeError("Production PET machine capability authority is not provisioned: " + ", ".join(missing))
 
 
 def submit_capability_request(
@@ -186,6 +217,8 @@ def dispatch_approved_request(request_id: str, actor: str, local: bool = False) 
     if request["capability_type"] in {"browser_navigation", "music_playback"} and request.get("approval_status") not in {"approved", "deployed"}:
         raise PermissionError("remote/external capability request is not approved")
     key = _directional_key("PET_DISPATCH_SIGNING_KEY", request["machine_id"])
+    key_id = _configured_key_id("dispatch", request["machine_id"])
+    _assert_key_authorized(key_id, request["machine_id"], "dispatch", key, local=local)
     issued_at = datetime.now(UTC)
     envelope = {
         "contract_version": "pet-machine-execution-v1",
@@ -198,7 +231,7 @@ def dispatch_approved_request(request_id: str, actor: str, local: bool = False) 
         "approval_request_id": request.get("approval_request_id"),
         "approval_status": request.get("approval_status"),
         "dispatched_by": actor,
-        "key_id": f"dispatch:{request['machine_id']}:v1",
+        "key_id": key_id,
         "nonce": str(uuid.uuid4()),
         "issued_at": issued_at.isoformat(),
         "expires_at": (issued_at + timedelta(minutes=5)).isoformat(),
@@ -207,25 +240,34 @@ def dispatch_approved_request(request_id: str, actor: str, local: bool = False) 
     }
     envelope["dispatch_sha256"] = _payload_sha256(envelope)
     envelope["signature"] = _sign(envelope, key)
-    with _DISPATCH_LOCK:
-        if request_id in _DISPATCH_ATTEMPTS:
-            return {"request_id": request_id, "status": "already_dispatched", "success_claimed": False, "machine_receipt_id": None}
-        _DISPATCH_ATTEMPTS.add(request_id)
-    if not _reserve_dispatch_intent(request_id=request_id, envelope=envelope, actor=actor, local=local):
-        return {"request_id": request_id, "status": "already_dispatched", "success_claimed": False, "machine_receipt_id": None}
-    speaker_id = create_speaker_message(
-        target_id=request["machine_id"], message_type="pet_capability_signed_execution",
-        subject=f"Approved PET execution {request_id}", body="Verify signature and target before local execution.",
-        priority=80, metadata=envelope, local=local,
+    speaker_id, created = _publish_dispatch_outbox(
+        request_id=request_id, machine_id=request["machine_id"], envelope=envelope, actor=actor, local=local
     )
-    _record_dispatch(request_id=request_id, speaker_message_id=speaker_id, envelope=envelope, actor=actor, local=local)
-    return {"request_id": request_id, "status": "dispatched", "speaker_message_id": speaker_id, "success_claimed": False, "machine_receipt_id": None}
+    return {"request_id": request_id, "status": "dispatched" if created else "already_dispatched", "speaker_message_id": speaker_id, "idempotency_key": f"pet-capability-dispatch:{request_id}", "success_claimed": False, "machine_receipt_id": None}
+
+
+class PostgresMachineCapabilityReplayGuard:
+    """Atomically consumes migration-018 nonce authority across processes/restarts."""
+
+    def __init__(self, local: bool = False) -> None:
+        self.local = local
+
+    def consume(self, *, machine_id: str, nonce: str, request_id: str, expires_at: datetime, dispatch_sha256: str) -> bool:
+        with connect(local=self.local) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select consume_pet_machine_execution_nonce(%s,%s::uuid,%s::uuid,%s,%s)",
+                    (machine_id, nonce, request_id, expires_at, dispatch_sha256),
+                )
+                accepted = bool(cur.fetchone()["consume_pet_machine_execution_nonce"])
+            conn.commit()
+        return accepted
 
 
 class MachineCapabilityExecutor:
     """Target-host interface. Handlers are injected by a machine package, never the API server."""
 
-    def __init__(self, machine_id: str, *, browser_handler=None, music_handler=None, music_library_handler=None, model_handler=None, enable_browser: bool = False, enable_music: bool = False, enable_music_library: bool = False, enable_model_chat: bool = False, signing_key: str | None = None, receipt_signing_key: str | None = None) -> None:
+    def __init__(self, machine_id: str, *, browser_handler=None, music_handler=None, music_library_handler=None, model_handler=None, enable_browser: bool = False, enable_music: bool = False, enable_music_library: bool = False, enable_model_chat: bool = False, signing_key: str | None = None, receipt_signing_key: str | None = None, replay_guard: Any | None = None, local: bool = False) -> None:
         self.machine_id = machine_id
         self.handlers = {"browser_navigation": browser_handler, "music_playback": music_handler, "music_library": music_library_handler, "device_model_chat": model_handler}
         self.flags = {"browser_navigation": enable_browser, "music_playback": enable_music, "music_library": enable_music_library, "device_model_chat": enable_model_chat}
@@ -233,6 +275,10 @@ class MachineCapabilityExecutor:
         self.receipt_key = (receipt_signing_key or signing_key or _directional_key("PET_RECEIPT_SIGNING_KEY", machine_id).decode()).encode()
         if len(self.key) < 32:
             raise ValueError("machine executor requires a signing key of at least 32 bytes")
+        self.expected_dispatch_key_id = _configured_key_id("dispatch", machine_id)
+        self.receipt_key_id = _configured_key_id("receipt", machine_id)
+        self.replay_guard = replay_guard
+        self.local = local
         self._used_nonces: set[str] = set()
         self._nonce_lock = threading.Lock()
 
@@ -243,8 +289,9 @@ class MachineCapabilityExecutor:
             raise PermissionError("invalid execution envelope signature")
         if envelope.get("machine_id") != self.machine_id or not envelope.get("execution_authorized"):
             raise PermissionError("execution envelope target or authority is invalid")
-        if envelope.get("key_id") != f"dispatch:{self.machine_id}:v1":
+        if envelope.get("key_id") != self.expected_dispatch_key_id:
             raise PermissionError("execution envelope key identity is invalid")
+        _assert_key_authorized(self.expected_dispatch_key_id, self.machine_id, "dispatch", self.key, local=self.local)
         capability = str(envelope.get("capability_type"))
         if envelope.get("contract_version") != "pet-machine-execution-v1":
             raise PermissionError("unsupported execution contract version")
@@ -263,10 +310,14 @@ class MachineCapabilityExecutor:
         now = datetime.now(UTC)
         if not nonce or issued_at > now + timedelta(seconds=30) or expires_at <= now or expires_at - issued_at > timedelta(minutes=10):
             raise PermissionError("execution envelope is expired or outside its allowed window")
-        with self._nonce_lock:
-            if nonce in self._used_nonces:
-                return self._receipt(envelope, "held", "Replay rejected; no action ran.")
-            self._used_nonces.add(nonce)
+        if self.replay_guard is not None:
+            if not self.replay_guard.consume(machine_id=self.machine_id, nonce=nonce, request_id=str(envelope.get("request_id") or ""), expires_at=expires_at, dispatch_sha256=str(envelope.get("dispatch_sha256") or "")):
+                return self._receipt(envelope, "held", "Durable replay authority rejected this execution; no action ran.")
+        else:
+            with self._nonce_lock:
+                if nonce in self._used_nonces:
+                    return self._receipt(envelope, "held", "Replay rejected; no action ran.")
+                self._used_nonces.add(nonce)
         try:
             _validate_payload(capability, dict(envelope.get("payload") or {}))
         except (ValueError, RuntimeError) as exc:
@@ -284,16 +335,17 @@ class MachineCapabilityExecutor:
             return self._receipt(envelope, "failed", str(exc)[:1000])
 
     def _receipt(self, envelope: dict[str, Any], status: str, detail: str) -> dict[str, Any]:
-        receipt = {"contract_version": "pet-machine-receipt-v1", "key_id": f"receipt:{self.machine_id}:v1", "request_id": envelope["request_id"], "machine_id": self.machine_id, "pet_id": envelope["pet_id"], "capability_type": envelope["capability_type"], "approval_request_id": envelope.get("approval_request_id"), "dispatch_sha256": envelope.get("dispatch_sha256"), "nonce": envelope.get("nonce"), "status": status, "detail": detail}
+        receipt = {"contract_version": "pet-machine-receipt-v1", "key_id": self.receipt_key_id, "request_id": envelope["request_id"], "machine_id": self.machine_id, "pet_id": envelope["pet_id"], "capability_type": envelope["capability_type"], "approval_request_id": envelope.get("approval_request_id"), "dispatch_sha256": envelope.get("dispatch_sha256"), "nonce": envelope.get("nonce"), "status": status, "detail": detail}
         receipt["signature"] = _sign(receipt, self.receipt_key)
         return receipt
 
 
 def record_machine_receipt(receipt: dict[str, Any], local: bool = False) -> dict[str, Any]:
     machine_id = str(receipt.get("machine_id") or "")
-    if receipt.get("key_id") != f"receipt:{machine_id}:v1":
+    if receipt.get("key_id") != _configured_key_id("receipt", machine_id):
         raise PermissionError("machine receipt key identity is invalid")
     key = _directional_key("PET_RECEIPT_VERIFY_KEY", machine_id)
+    _assert_key_authorized(str(receipt.get("key_id")), machine_id, "receipt", key, local=local)
     supplied = str(receipt.get("signature") or "")
     unsigned = {name: value for name, value in receipt.items() if name != "signature"}
     if not hmac.compare_digest(supplied, _sign(unsigned, key)):
@@ -356,6 +408,100 @@ def _directional_key(prefix: str, machine_id: str) -> bytes:
     if len(key) < 32:
         raise RuntimeError(f"{name} must be at least 32 bytes")
     return key
+
+
+def _configured_key_id(direction: str, machine_id: str) -> str:
+    name = f"PET_{direction.upper()}_KEY_ID_{machine_id.upper().replace('-', '_')}"
+    key_id = os.getenv(name, f"{direction}:{machine_id}:v1").strip()
+    if not _SAFE_ID.fullmatch(key_id):
+        raise RuntimeError(f"{name} must be a safe key identifier")
+    return key_id
+
+
+def _key_fingerprint(key: bytes) -> str:
+    return hashlib.sha256(key).hexdigest()
+
+
+def _key_registry_required() -> bool:
+    return os.getenv("PET_KEY_REGISTRY_REQUIRED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _assert_key_authorized(key_id: str, machine_id: str, direction: str, key: bytes, local: bool = False) -> None:
+    """Fail closed against the managed registry when production opts into it."""
+    if not _key_registry_required():
+        return
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select 1 from pet_machine_capability_keys
+                where key_id=%s and machine_id=%s and direction=%s
+                  and secret_fingerprint_sha256=%s
+                  and revoked_at is null and not_before <= now() and not_after > now()
+                """,
+                (key_id, machine_id, direction, _key_fingerprint(key)),
+            )
+            if cur.fetchone() is None:
+                raise PermissionError(f"{direction} key is unknown, inactive, revoked, expired, or fingerprint-mismatched")
+
+
+def register_machine_capability_key(*, key_id: str, machine_id: str, direction: str, secret: bytes, actor: str, not_before: datetime, not_after: datetime, local: bool = False) -> dict[str, Any]:
+    """Registers only a SHA-256 fingerprint; secret material never enters PostgreSQL."""
+    _validate_target(machine_id, next(iter(MACHINE_PETS[machine_id])))
+    if direction not in {"dispatch", "receipt"} or len(secret) < 32 or not _SAFE_ID.fullmatch(key_id):
+        raise ValueError("invalid key registration")
+    if not actor.strip() or not_after <= not_before:
+        raise ValueError("actor and a valid activation window are required")
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """insert into pet_machine_capability_keys
+                   (key_id,machine_id,direction,secret_fingerprint_sha256,not_before,not_after,created_by)
+                   values(%s,%s,%s,%s,%s,%s,%s)""",
+                (key_id, machine_id, direction, _key_fingerprint(secret), not_before, not_after, actor),
+            )
+            cur.execute("insert into pet_machine_capability_key_events(key_id,event_type,actor,reason) values(%s,'registered',%s,%s)", (key_id, actor, "managed registration"))
+        conn.commit()
+    return {"key_id": key_id, "machine_id": machine_id, "direction": direction, "secret_stored": False}
+
+
+def revoke_machine_capability_key(*, key_id: str, actor: str, reason: str, local: bool = False) -> dict[str, Any]:
+    if not actor.strip() or not reason.strip():
+        raise ValueError("actor and revocation reason are required")
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute("update pet_machine_capability_keys set revoked_at=coalesce(revoked_at,now()) where key_id=%s returning machine_id,direction,revoked_at", (key_id,))
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError("key was not found")
+            cur.execute("insert into pet_machine_capability_key_events(key_id,event_type,actor,reason) values(%s,'revoked',%s,%s)", (key_id, actor, reason[:1000]))
+        conn.commit()
+    return {"key_id": key_id, **dict(row), "secret_stored": False}
+
+
+def _publish_dispatch_outbox(*, request_id: str, machine_id: str, envelope: dict[str, Any], actor: str, local: bool) -> tuple[int, bool]:
+    """Publishes the speaker row and dispatch authority in one DB transaction."""
+    with connect(local=local) as conn:
+        with conn.cursor() as cur:
+            cur.execute("select speaker_message_id from pet_machine_capability_outbox where request_id=%s::uuid", (request_id,))
+            prior = cur.fetchone()
+            cur.execute(
+                "select publish_pet_machine_capability_dispatch(%s::uuid,%s,%s::jsonb,%s) as speaker_message_id",
+                (request_id, machine_id, json.dumps(envelope), actor),
+            )
+            speaker_id = int(cur.fetchone()["speaker_message_id"])
+        conn.commit()
+    return speaker_id, prior is None
+
+
+def _enabled_executor_names() -> list[str]:
+    flags = {
+        "browser_navigation": "PET_ENABLE_BROWSER_NAVIGATION",
+        "music_playback": "PET_ENABLE_MUSIC_PLAYBACK",
+        "music_library": "PET_ENABLE_MUSIC_LIBRARY",
+        "device_model_chat": "PET_ENABLE_DEVICE_MODEL_CHAT",
+    }
+    return sorted(name for name, flag in flags.items() if os.getenv(flag, "false").strip().lower() in {"1", "true", "yes", "on"})
 
 
 def _load_request(request_id: str, local: bool = False) -> dict[str, Any] | None:

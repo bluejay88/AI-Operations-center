@@ -85,6 +85,9 @@ services:
       - .env
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      PET_KEY_REGISTRY_REQUIRED: ${PET_KEY_REGISTRY_REQUIRED:-false}
+      PET_BROWSER_ALLOWED_SCHEMES: ${PET_BROWSER_ALLOWED_SCHEMES:-https}
+      PET_BROWSER_ALLOWED_DOMAINS: ${PET_BROWSER_ALLOWED_DOMAINS:-}
     ports:
       - "8088:8088"
     depends_on:
@@ -125,6 +128,13 @@ services:
       - .env
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      PET_KEY_REGISTRY_REQUIRED: ${PET_KEY_REGISTRY_REQUIRED:-false}
+      PET_BROWSER_ALLOWED_SCHEMES: ${PET_BROWSER_ALLOWED_SCHEMES:-https}
+      PET_BROWSER_ALLOWED_DOMAINS: ${PET_BROWSER_ALLOWED_DOMAINS:-}
+      PET_ENABLE_BROWSER_NAVIGATION: ${PET_ENABLE_BROWSER_NAVIGATION:-false}
+      PET_ENABLE_MUSIC_LIBRARY: ${PET_ENABLE_MUSIC_LIBRARY:-false}
+      PET_ENABLE_MUSIC_PLAYBACK: ${PET_ENABLE_MUSIC_PLAYBACK:-false}
+      PET_ENABLE_DEVICE_MODEL_CHAT: ${PET_ENABLE_DEVICE_MODEL_CHAT:-false}
     command: ["python", "-m", "ai_ops_center.cli", "worker", "--machine", "${WORKER_MACHINE_ID:-brain-gaming-pc}", "--sleep-seconds", "${WORKER_SLEEP_SECONDS:-2}", "--work-seconds", "${WORKER_WORK_SECONDS:-4}"]
     depends_on:
       postgres:

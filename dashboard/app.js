@@ -39,15 +39,17 @@ const state = {
   ],
   selectedReport: "hourly",
   stream: null,
+  authToken: null,
+  authExpiresAt: 0,
   refreshTimer: null,
   unlocked: false,
   petCompletionClusters: {},
 };
 
 const PET_DASHBOARD_PATHS = Object.freeze({
-  "dev-laptop": "/laptop-packages/dev-laptop/",
-  "research-laptop": "/laptop-packages/research-laptop/",
-  "business-laptop": "/laptop-packages/business-laptop/",
+  "dev-laptop": "/laptop-packages/dev-laptop/index.html",
+  "research-laptop": "/laptop-packages/research-laptop/index.html",
+  "business-laptop": "/laptop-packages/business-laptop/index.html",
 });
 
 const PET_CAPABILITY_PROFILES = {
@@ -207,9 +209,12 @@ function escapeHtml(value) {
 
 async function api(path, options = {}) {
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const headers = new Headers(options.headers || {});
+  headers.set("Content-Type", "application/json");
+  if (state.authToken) headers.set("Authorization", `Bearer ${state.authToken}`);
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -862,7 +867,8 @@ function openPetMiniDashboard(machineId, button) {
     if (status) status.textContent = `${machineId} mini dashboard focused.`;
     return;
   }
-  const target = new URL(dashboardPath, window.location.origin);
+  const dashboardOrigin = API_BASE || window.location.origin;
+  const target = new URL(dashboardPath, `${dashboardOrigin.replace(/\/$/, "")}/`);
   const windowName = `aiops-${machineId.replace(/[^a-z0-9_-]/gi, "-")}-mini-dashboard`;
   const popup = window.open(target.href, windowName, "popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes");
   if (!popup) {
@@ -1402,22 +1408,45 @@ function applyRealtimePayload(payload) {
   els.lastRefresh.textContent = `Live ${new Date().toLocaleTimeString()}`;
 }
 
-function startStream() {
-  if (!window.EventSource) return;
-  state.stream?.close();
-  state.stream = new EventSource(`${API_BASE}/stream`);
-  state.stream.onmessage = (event) => {
-    try {
-      applyRealtimePayload(JSON.parse(event.data));
-    } catch (error) {
-      console.error("Invalid live dashboard payload", error);
-      els.lastRefresh.textContent = "Live update could not be read";
+async function startStream() {
+  state.stream?.abort();
+  const controller = new AbortController();
+  state.stream = controller;
+  try {
+    const response = await fetch(`${API_BASE}/stream`, {
+      headers: { Authorization: `Bearer ${state.authToken}` },
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) throw new Error(`${response.status} ${response.statusText}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (!controller.signal.aborted) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+        const eventBlock = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const data = eventBlock.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+        if (!data) continue;
+        try {
+          applyRealtimePayload(JSON.parse(data));
+        } catch (error) {
+          console.error("Invalid live dashboard payload", error);
+          els.lastRefresh.textContent = "Live update could not be read";
+        }
+      }
     }
-  };
-  state.stream.onerror = () => {
+  } catch (error) {
+    if (controller.signal.aborted) return;
     setConnectionStatus("Brain live stream reconnecting; polling remains active", "warning");
     els.lastRefresh.textContent = "Live stream reconnecting";
-  };
+    window.setTimeout(() => {
+      if (state.unlocked && state.authToken) startStream();
+    }, 5000);
+  }
 }
 
 function lockDashboard() {
@@ -1431,7 +1460,6 @@ function unlockDashboard() {
   state.unlocked = true;
   document.body.classList.remove("locked");
   els.lock?.classList.add("hidden");
-  window.sessionStorage.setItem(`aiOpsUnlocked:${API_BASE || "same-origin"}`, "true");
   refresh().catch((error) => {
     console.error(error);
     setConnectionStatus(`Brain API connection failed: ${error.message}`, "warning");
@@ -1450,6 +1478,9 @@ async function submitDashboardLogin(password) {
     body: JSON.stringify({ password: String(password || "").trim() }),
   });
   if (!data.ok) throw new Error(data.message || "Invalid dashboard password");
+  state.authToken = String(data.token || "");
+  state.authExpiresAt = Number(data.expires_at || 0);
+  if (!state.authToken) throw new Error("Dashboard did not receive an authenticated session");
   els.loginMessage.textContent = data.message || "Dashboard unlocked";
   unlockDashboard();
 }
@@ -1457,9 +1488,6 @@ async function submitDashboardLogin(password) {
 function initializeDashboardGate() {
   lockDashboard();
   els.loginMessage.textContent = `Brain API: ${API_BASE || window.location.origin}`;
-  if (window.sessionStorage.getItem(`aiOpsUnlocked:${API_BASE || "same-origin"}`) === "true") {
-    unlockDashboard();
-  }
 }
 
 els.loginForm.addEventListener("submit", async (event) => {

@@ -8,9 +8,9 @@ MINI_DASHBOARD = (ROOT / "laptop_packages" / "shared" / "mini-dashboard.js").rea
 
 
 def test_main_dashboard_maps_each_node_card_to_its_mini_dashboard():
-    assert '"dev-laptop": "/laptop-packages/dev-laptop/"' in DASHBOARD
-    assert '"research-laptop": "/laptop-packages/research-laptop/"' in DASHBOARD
-    assert '"business-laptop": "/laptop-packages/business-laptop/"' in DASHBOARD
+    assert '"dev-laptop": "/laptop-packages/dev-laptop/index.html"' in DASHBOARD
+    assert '"research-laptop": "/laptop-packages/research-laptop/index.html"' in DASHBOARD
+    assert '"business-laptop": "/laptop-packages/business-laptop/index.html"' in DASHBOARD
     assert "data-pet-dashboard-popout" in DASHBOARD
     assert "dashboard-popout" not in MINI_DASHBOARD
 
@@ -26,6 +26,8 @@ def test_button_requires_fresh_exact_online_readiness_and_nonstale_ssh():
 
 
 def test_popout_reuses_named_window_and_reports_blocking_accessibly():
+    assert "const dashboardOrigin = API_BASE || window.location.origin" in DASHBOARD
+    assert 'new URL(dashboardPath, `${dashboardOrigin.replace(/\\/$/, "")}/`)' in DASHBOARD
     assert "state.petDashboardPopouts.get(machineId)" in DASHBOARD
     assert "window.open(target.href, windowName" in DASHBOARD
     assert "existing.focus()" in DASHBOARD

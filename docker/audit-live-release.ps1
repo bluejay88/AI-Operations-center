@@ -8,6 +8,8 @@ $BaseUrl = $BaseUrl.Trim().TrimEnd("/")
 $script:Passed = 0
 $script:Failed = 0
 $script:Warnings = 0
+. "$PSScriptRoot\lib.ps1"
+$script:ApiHeaders = Get-AiOpsApiHeaders -MachineId "brain-gaming-pc"
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -16,7 +18,7 @@ function Assert-True {
 
 function Invoke-JsonGet {
     param([string]$Path)
-    return Invoke-RestMethod -Method Get -Uri "$BaseUrl$Path" -TimeoutSec $TimeoutSec -Headers @{ "Cache-Control" = "no-cache" }
+    return Invoke-RestMethod -Method Get -Uri "$BaseUrl$Path" -TimeoutSec $TimeoutSec -Headers ($script:ApiHeaders + @{ "Cache-Control" = "no-cache" })
 }
 
 function Test-Invariants {

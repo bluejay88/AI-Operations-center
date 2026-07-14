@@ -16,6 +16,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId "brain-gaming-pc"
 
 function Normalize-Host {
     param([string]$Value)
@@ -42,6 +44,7 @@ if ($ThreadKey) { $payload.thread_key = $ThreadKey }
 
 $response = Invoke-RestMethod -Method Post `
     -Uri "http://$BrainHost`:8088/codex/pipeline" `
+    -Headers $apiHeaders `
     -ContentType "application/json" `
     -Body ($payload | ConvertTo-Json -Depth 12) `
     -TimeoutSec 30

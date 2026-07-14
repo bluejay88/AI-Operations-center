@@ -1,9 +1,9 @@
 param(
     [int]$Port = 22,
-    [string]$AllowedRemoteAddress = "100.64.0.0/10",
-    [string]$BrainPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBoby+MkyYxc2aeEgz2npB31pDw5ICYhKhNmpDc3V9dm brain-pc-ai-ops",
-    [string]$UserName = $env:USERNAME,
-    [switch]$AllowPasswordAuthentication
+    [string]$AllowedRemoteAddress = "100.70.49.32/32",
+    [Parameter(Mandatory = $true)]
+    [string]$BrainPublicKey,
+    [string]$UserName = "aiops-diagnostic"
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +17,10 @@ function Assert-Admin {
 }
 
 Assert-Admin
+
+if ($AllowedRemoteAddress -eq "100.64.0.0/10") {
+    throw "The whole-tailnet SSH scope is prohibited. Pass the Brain Tailscale /32 address."
+}
 
 function Set-SshdConfigDirective {
     param(
@@ -81,11 +85,19 @@ New-NetFirewallRule `
 $sshdConfig = "$env:ProgramData\ssh\sshd_config"
 if (Test-Path $sshdConfig) {
     Set-SshdConfigDirective -Path $sshdConfig -Name "PubkeyAuthentication" -Value "yes"
-    Set-SshdConfigDirective -Path $sshdConfig -Name "PasswordAuthentication" -Value $(if ($AllowPasswordAuthentication) { "yes" } else { "no" })
+    Set-SshdConfigDirective -Path $sshdConfig -Name "PasswordAuthentication" -Value "no"
     Set-SshdConfigDirective -Path $sshdConfig -Name "PermitEmptyPasswords" -Value "no"
     Set-SshdConfigDirective -Path $sshdConfig -Name "KbdInteractiveAuthentication" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "AuthenticationMethods" -Value "publickey"
     Set-SshdConfigDirective -Path $sshdConfig -Name "MaxAuthTries" -Value "3"
     Set-SshdConfigDirective -Path $sshdConfig -Name "LogLevel" -Value "VERBOSE"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "AllowUsers" -Value $UserName
+    Set-SshdConfigDirective -Path $sshdConfig -Name "AllowTcpForwarding" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "AllowAgentForwarding" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "PermitTunnel" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "GatewayPorts" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "PermitTTY" -Value "no"
+    Set-SshdConfigDirective -Path $sshdConfig -Name "PermitUserEnvironment" -Value "no"
 }
 
 Restart-Service sshd
@@ -97,7 +109,18 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
 
     $user = Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue
     if (-not $user) {
-        throw "Local user '$UserName' was not found. Run whoami and pass -UserName with the local username portion."
+        $alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%_-"
+        $bytes = New-Object byte[] 48
+        [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $randomPassword = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+        $securePassword = ConvertTo-SecureString $randomPassword -AsPlainText -Force
+        $user = New-LocalUser -Name $UserName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword -Description "AI Operations read-only SSH diagnostics"
+        $randomPassword = $null
+    }
+
+    $adminMembers = @(Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop)
+    if ($adminMembers.Name -match "\\$([regex]::Escape($UserName))$") {
+        throw "Diagnostic account '$UserName' must not be a local administrator. Remove it from Administrators before continuing."
     }
 
     $profileRoot = Join-Path "C:\Users" $UserName
@@ -121,30 +144,19 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
     icacls $authorizedKeys /inheritance:r | Out-Null
     icacls $authorizedKeys /grant "${UserName}:F" "Administrators:F" "SYSTEM:F" | Out-Null
 
-    $isAdminUser = $false
-    try {
-        $adminMembers = Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop
-        $isAdminUser = $adminMembers.Name -match "\\$UserName$|^$UserName$"
-    } catch {
-        $isAdminUser = $false
+    $adminAuthorizedKeys = Join-Path $env:ProgramData "ssh\administrators_authorized_keys"
+    if (Test-Path $adminAuthorizedKeys) {
+        $cleaned = @(Get-Content $adminAuthorizedKeys | Where-Object { $_.Trim() -ne $BrainPublicKey.Trim() })
+        Set-Content -Path $adminAuthorizedKeys -Value $cleaned -Encoding ascii
     }
 
-    if ($isAdminUser) {
-        $programDataSsh = Join-Path $env:ProgramData "ssh"
-        $adminAuthorizedKeys = Join-Path $programDataSsh "administrators_authorized_keys"
-        if (-not (Test-Path $programDataSsh)) {
-            New-Item -ItemType Directory -Path $programDataSsh | Out-Null
-        }
-        if (-not (Test-Path $adminAuthorizedKeys)) {
-            New-Item -ItemType File -Path $adminAuthorizedKeys | Out-Null
-        }
-        $adminKeys = Get-Content -Path $adminAuthorizedKeys -ErrorAction SilentlyContinue
-        if (-not ($adminKeys -contains $BrainPublicKey.Trim())) {
-            Add-Content -Path $adminAuthorizedKeys -Value $BrainPublicKey.Trim()
-        }
-        icacls $adminAuthorizedKeys /inheritance:r | Out-Null
-        icacls $adminAuthorizedKeys /grant "Administrators:F" "SYSTEM:F" | Out-Null
-    }
+    $brokerRoot = Join-Path $env:ProgramData "AI-Ops"
+    $brokerScript = Join-Path $brokerRoot "ssh-diagnostic-command.ps1"
+    if (-not (Test-Path $brokerRoot)) { New-Item -ItemType Directory -Path $brokerRoot | Out-Null }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ssh-diagnostic-command.ps1") -Destination $brokerScript -Force
+    icacls $brokerRoot /inheritance:r | Out-Null
+    icacls $brokerRoot /grant "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "${UserName}:(OI)(CI)RX" | Out-Null
+    Set-SshdConfigDirective -Path $sshdConfig -Name "ForceCommand" -Value "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File C:\ProgramData\AI-Ops\ssh-diagnostic-command.ps1"
 
     $configTest = & sshd -t -f $sshdConfig 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -156,6 +168,6 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
 }
 
 Write-Host "OpenSSH Server is enabled and restricted to $AllowedRemoteAddress."
-Write-Host "PasswordAuthentication=$($(if ($AllowPasswordAuthentication) { 'yes' } else { 'no' }))"
+Write-Host "PasswordAuthentication=no; account=$UserName; privilege=standard-user; command_mode=allowlisted-only"
 Write-Host "On this laptop, get your Tailscale IP with: tailscale ip -4"
 Write-Host "From the Brain PC, test with: ssh -i `$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops <LaptopWindowsUsername>@<LaptopTailscaleIP> hostname"

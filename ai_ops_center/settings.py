@@ -1,4 +1,5 @@
 from functools import lru_cache
+import json
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,9 +39,34 @@ class Settings(BaseSettings):
     github_repo_url: str = "https://github.com/bluejay88/AI-Operations-center.git"
     human_approval_required: bool = Field(default=True)
     expose_api_docs: bool = True
-    dashboard_password: str = "BleujayBrain2026!"
+    # Authentication is fail-closed in production. Secrets must be injected by
+    # the local .env/secret store and never have repository defaults.
+    api_auth_required: bool = False
+    api_control_token: str = ""
+    device_api_tokens_json: str = "{}"
+    dashboard_password: str = ""
+    dashboard_password_hash: str = ""
+    dashboard_session_secret: str = ""
+    dashboard_session_ttl_seconds: int = 3600
     cors_allow_origins: str = "http://localhost:8088,http://127.0.0.1:8088,http://100.70.49.32:8088,null"
     cors_allow_origin_regex: str = r"^https://.*\.netlify\.app$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$|^http://100\.[0-9.]+(:\d+)?$"
+
+    @property
+    def control_plane_auth_required(self) -> bool:
+        return self.api_auth_required or self.app_env.strip().lower() == "production"
+
+    def device_api_tokens(self) -> dict[str, str]:
+        try:
+            parsed = json.loads(self.device_api_tokens_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        return {
+            str(machine_id): str(token)
+            for machine_id, token in parsed.items()
+            if isinstance(machine_id, str) and isinstance(token, str) and token
+        }
 
 
 @lru_cache

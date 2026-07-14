@@ -1,0 +1,29 @@
+{
+  "tagOwners": {
+    "tag:ai-ops-brain": ["autogroup:admin"],
+    "tag:ai-ops-worker": ["autogroup:admin"]
+  },
+  "grants": [
+    {
+      "src": ["tag:ai-ops-brain"],
+      "dst": ["tag:ai-ops-worker"],
+      "ip": ["tcp:22"]
+    },
+    {
+      "src": ["tag:ai-ops-worker"],
+      "dst": ["tag:ai-ops-brain"],
+      "ip": ["tcp:8088"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "tag:ai-ops-brain",
+      "accept": ["tag:ai-ops-worker:22"]
+    },
+    {
+      "src": "tag:ai-ops-worker",
+      "accept": ["tag:ai-ops-brain:8088"],
+      "deny": ["tag:ai-ops-worker:22"]
+    }
+  ]
+}

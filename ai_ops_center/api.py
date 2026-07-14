@@ -12,12 +12,22 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.responses import StreamingResponse
+from starlette.responses import RedirectResponse, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from .approval_processor import process_approval_queue
+from .auth import (
+    ControlPlaneAuthMiddleware,
+    enforce_device_identity,
+    issue_dashboard_token,
+    principal_for,
+    require_fleet_controller,
+    require_human_operator,
+    validate_security_settings,
+    verify_dashboard_password,
+)
 from .approvals import approval_detail, approval_snapshot, create_approval_request, review_approval_request
 from .brain_bus import acknowledge_speaker_message, create_speaker_message, listener_snapshot, speaker_feed, submit_listener_event
 from .business_os import business_os_snapshot, enterprise_org_snapshot, laptop_setup_prompt, seed_autonomous_business_os, seed_enterprise_departments
@@ -76,7 +86,7 @@ from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, inge
 from .pet_catalog import pet_feature_detail, pet_feature_summary
 from .brain_catalog import brain_feature_detail, brain_feature_summary
 from .brain_runtime_profile import laptop_runtime_profile, runtime_profile, runtime_profile_readiness
-from .pet_machine_capabilities import capability_contracts, capability_request_status, dispatch_approved_request, record_machine_receipt, submit_capability_request
+from .pet_machine_capabilities import capability_contracts, capability_request_status, dispatch_approved_request, record_machine_receipt, submit_capability_request, validate_machine_capability_settings
 from .pet_conversation_actions import confirm_pet_action_proposal, propose_pet_conversation_action
 from .project_intake import audit_project_paths, import_scan as import_project_scan, route_project_intake, workspace_snapshot
 from .queue_manager import queue_health, steward_queue
@@ -86,6 +96,7 @@ from .registry import registry_snapshot
 from .reports import generate_report
 from .security_guardian import security_guardian_audit
 from .settings import get_settings
+from .ssh_broker import broker_status, execute_approved_diagnostic, request_ssh_diagnostic, set_kill_switch
 from .tasks import create_business_continuity, create_dev_kickoff, create_chat_task_intake, create_manual_task, task_accounting_audit, task_detail, task_snapshot, task_summary
 from .team_chat import post_team_chat_message, team_chat_digest, team_chat_snapshot
 
@@ -101,9 +112,11 @@ app = FastAPI(
     redoc_url=redoc_url,
     openapi_url=openapi_url,
 )
+app.state.settings = settings
 logger = logging.getLogger(__name__)
 _queue_steward_task: asyncio.Task | None = None
 _model_query_tasks: dict[str, asyncio.Task] = {}
+_model_query_owners: dict[str, str] = {}
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_DIR = ROOT / "dashboard"
 LAPTOP_PACKAGES_DIR = ROOT / "laptop_packages"
@@ -115,7 +128,7 @@ app.add_middleware(
     allow_origin_regex=settings.cors_allow_origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-AI-Ops-Dashboard-Token"],
+    allow_headers=["Content-Type", "Authorization", "X-AI-Ops-Device-Id"],
 )
 
 
@@ -147,6 +160,8 @@ async def _queue_steward_loop() -> None:
 @app.on_event("startup")
 async def start_queue_steward() -> None:
     global _queue_steward_task
+    validate_security_settings(settings)
+    validate_machine_capability_settings(production=settings.app_env.strip().lower() == "production")
     await asyncio.to_thread(apply_migrations)
     if os.getenv("AI_OPS_QUEUE_STEWARD_ENABLED", "true").strip().lower() not in {"0", "false", "no"}:
         _queue_steward_task = asyncio.create_task(_queue_steward_loop())
@@ -163,6 +178,13 @@ async def stop_queue_steward() -> None:
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ControlPlaneAuthMiddleware, settings=settings)
+
+
+@app.get("/", include_in_schema=False)
+def dashboard_root() -> RedirectResponse:
+    """Expose the canonical operator surface without duplicating dashboard content."""
+    return RedirectResponse(url="/dashboard/", status_code=308)
 
 
 class FlowisePredictionRequest(BaseModel):
@@ -372,15 +394,15 @@ class PetMachineCapabilityRequest(BaseModel):
 
     machine_id: str = Field(min_length=2, max_length=80)
     pet_id: str = Field(min_length=2, max_length=120)
-    capability_type: str = Field(pattern="^(browser_navigation|music_playback|device_model_chat)$")
+    capability_type: str = Field(pattern="^(browser_navigation|music_playback|music_library|device_model_chat)$")
     payload: dict = Field(default_factory=dict)
     requester: str = Field(default="mini-dashboard", min_length=2, max_length=120)
     priority: int = Field(default=60, ge=1, le=100)
 
 
 class PetMachineCapabilityDispatchRequest(BaseModel):
+    """Empty confirmation body; dispatch identity is derived from authentication."""
     model_config = ConfigDict(extra="forbid")
-    actor: str = Field(min_length=1, max_length=120)
 
 
 class PetMachineCapabilityReceiptRequest(BaseModel):
@@ -427,7 +449,7 @@ class SpeakerAckRequest(BaseModel):
 
 
 class RemoteOperationRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     machine_id: str = Field(min_length=2, max_length=80)
     requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
@@ -435,6 +457,29 @@ class RemoteOperationRequest(BaseModel):
     command_summary: str = Field(min_length=3, max_length=4000)
     priority: int = Field(default=50, ge=1, le=100)
     metadata: dict = Field(default_factory=dict)
+
+
+class SshDiagnosticRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(pattern="^(dev-laptop|research-laptop|business-laptop)$")
+    command_id: str = Field(min_length=3, max_length=64)
+    arguments: list[str] = Field(default_factory=list, max_length=1)
+    requested_by: str = Field(default="brain-gaming-pc", min_length=2, max_length=120)
+    priority: int = Field(default=85, ge=1, le=100)
+
+
+class SshBrokerExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: int = Field(gt=0)
+
+
+class SshBrokerKillSwitchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    disabled: bool
+    reason: str = Field(min_length=8, max_length=1000)
 
 
 class LaptopHandoffRequest(BaseModel):
@@ -742,12 +787,19 @@ def health() -> dict[str, str]:
 
 
 @app.post("/dashboard/login")
-def dashboard_login(request: DashboardLoginRequest) -> dict[str, str | bool]:
-    expected = settings.dashboard_password
+def dashboard_login(request: DashboardLoginRequest) -> dict[str, str | bool | int]:
     submitted = request.password.strip()
-    if expected and not hmac.compare_digest(submitted, expected.strip()):
+    valid = False
+    if settings.dashboard_password_hash:
+        valid = verify_dashboard_password(submitted, settings.dashboard_password_hash)
+    elif not settings.control_plane_auth_required and settings.dashboard_password:
+        valid = hmac.compare_digest(submitted, settings.dashboard_password.strip())
+    if not valid:
         return {"ok": False, "message": "Invalid dashboard password"}
-    return {"ok": True, "token": "dashboard-session", "message": "Dashboard unlocked"}
+    if len(settings.dashboard_session_secret) < 32:
+        raise HTTPException(status_code=503, detail="dashboard session signing is not configured")
+    token, expires_at = issue_dashboard_token(settings)
+    return {"ok": True, "token": token, "expires_at": expires_at, "message": "Dashboard unlocked"}
 
 
 @app.get("/status")
@@ -833,12 +885,14 @@ def node_mesh() -> dict:
 
 
 @app.get("/laptop-agents/{machine_id}/contract")
-def laptop_agent_contract(machine_id: str, brain_host: str = "100.70.49.32") -> dict:
+def laptop_agent_contract(machine_id: str, request: Request, brain_host: str = "100.70.49.32") -> dict:
+    enforce_device_identity(request, machine_id)
     return node_contract(machine_id, brain_host=brain_host)
 
 
 @app.get("/laptop-agents/{machine_id}/prompt")
-def laptop_agent_prompt(machine_id: str, brain_host: str = "100.70.49.32") -> dict[str, str]:
+def laptop_agent_prompt(machine_id: str, request: Request, brain_host: str = "100.70.49.32") -> dict[str, str]:
+    enforce_device_identity(request, machine_id)
     contract = node_contract(machine_id, brain_host=brain_host)
     agent_lines = "\n".join(
         f"- {agent['id']} ({agent['category']}): {agent['mission']}" for agent in contract["assigned_agents"]
@@ -984,7 +1038,8 @@ def respond_to_connection_diagnostics(request: ConnectionDiagnosticResponseReque
 
 
 @app.post("/connections")
-def update_connection(request: ConnectionUpdateRequest) -> dict[str, Any]:
+def update_connection(request: ConnectionUpdateRequest, http_request: Request) -> dict[str, Any]:
+    enforce_device_identity(http_request, request.source_machine_id)
     record_connection(
         source_machine_id=request.source_machine_id,
         target_machine_id=request.target_machine_id,
@@ -1039,7 +1094,20 @@ def task_by_id(task_id: int) -> dict:
 
 
 @app.post("/tasks")
-def create_task(request: TaskCreateRequest) -> dict[str, int]:
+def create_task(request: TaskCreateRequest, http_request: Request) -> dict[str, int]:
+    principal = principal_for(http_request)
+    if principal.role == "device":
+        expected_agent = {
+            "dev-laptop": "programmer",
+            "research-laptop": "research-lead",
+            "business-laptop": "business-manager",
+        }.get(principal.machine_id)
+        if (
+            request.agent_id != expected_agent
+            or request.metadata.get("executor") != "connectivity_probe"
+            or request.metadata.get("queued_by") != principal.machine_id
+        ):
+            raise HTTPException(status_code=403, detail="device may create only its own bounded connectivity probe")
     task_id = create_manual_task(
         title=request.title,
         agent_id=request.agent_id,
@@ -1099,7 +1167,8 @@ def team_chat_digest_api(limit: int = Query(default=60, ge=1, le=500)) -> dict:
 
 
 @app.post("/team-chat/post")
-def team_chat_post(request: TeamChatPostRequest) -> dict:
+def team_chat_post(request: TeamChatPostRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.machine_id or request.actor_id)
     return {
         "message": post_team_chat_message(
             channel=request.channel,
@@ -1207,8 +1276,10 @@ def create_approval(request: ApprovalCreateRequest) -> dict[str, int]:
 
 
 @app.post("/approvals/process")
-def process_approvals(request: ApprovalProcessRequest) -> dict:
-    return process_approval_queue(limit=request.limit, actor=request.actor)
+def process_approvals(request: ApprovalProcessRequest, http_request: Request) -> dict:
+    principal = require_human_operator(http_request)
+    actor = principal.principal_id if settings.control_plane_auth_required else request.actor
+    return process_approval_queue(limit=request.limit, actor=actor)
 
 
 @app.get("/approvals/{request_id}")
@@ -1218,13 +1289,23 @@ def approval(request_id: int) -> dict:
 
 
 @app.post("/approvals/{request_id}/review")
-def review_approval(request_id: int, request: ApprovalReviewRequest) -> dict:
-    reviewed = review_approval_request(request_id, request.decision, request.feedback, request.actor, request.metadata)
+def review_approval(request_id: int, request: ApprovalReviewRequest, http_request: Request) -> dict:
+    principal = require_human_operator(http_request)
+    actor = principal.principal_id if settings.control_plane_auth_required else request.actor
+    detail = approval_detail(request_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"approval request {request_id} not found")
+    if settings.control_plane_auth_required and actor in {
+        str(detail.get("requester_agent_id") or ""),
+        str(detail.get("requester_machine_id") or ""),
+    }:
+        raise HTTPException(status_code=403, detail="requesters cannot approve their own privileged request")
+    reviewed = review_approval_request(request_id, request.decision, request.feedback, actor, request.metadata)
     if reviewed.get("request_type") == "pet_release_candidate":
         record_pet_release_decision(
             approval_request_id=request_id,
             decision=request.decision,
-            actor=request.actor,
+            actor=actor,
             feedback=request.feedback,
             evidence=request.metadata,
         )
@@ -1251,7 +1332,8 @@ def listener_events() -> dict:
 
 
 @app.post("/listener/events")
-def listener_event(request: ListenerEventRequest) -> dict:
+def listener_event(request: ListenerEventRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.source_id)
     return submit_listener_event(
         source_type=request.source_type,
         source_id=request.source_id,
@@ -1291,7 +1373,8 @@ def pet_machine_capability_contracts() -> dict:
 
 
 @app.post("/pet-machine-capabilities/requests")
-def pet_machine_capability_request(request: PetMachineCapabilityRequest) -> dict:
+def pet_machine_capability_request(request: PetMachineCapabilityRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.machine_id)
     try:
         return submit_capability_request(**request.model_dump())
     except ValueError as exc:
@@ -1299,15 +1382,18 @@ def pet_machine_capability_request(request: PetMachineCapabilityRequest) -> dict
 
 
 @app.post("/pet-machine-capabilities/requests/{request_id}/dispatch")
-def pet_machine_capability_dispatch(request_id: str, request: PetMachineCapabilityDispatchRequest) -> dict:
+def pet_machine_capability_dispatch(request_id: str, request: PetMachineCapabilityDispatchRequest, http_request: Request) -> dict:
     try:
-        return dispatch_approved_request(request_id, request.actor)
+        principal = require_fleet_controller(http_request)
+        actor = principal.principal_id if principal.principal_id != "anonymous" else "brain-gaming-pc-local"
+        return dispatch_approved_request(request_id, actor)
     except (ValueError, PermissionError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/pet-action-proposals")
-def pet_action_proposal(request: PetActionProposalRequest) -> dict:
+def pet_action_proposal(request: PetActionProposalRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.machine_id)
     try:
         return propose_pet_conversation_action(**request.model_dump())
     except ValueError as exc:
@@ -1315,15 +1401,20 @@ def pet_action_proposal(request: PetActionProposalRequest) -> dict:
 
 
 @app.post("/pet-action-proposals/{proposal_id}/confirm")
-def pet_action_proposal_confirmation(proposal_id: str, request: PetActionConfirmationRequest) -> dict:
+def pet_action_proposal_confirmation(proposal_id: str, request: PetActionConfirmationRequest, http_request: Request) -> dict:
+    principal = principal_for(http_request)
+    confirmer = principal.machine_id if principal.role == "device" else request.confirmed_by
     try:
-        return confirm_pet_action_proposal(proposal_id, request.confirmed_by)
+        return confirm_pet_action_proposal(proposal_id, confirmer)
     except ValueError as exc:
         raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
 
 
 @app.post("/pet-machine-capabilities/receipts")
-def pet_machine_capability_receipt(request: PetMachineCapabilityReceiptRequest) -> dict:
+def pet_machine_capability_receipt(request: PetMachineCapabilityReceiptRequest, http_request: Request) -> dict:
+    machine_id = str(request.receipt.get("machine_id") or request.receipt.get("target_machine_id") or "")
+    if machine_id:
+        enforce_device_identity(http_request, machine_id)
     try:
         return record_machine_receipt(request.receipt)
     except (ValueError, PermissionError, RuntimeError) as exc:
@@ -1389,12 +1480,14 @@ def pet_performance_batch(submission_id: int, request: PetPerformanceBatchReques
 
 
 @app.get("/speaker/feed/{target_id}")
-def speaker(target_id: str, include_acknowledged: bool = False) -> dict:
+def speaker(target_id: str, request: Request, include_acknowledged: bool = False) -> dict:
+    enforce_device_identity(request, target_id)
     return speaker_feed(target_id, include_acknowledged=include_acknowledged)
 
 
 @app.post("/speaker/messages/{message_id}/ack")
-def speaker_ack(message_id: int, request: SpeakerAckRequest) -> dict:
+def speaker_ack(message_id: int, request: SpeakerAckRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.actor)
     return {"message": acknowledge_speaker_message(message_id, request.actor)}
 
 
@@ -1404,15 +1497,64 @@ def remote_ops() -> dict:
 
 
 @app.post("/remote-ops")
-def create_remote_ops(request: RemoteOperationRequest) -> dict:
+def create_remote_ops(request: RemoteOperationRequest, http_request: Request) -> dict:
+    principal = principal_for(http_request)
+    if principal.role == "device":
+        enforce_device_identity(http_request, request.machine_id)
+        requested_by = principal.principal_id
+    else:
+        require_fleet_controller(http_request)
+        requested_by = principal.principal_id if settings.control_plane_auth_required else request.requested_by
     return request_remote_operation(
         machine_id=request.machine_id,
-        requested_by=request.requested_by,
+        requested_by=requested_by,
         operation_type=request.operation_type,
         command_summary=request.command_summary,
         priority=request.priority,
         metadata=request.metadata,
     )
+
+
+@app.get("/ssh-broker/status")
+def ssh_broker_status(http_request: Request) -> dict:
+    require_fleet_controller(http_request)
+    return broker_status()
+
+
+@app.post("/ssh-broker/requests")
+def ssh_broker_request(request: SshDiagnosticRequest, http_request: Request) -> dict:
+    principal = require_fleet_controller(http_request)
+    requester = principal.principal_id if settings.control_plane_auth_required else request.requested_by
+    try:
+        return request_ssh_diagnostic(
+            request.machine_id,
+            request.command_id,
+            request.arguments,
+            requester,
+            request.priority,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/ssh-broker/execute")
+def ssh_broker_execute(request: SshBrokerExecuteRequest, http_request: Request) -> dict:
+    principal = require_fleet_controller(http_request)
+    try:
+        return execute_approved_diagnostic(request.operation_id, principal.principal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/ssh-broker/kill-switch")
+def ssh_broker_kill_switch(request: SshBrokerKillSwitchRequest, http_request: Request) -> dict:
+    principal = require_human_operator(http_request)
+    try:
+        return set_kill_switch(request.disabled, principal.principal_id, request.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/collaboration")
@@ -1438,7 +1580,8 @@ def collaboration_peer_request(request: PeerRequestCreateRequest) -> dict:
 
 
 @app.post("/collaboration/peer-requests/{request_id}/respond")
-def collaboration_peer_response(request_id: int, request: PeerRequestResponseRequest) -> dict:
+def collaboration_peer_response(request_id: int, request: PeerRequestResponseRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.responder_machine_id)
     return respond_to_peer_request(
         request_id=request_id,
         responder_machine_id=request.responder_machine_id,
@@ -1567,7 +1710,9 @@ def project_intake_audit(request: ProjectIntakeAuditRequest) -> dict:
 
 
 @app.post("/project-intake/import-scan")
-def project_intake_import(request: ProjectIntakeImportRequest) -> dict:
+def project_intake_import(request: ProjectIntakeImportRequest, http_request: Request) -> dict:
+    if request.machine_id:
+        enforce_device_identity(http_request, request.machine_id)
     return import_project_scan(request.model_dump())
 
 
@@ -1641,7 +1786,13 @@ async def llm_mesh_query(request: LlmMeshRequest) -> dict:
 
 
 @app.post("/models/query")
-async def models_query(request: ModelQueryRequest) -> dict:
+async def models_query(request: ModelQueryRequest, http_request: Request) -> dict:
+    principal = principal_for(http_request)
+    if principal.role == "device":
+        enforce_device_identity(http_request, request.requester)
+        enforce_device_identity(http_request, request.target_id)
+        if request.auto_create_tasks or request.require_approval not in {False, None}:
+            raise HTTPException(status_code=403, detail="device model chat cannot create tasks or approvals")
     query = asyncio.create_task(
         submit_model_query(
             purpose=request.purpose,
@@ -1662,6 +1813,7 @@ async def models_query(request: ModelQueryRequest) -> dict:
             query.cancel()
             raise HTTPException(status_code=409, detail="model request id is already active")
         _model_query_tasks[request.request_id] = query
+        _model_query_owners[request.request_id] = principal.principal_id
     try:
         response = await query
         if request.request_id:
@@ -1670,13 +1822,18 @@ async def models_query(request: ModelQueryRequest) -> dict:
     finally:
         if request.request_id and _model_query_tasks.get(request.request_id) is query:
             _model_query_tasks.pop(request.request_id, None)
+            _model_query_owners.pop(request.request_id, None)
 
 
 @app.post("/models/query/{request_id}/cancel")
-async def cancel_model_query(request_id: str) -> dict:
+async def cancel_model_query(request_id: str, http_request: Request) -> dict:
     if not request_id or len(request_id) > 80 or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for character in request_id):
         raise HTTPException(status_code=422, detail="invalid model request id")
     query = _model_query_tasks.get(request_id)
+    owner = _model_query_owners.get(request_id)
+    principal = principal_for(http_request)
+    if settings.control_plane_auth_required and principal.role == "device" and owner != principal.principal_id:
+        raise HTTPException(status_code=403, detail="device may cancel only its own model request")
     if query is None or query.done():
         return {
             "request_id": request_id,
@@ -1843,15 +2000,14 @@ def ops2_import(request: ImportBundleRequest) -> dict:
 
 
 @app.post("/ops2/workstation-updates")
-async def ops2_workstation_update(request: Request) -> dict:
-    payload = await request.json()
-    if not isinstance(payload, dict):
-        payload = {"summary": "Non-object workstation update received.", "raw_payload": payload}
-    return publish_workstation_update(_normalize_workstation_update(payload))
+def ops2_workstation_update(request: WorkstationUpdateRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.machine_id)
+    return publish_workstation_update(_normalize_workstation_update(request.model_dump()))
 
 
 @app.post("/ops2/device-telemetry")
-def ops2_device_telemetry(request: DeviceTelemetryRequest) -> dict:
+def ops2_device_telemetry(request: DeviceTelemetryRequest, http_request: Request) -> dict:
+    enforce_device_identity(http_request, request.machine_id)
     return publish_device_telemetry(request.model_dump())
 
 

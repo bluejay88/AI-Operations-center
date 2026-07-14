@@ -4,13 +4,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId "brain-gaming-pc"
 $results = @()
 
 for ($i = 1; $i -le $Runs; $i++) {
     Write-Host "Security audit run $i / $Runs"
-    $guardian = Invoke-RestMethod "http://$BrainHost`:8088/security/guardian"
+    $guardian = Invoke-RestMethod "http://$BrainHost`:8088/security/guardian" -Headers $apiHeaders
     $health = Invoke-RestMethod "http://$BrainHost`:8088/health"
-    $readiness = Invoke-RestMethod "http://$BrainHost`:8088/readiness.json"
+    $readiness = Invoke-RestMethod "http://$BrainHost`:8088/readiness.json" -Headers $apiHeaders
     $results += [pscustomobject]@{
         run = $i
         guardian_passed = $guardian.passed

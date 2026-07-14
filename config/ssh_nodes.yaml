@@ -1,0 +1,18 @@
+version: 1
+known_hosts_file: ~/.ssh/ai_ops_known_hosts
+targets:
+  dev-laptop:
+    host: 100.71.82.122
+    user: aiops-diagnostic
+    identity_file: ~/.ssh/ai_ops_brain_to_dev_laptop
+    host_key_fingerprint: ""
+  research-laptop:
+    host: 100.90.219.88
+    user: aiops-diagnostic
+    identity_file: ~/.ssh/ai_ops_brain_to_research_laptop
+    host_key_fingerprint: ""
+  business-laptop:
+    host: 100.112.91.61
+    user: aiops-diagnostic
+    identity_file: ~/.ssh/ai_ops_brain_to_business_laptop
+    host_key_fingerprint: ""

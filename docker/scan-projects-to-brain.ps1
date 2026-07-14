@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
+$apiHeaders = Get-AiOpsApiHeaders -MachineId $MachineId
 
 function Normalize-Host {
     param([string]$Value)
@@ -144,6 +146,7 @@ $payload = [pscustomobject]@{
 if ($PostToBrain) {
     Invoke-RestMethod -Method Post `
         -Uri "http://$BrainHost`:8088/project-intake/import-scan" `
+        -Headers $apiHeaders `
         -ContentType "application/json" `
         -Body ($payload | ConvertTo-Json -Depth 20) `
         -TimeoutSec 45 | ConvertTo-Json -Depth 12

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -15,10 +16,11 @@ def main() -> int:
     instruction_id = f"audit-instruction-{suffix}"
     now = datetime.now(UTC)
     guard = PostgresReplayGuard(local=True)
+    envelope_sha256 = hashlib.sha256(f"audit:{suffix}".encode("utf-8")).hexdigest()
 
     def consume(_: int) -> bool:
         return guard.consume(
-            "brain-gaming-pc", nonce, instruction_id, "dev-laptop", now + timedelta(minutes=5), now
+            "brain-gaming-pc", nonce, instruction_id, "dev-laptop", now + timedelta(minutes=5), now, envelope_sha256
         )
 
     with ThreadPoolExecutor(max_workers=16) as pool:
@@ -31,9 +33,16 @@ def main() -> int:
         "dev-laptop",
         now - timedelta(seconds=1),
         now,
+        hashlib.sha256(f"expired:{suffix}".encode("utf-8")).hexdigest(),
     )
     second_signer = guard.consume(
-        "canary-brain-signer", nonce, instruction_id, "dev-laptop", now + timedelta(minutes=5), now
+        "canary-brain-signer",
+        nonce,
+        instruction_id,
+        "dev-laptop",
+        now + timedelta(minutes=5),
+        now,
+        envelope_sha256,
     )
     report = {
         "concurrent_attempts": len(concurrent_results),
@@ -41,6 +50,7 @@ def main() -> int:
         "replays_rejected": len(concurrent_results) - sum(concurrent_results),
         "expired_claim_accepted": expired,
         "same_nonce_distinct_signer_accepted": second_signer,
+        "envelope_sha256": envelope_sha256,
     }
     report["passed"] = (
         report["atomic_winners"] == 1
@@ -50,10 +60,6 @@ def main() -> int:
     )
     print(json.dumps(report, indent=2, sort_keys=True))
 
-    with connect(local=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from pet_instruction_nonces where nonce in (%s, %s)", (nonce, f"expired-{nonce}"))
-        conn.commit()
     return 0 if report["passed"] else 1
 
 

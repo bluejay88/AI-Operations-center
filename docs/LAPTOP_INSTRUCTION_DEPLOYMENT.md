@@ -24,16 +24,14 @@ Development laptop:
 
 ```powershell
 cd $env:USERPROFILE\Desktop\AI-Operations-center
-git pull
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Research laptop:
 
 ```powershell
 cd $env:USERPROFILE\Desktop\AI-Operations-center
-git pull
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Business laptop:
@@ -45,7 +43,7 @@ cd AI-Operations-center
 powershell -ExecutionPolicy Bypass -File docker\onboard-laptop.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -RenameTailscale
 ```
 
-If the Business laptop already has the repo cloned, use `git pull` and `docker\update-worker-from-git.ps1` instead.
+If the Business laptop already has the repo cloned, use the approval-pinned `docker\update-worker-from-git.ps1` command instead of pulling directly.
 
 ## Verification
 

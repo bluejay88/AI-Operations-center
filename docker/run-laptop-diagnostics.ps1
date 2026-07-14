@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
 
 function Add-Check {
     param(
@@ -67,6 +68,7 @@ if (-not $AgentId) {
 }
 
 $checks = New-Object System.Collections.ArrayList
+$diagnosticMarkers = New-Object System.Collections.ArrayList
 $startedAt = Get-Date
 $repoRoot = (Get-Location).Path
 $reportDir = Join-Path $repoRoot "diagnostics\$MachineId"
@@ -226,6 +228,30 @@ $sshBlocker = if (-not $sshServiceInstalled) {
     "ready_for_brain_auth_test"
 }
 
+$sshMarkerCode = switch ($sshBlocker) {
+    "service_missing" { "SSH_SERVICE_MISSING" }
+    "service_stopped" { "SSH_SERVICE_STOPPED" }
+    "port_not_listening" { "SSH_SERVICE_NOT_LISTENING" }
+    "firewall_missing" { "SSH_FIREWALL_RULE_MISSING" }
+    "auth_key_missing" { "SSH_AUTHORIZED_KEY_MISSING" }
+    "auth_key_unverified" { "SSH_AUTHORIZED_KEY_UNVERIFIED" }
+    default { "SSH_INBOUND_READY_FOR_BRAIN_TEST" }
+}
+$sshMarkerStatus = if ($sshBlocker -eq "ready_for_brain_auth_test") { "pass" } else { "fail" }
+$sshMarkerAction = switch ($sshBlocker) {
+    "service_missing" { "Install the Windows OpenSSH Server capability from an elevated PowerShell session." }
+    "service_stopped" { "Start sshd and set it to Automatic from an elevated PowerShell session." }
+    "port_not_listening" { "Validate sshd_config with sshd -t, then restart sshd." }
+    "firewall_missing" { "Create the AI Ops Tailscale-only inbound SSH rule; do not expose port 22 publicly." }
+    "auth_key_missing" { "Install only the approved Brain public key in the correct authorized_keys file." }
+    "auth_key_unverified" { "Supply and verify the approved Brain public-key fingerprint before enabling automation." }
+    default { "Run the Brain-to-laptop BatchMode SSH test and verify the reported host-key fingerprint." }
+}
+$markerLineAndObject = Write-AiOpsDiagnosticMarker -Code $sshMarkerCode -Phase "laptop_inbound_ssh_readiness" -Status $sshMarkerStatus -MachineId $MachineId -Detail "blocker=$sshBlocker" -SuggestedAction $sshMarkerAction
+$markerLineAndObject | ForEach-Object {
+    if ($_ -is [string]) { Write-Host $_ } else { [void]$diagnosticMarkers.Add($_) }
+}
+
 $dockerOk = $false
 $workerRunning = $false
 if (-not $SkipDocker) {
@@ -339,6 +365,7 @@ $report = [ordered]@{
         expected_key_fingerprint_verified = $fingerprintVerified
         authorized_key_files = $authorizedKeyFiles
     }
+    diagnostic_markers = @($diagnosticMarkers)
     system = @{
         os = $os.Caption
         cpu = $cpu.Name
@@ -383,8 +410,9 @@ try {
         priority = 92
         outcome = $overall
         logs = ($lines -join "`n")
-        metrics = @{ passed = $passed; total = $total; duration_ms = $durationMs; docker_ok = $dockerOk; worker_running = $workerRunning; tailscale_ip = $tailscaleIp }
-        errors = @($checks | Where-Object { -not $_.ok } | ForEach-Object { $_.name })
+        metrics = @{ passed = $passed; total = $total; duration_ms = $durationMs; docker_ok = $dockerOk; worker_running = $workerRunning; tailscale_ip = $tailscaleIp; ssh_marker_code = $sshMarkerCode }
+        errors = @($diagnosticMarkers | Where-Object { $_.status -eq "fail" } | ForEach-Object { $_.code })
+        diagnostic_markers = @($diagnosticMarkers)
         recommendations = @($checks | Where-Object { -not $_.ok } | ForEach-Object { @{ type = "diagnostic_fix"; priority = 90; summary = $_.fix; detail = $_.detail } })
         resource_consumption = @{ duration_ms = $durationMs }
         created_by = "run-laptop-diagnostics.ps1"

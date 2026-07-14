@@ -18,7 +18,8 @@ ONBOARD_COMMANDS = {
     ),
     "dev-laptop": (
         "powershell -ExecutionPolicy Bypass -File docker\\update-worker-from-git.ps1 "
-        "-MachineId dev-laptop -BrainHost 100.70.49.32"
+        "-MachineId dev-laptop -BrainHost 100.70.49.32 "
+        "-ApprovedCommit APPROVED_COMMIT_SHA -BrainApprovalId APPROVAL_ID"
     ),
 }
 

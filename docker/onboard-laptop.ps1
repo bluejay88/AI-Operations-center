@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
 
 function Test-CommandExists {
     param([string]$Name)
@@ -58,22 +59,35 @@ function Install-ChatGPT {
 }
 
 Write-Host "Starting AI Operations Center onboarding for $MachineId..."
+$currentPhase = "start"
+try {
+    .\docker\show-connected-message.ps1
 
-.\docker\show-connected-message.ps1
+    if (!$SkipPrereqs) {
+        $currentPhase = "install_prerequisites"
+        .\docker\install-laptop-prereqs.ps1 -MachineId $MachineId
+    }
 
-if (!$SkipPrereqs) {
-    .\docker\install-laptop-prereqs.ps1 -MachineId $MachineId
+    if (!$SkipChatGPT) {
+        $currentPhase = "install_chatgpt"
+        Install-ChatGPT
+    }
+
+    $currentPhase = "join_worker"
+    .\docker\join-worker.ps1 -MachineId $MachineId -BrainHost $BrainHost -RenameTailscale:$RenameTailscale
+
+    if (!$SkipBenchmark) {
+        $currentPhase = "benchmark"
+        .\docker\run-benchmark.ps1 -MachineId $MachineId -BrainHost $BrainHost
+    }
+
+    $markerOutput = Write-AiOpsDiagnosticMarker -Code "ONBOARDING_COMPLETE" -Phase "complete" -Status "pass" -MachineId $MachineId -Detail "BrainHost=$BrainHost"
+    $markerOutput | Where-Object { $_ -is [string] } | ForEach-Object { Write-Host $_ }
+    Write-Host "Onboarding complete for $MachineId."
+    Write-Host "The Bleujay Brain worker should now report online to http://$BrainHost`:8088/status."
+} catch {
+    $safeDetail = "$($_.Exception.GetType().Name): $($_.Exception.Message)"
+    $markerOutput = Write-AiOpsDiagnosticMarker -Code "ONBOARDING_PHASE_FAILED" -Phase $currentPhase -Status "fail" -MachineId $MachineId -Detail $safeDetail -SuggestedAction "Send this marker to the Brain diagnostic queue, correct the named phase, and rerun onboarding."
+    $markerOutput | Where-Object { $_ -is [string] } | ForEach-Object { Write-Host $_ }
+    throw
 }
-
-if (!$SkipChatGPT) {
-    Install-ChatGPT
-}
-
-.\docker\join-worker.ps1 -MachineId $MachineId -BrainHost $BrainHost -RenameTailscale:$RenameTailscale
-
-if (!$SkipBenchmark) {
-    .\docker\run-benchmark.ps1 -MachineId $MachineId -BrainHost $BrainHost
-}
-
-Write-Host "Onboarding complete for $MachineId."
-Write-Host "The Bleujay Brain worker should now report online to http://$BrainHost`:8088/status."

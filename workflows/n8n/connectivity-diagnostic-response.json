@@ -1,0 +1,118 @@
+{
+  "id": "connectivity-diagnostic-response",
+  "name": "AI Ops Connectivity Diagnostic Response",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "connectivity-schedule",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ ($env.BRAIN_API_URL || 'http://brain-gaming-pc:8088') + '/connections/diagnostics' }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "get-diagnostics",
+      "name": "Get Structured Diagnostics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BRAIN_API_URL || 'http://brain-gaming-pc:8088') + '/connections/diagnostics/publish' }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "publish-diagnostics",
+      "name": "Publish Deduplicated Listener Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const markers = $json.diagnostics?.markers ?? $json.markers ?? [];\nconst targets = [...new Set(markers.map((m) => m.target_machine_id).filter((id) => id && id !== 'brain-gaming-pc'))];\nreturn targets.map((target_machine_id) => ({ json: { target_machine_id, channels: ['tailscale-ping', 'ssh-22', 'brain-api', 'github'] } }));"
+      },
+      "id": "build-node-queries",
+      "name": "Build Governed Node Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BRAIN_API_URL || 'http://brain-gaming-pc:8088') + '/connections/diagnostics/query' }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "query-nodes",
+      "name": "Send Speaker Queries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BRAIN_API_URL || 'http://brain-gaming-pc:8088') + '/listener/events' }}",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ source_type: 'workflow', source_id: 'n8n-connectivity-response', event_type: 'audit_report', subject: 'External connectivity workflow completed', body: 'n8n published current connectivity markers and queued governed node diagnostic queries.', priority: 75, metadata: { channel: 'connectivity', audit_kind: 'external_workflow', dedupe_key: 'n8n-connectivity-response:' + new Date().toISOString().slice(0, 16), dedupe_window_seconds: 300 } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "audit-workflow",
+      "name": "Audit Workflow Completion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 220]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[{"node": "Get Structured Diagnostics", "type": "main", "index": 0}]]
+    },
+    "Get Structured Diagnostics": {
+      "main": [[{"node": "Publish Deduplicated Listener Events", "type": "main", "index": 0}]]
+    },
+    "Publish Deduplicated Listener Events": {
+      "main": [[{"node": "Build Governed Node Queries", "type": "main", "index": 0}]]
+    },
+    "Build Governed Node Queries": {
+      "main": [[{"node": "Send Speaker Queries", "type": "main", "index": 0}]]
+    },
+    "Send Speaker Queries": {
+      "main": [[{"node": "Audit Workflow Completion", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "America/Chicago",
+    "executionOrder": "v1"
+  }
+}

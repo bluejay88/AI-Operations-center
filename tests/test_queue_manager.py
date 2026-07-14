@@ -3,6 +3,8 @@ import pytest
 from ai_ops_center import worker
 from ai_ops_center.migrations import _checksum_matches
 from ai_ops_center.queue_manager import (
+    derive_parent_status,
+    queued_hold_reason,
     rank_fallback_targets,
     retry_delay_seconds,
     select_fallback_target,
@@ -10,6 +12,24 @@ from ai_ops_center.queue_manager import (
     task_is_automatic_eligible,
     task_is_claim_eligible,
 )
+
+
+def test_parent_request_status_tracks_worker_task_lifecycle():
+    assert derive_parent_status([]) == "queued"
+    assert derive_parent_status(["queued", "completed"]) == "queued"
+    assert derive_parent_status(["running", "completed"]) == "running"
+    assert derive_parent_status(["completed", "completed"]) == "completed"
+    assert derive_parent_status(["completed", "failed"]) == "failed"
+
+
+def test_every_intentional_queue_hold_has_a_governance_reason():
+    assert queued_hold_reason({"queue_state": "pending_approval"}) == "pending_approval"
+    assert queued_hold_reason({"requires_approval": True}) == "approval_not_granted"
+    assert queued_hold_reason(
+        {"no_failover": True},
+        source_machine_id="research-laptop",
+        healthy_machine_ids={"brain-gaming-pc"},
+    ) == "required_machine_unavailable:research-laptop"
 
 
 def test_retry_delay_is_exponential_and_bounded():

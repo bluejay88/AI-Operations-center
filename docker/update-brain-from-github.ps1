@@ -3,6 +3,9 @@ param(
     [string]$Remote = "origin",
     [switch]$SkipBuild,
     [switch]$SkipAudit,
+    [switch]$PushApproved,
+    [string]$BrainApprovalId = "",
+    # Retained for compatibility. Pushes are disabled by default.
     [switch]$NoPush,
     [int]$HealthTimeoutSeconds = 120,
     [int]$ConnectivityIntervalSeconds = 30
@@ -61,8 +64,23 @@ try {
     $before = git rev-parse HEAD
     Log-Step "Current commit: $before"
 
-    if (!$NoPush) {
+    if ($PushApproved -and $NoPush) {
+        throw "Use either -PushApproved or -NoPush, not both."
+    }
+    if ($PushApproved -and [string]::IsNullOrWhiteSpace($BrainApprovalId)) {
+        throw "-PushApproved requires -BrainApprovalId so the publish is tied to a Brain/human review record."
+    }
+    if ($PushApproved) {
+        $pendingPush = git log --oneline "$Remote/$Branch..HEAD" 2>$null
+        if (!$pendingPush) {
+            Log-Step "No local commits are pending publication. Approval=$BrainApprovalId"
+        } else {
+            Log-Step "Publishing reviewed commits. Approval=$BrainApprovalId"
+            $pendingPush | Tee-Object -FilePath $logPath -Append
+        }
         Run-Step "push local commits" { git push $Remote $Branch }
+    } else {
+        Log-Step "Local publication disabled. Use -PushApproved -BrainApprovalId <review-id> after Brain/human review."
     }
 
     Run-Step "fetch updates" { git fetch $Remote $Branch }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import asyncio
 import json
+import os
 import platform
 import socket
 import time
@@ -16,12 +17,14 @@ from .llm_mesh import run_llm_request
 from .migrations import apply_migrations
 from .orchestrator import claim_next_task, complete_task, fail_task, record_heartbeat, renew_task_lease
 from .pet_instruction_protocol import InstructionDecision, PostgresReplayGuard, verify_instruction
+from .pet_machine_capabilities import MachineCapabilityExecutor, machine_receipt_exists, record_machine_receipt
 from .queue_manager import steward_queue
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 SIGNED_INSTRUCTION_MESSAGE_TYPES = {"brain_instruction", "signed_instruction"}
+MACHINE_CAPABILITY_HANDLERS: dict[str, object] = {}
 
 
 def run_worker(machine_id: str, once: bool = False, sleep_seconds: int = 15, work_seconds: int = 4, local: bool = False) -> None:
@@ -71,10 +74,16 @@ def _consume_machine_messages(machine_id: str, local: bool = False) -> int:
         if message.get("target_id") != machine_id or message.get("status") == "acknowledged":
             continue
         try:
+            if message.get("message_type") == "pet_capability_signed_execution":
+                if _consume_pet_capability_execution(message, machine_id, local=local):
+                    acknowledged += 1
+                continue
             decision = _verify_brain_instruction_message(message, machine_id, local=local)
             if decision is not None and not decision.accepted:
                 _report_instruction_rejection(message, machine_id, decision, local=local)
                 continue
+            if message.get("message_type") == "connectivity_diagnostic_query":
+                _report_connectivity_diagnostic_query(message, machine_id, local=local)
             submit_listener_event(
                 source_type="machine",
                 source_id=machine_id,
@@ -101,6 +110,80 @@ def _consume_machine_messages(machine_id: str, local: bool = False) -> int:
         except Exception:
             logger.exception("Unable to acknowledge speaker message %s", message.get("id"))
     return acknowledged
+
+
+def _consume_pet_capability_execution(message: dict, machine_id: str, local: bool = False) -> bool:
+    envelope = dict(message.get("metadata") or {})
+    request_id = str(envelope.get("request_id") or "")
+    if not request_id:
+        raise ValueError("signed PET execution is missing request_id")
+    if machine_receipt_exists(request_id, machine_id, local=local):
+        acknowledge_speaker_message(message["id"], actor=machine_id, local=local)
+        return True
+    executor = MachineCapabilityExecutor(
+        machine_id,
+        browser_handler=MACHINE_CAPABILITY_HANDLERS.get("browser_navigation"),
+        music_handler=MACHINE_CAPABILITY_HANDLERS.get("music_playback"),
+        model_handler=MACHINE_CAPABILITY_HANDLERS.get("device_model_chat"),
+        enable_browser=_env_enabled("PET_ENABLE_BROWSER_NAVIGATION"),
+        enable_music=_env_enabled("PET_ENABLE_MUSIC_PLAYBACK"),
+        enable_model_chat=_env_enabled("PET_ENABLE_DEVICE_MODEL_CHAT"),
+    )
+    receipt = executor.execute(envelope)
+    recorded = record_machine_receipt(receipt, local=local)
+    submit_listener_event(
+        source_type="machine", source_id=machine_id, event_type="pet_capability_worker_result",
+        subject=f"PET capability worker result {request_id}",
+        body=f"Target worker reported {receipt['status']}; no independent success claim was made.",
+        priority=int(message.get("priority") or 80),
+        metadata={"speaker_message_id": message["id"], "request_id": request_id, "receipt_id": recorded.get("receipt_id"), "machine_reported_status": receipt["status"]},
+        local=local,
+    )
+    acknowledge_speaker_message(message["id"], actor=machine_id, local=local)
+    return True
+
+
+def register_machine_capability_handler(capability_type: str, handler: object) -> None:
+    if capability_type not in {"browser_navigation", "music_playback", "device_model_chat"}:
+        raise ValueError("unknown machine capability handler")
+    MACHINE_CAPABILITY_HANDLERS[capability_type] = handler
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _report_connectivity_diagnostic_query(message: dict, machine_id: str, local: bool = False) -> None:
+    """Answer a bounded query with runtime evidence and no host command execution."""
+    metadata = dict(message.get("metadata") or {})
+    allowed_channels = {"tailscale-ping", "ssh-22", "brain-api", "github"}
+    requested_channels = sorted(set(metadata.get("requested_channels") or []) & allowed_channels)
+    evidence = {
+        "machine_id": machine_id,
+        "hostname": socket.gethostname(),
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "observed_at": datetime.now(UTC).isoformat(),
+        "requested_channels": requested_channels,
+        "probe_method": "allowlisted_runtime_snapshot",
+        "host_shell_executed": False,
+    }
+    submit_listener_event(
+        source_type="machine",
+        source_id=machine_id,
+        event_type="connectivity_diagnostic_response",
+        subject=f"Connectivity diagnostic response from {machine_id}",
+        body=json.dumps(evidence, sort_keys=True),
+        priority=int(message.get("priority") or 75),
+        metadata={
+            **evidence,
+            "speaker_message_id": message.get("id"),
+            "correlation_id": metadata.get("correlation_id") or f"speaker:{message.get('id')}",
+            "channel": "connectivity",
+            "audit_kind": "diagnostic_query_response",
+        },
+        local=local,
+    )
 
 
 def _verify_brain_instruction_message(message: dict, machine_id: str, local: bool = False) -> InstructionDecision | None:

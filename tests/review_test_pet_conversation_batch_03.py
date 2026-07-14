@@ -67,7 +67,8 @@ def test_context_is_session_scoped_bounded_clearable_and_visible():
     assert re.search(r'sessionStorage\.setItem\(`aiops\.\$\{state\.machineId\}\.petChat`', SCRIPT)
     assert not re.search(r'localStorage\.(?:getItem|setItem)\([^\n]*petChat', SCRIPT)
     assert "state.chatHistory.slice(-30)" in SCRIPT
-    assert "state.chatHistory.slice(-10)" in SCRIPT
+    assert "state.chatHistory.slice(-11, -1)" in SCRIPT
+    assert "conversation_history: conversationHistory" in SCRIPT
     assert "state.chatHistory = []" in SCRIPT
     assert 'id="pet-chat-context"' in SCRIPT
 

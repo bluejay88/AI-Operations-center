@@ -22,25 +22,22 @@ Each laptop can print its own instructions after pulling GitHub.
 Development laptop:
 
 ```powershell
-git pull
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli laptop-instructions dev-laptop
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Research laptop:
 
 ```powershell
-git pull
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli laptop-instructions research-laptop
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Business laptop:
 
 ```powershell
-git pull
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli laptop-instructions business-laptop
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 If the Business laptop is not cloned yet:

@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
+$diagnosticMarkers = New-Object System.Collections.ArrayList
 
 function Write-Check {
     param(
@@ -106,6 +108,7 @@ try {
 
 $sshOk = $false
 $sshAuthState = "unknown"
+$sshFailureCode = "SSH_NOT_TESTED"
 try {
     $sshArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=8")
     if ($resolvedIdentityFile) {
@@ -115,10 +118,27 @@ try {
     $sshOutput = ssh @sshArgs 2>&1
     $sshOk = $LASTEXITCODE -eq 0
     $sshAuthState = if ($sshOk) { "noninteractive_ready" } elseif ($portOk) { "interactive_login_required" } else { "blocked" }
+    $sshFailureCode = if ($sshOk) { "SSH_READY" } else { Get-AiOpsSshFailureCode -Output ($sshOutput -join "`n") -PortOpen $portOk -IdentityPresent ([bool]$resolvedIdentityFile) }
     Write-Check "SSH key/noninteractive login" $sshOk ($sshOutput -join "`n")
 } catch {
     $sshAuthState = if ($portOk) { "interactive_login_required" } else { "blocked" }
+    $sshFailureCode = Get-AiOpsSshFailureCode -Output $_.Exception.Message -PortOpen $portOk -IdentityPresent ([bool]$resolvedIdentityFile)
     Write-Check "SSH key/noninteractive login" $false $_.Exception.Message
+}
+
+$markerStatus = if ($sshOk) { "pass" } else { "fail" }
+$markerAction = if ($sshOk) { "" } elseif ($sshFailureCode -eq "SSH_HOST_KEY_REJECTED") {
+    "Verify the Brain host-key fingerprint out of band, then remove only the stale matching known_hosts entry."
+} elseif ($sshFailureCode -eq "SSH_PUBLIC_KEY_REJECTED") {
+    "Install the laptop public key on the Brain for the intended account; do not copy private keys."
+} elseif ($sshFailureCode -eq "SSH_IDENTITY_MISSING") {
+    "Create or securely transfer the approved laptop private key and restrict its file permissions."
+} else {
+    "Check Tailscale reachability, the Brain sshd service, and the Tailscale-scoped firewall rule."
+}
+$markerLineAndObject = Write-AiOpsDiagnosticMarker -Code $sshFailureCode -Phase "brain_ssh_noninteractive" -Status $markerStatus -MachineId $MachineId -Detail "port22=$portOk; auth_state=$sshAuthState" -SuggestedAction $markerAction
+$markerLineAndObject | ForEach-Object {
+    if ($_ -is [string]) { Write-Host $_ } else { [void]$diagnosticMarkers.Add($_) }
 }
 
 $sendOk = $false
@@ -149,11 +169,13 @@ try {
             brain_ssh_port = $portOk
             ssh_noninteractive = $sshOk
             ssh_auth_state = $sshAuthState
+            ssh_failure_code = $sshFailureCode
             brain_ssh_user = $BrainUser
             ssh_identity_file = $resolvedIdentityFile
             tailscale = $tailscaleOk
             git = $gitOk
         }
+        diagnostic_markers = @($diagnosticMarkers)
         recommendations = @($recommendations)
     } | ConvertTo-Json -Depth 5
     $result = Invoke-RestMethod -Uri "http://$BrainHost`:8088/ops2/workstation-updates" -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 15
@@ -171,6 +193,7 @@ Write-Host ""
 Write-Host "Summary:"
 Write-Host "Git=$gitOk Tailscale=$tailscaleOk API=$apiOk Port22=$portOk SSHKeyLogin=$sshOk Publish=$sendOk"
 Write-Host "SSHAuthState=$sshAuthState"
+Write-Host "SSHFailureCode=$sshFailureCode"
 Write-Host ""
 if ($apiOk -and $portOk -and -not $sshOk) {
     Write-Host "SSH network is unblocked, but noninteractive SSH login is not configured yet. Try interactive login:"

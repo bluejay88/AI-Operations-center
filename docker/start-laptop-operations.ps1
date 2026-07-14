@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
 
 Write-Host "Starting AI Operations worker and heavy-work overlay for $MachineId"
 
@@ -40,7 +41,7 @@ $overlayArgs = @(
     "-IdleSecondsBeforeOverlay", $IdleSecondsBeforeOverlay
 )
 
-Start-Process powershell -ArgumentList $overlayArgs -WindowStyle Hidden
+Start-AiOpsBackgroundProcess -FilePath "powershell.exe" -ArgumentList $overlayArgs -Name "$MachineId heavy-work overlay monitor"
 
 docker compose --profile worker up -d --build worker
 

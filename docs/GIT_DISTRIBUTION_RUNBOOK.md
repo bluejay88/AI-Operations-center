@@ -68,7 +68,7 @@ docker\publish-local-git-server.ps1
 Then each laptop can run:
 
 ```powershell
-docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Change `dev-laptop` to `research-laptop` or `business-laptop` on those machines.
@@ -143,19 +143,19 @@ After the brain PC commits and pushes a change, run this on each laptop:
 Development laptop:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Research laptop:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Business laptop:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 ## Step 5: Verify From The Brain PC

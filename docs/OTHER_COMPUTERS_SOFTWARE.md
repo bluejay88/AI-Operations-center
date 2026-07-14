@@ -129,7 +129,7 @@ GitHub is still the preferred path because it lets every laptop pull updates.
 After GitHub is connected, use:
 
 ```powershell
-docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32
+docker\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 ```
 
 Change the machine id for the Research and Development laptops.

@@ -92,3 +92,14 @@ This addendum supersedes the numeric evidence above; it does not supersede the p
 - Bind an accepted instruction to an authorized action schema and immutable fenced execution snapshot. The present path verifies and acknowledges an instruction; it does not execute it.
 - Resolve the evaluator’s authoritative manifest/evidence/reviewer/Brain-decision blockers and complete authenticated physical-laptop round trips, outage probes, and separate Quality/Security review.
 - Run the full immutable release suite after rebuilding the API/worker from the post-remediation source and completing physical-laptop round trips.
+
+## Superseding authority/deployment addendum — 2026-07-13 23:12 CDT
+
+- Full repository suite: **135 passed**, with four FastAPI lifespan deprecation warnings and zero failures.
+- Migrations: **001 through 015 applied**, zero pending, strict checksum validation passes.
+- API and Brain worker images were rebuilt and recreated from the tested source; both report healthy.
+- Live read-only release audit: **9 PASS / 0 FAIL / 3 WARN**. The extra warning is current network truth: only 1/3 laptop targets answered the latest reachability sample; direct SSH remains 0/3.
+- A server-container fabricated-manifest probe returned `release_candidate=false` and `implementation_unverified` with no resolver error.
+- Capability evaluation now accepts only a SHA-256 manifest reference. Feature scope, artifact/test hashes, task, listener, peer response, distinct Quality/Security reviews, rubric scores, and the latest Brain decision are resolved from append-only/content-addressed authority records. Caller assertions are ignored.
+- Browser navigation, external navigation, remote control, music control, and local-model actions require machine-targeted append-only receipts. Remote control and external/browser navigation additionally require a correlated approved approval record. Caller-asserted action success cannot satisfy the gate.
+- Catalogs remain unchanged at **PET O/G/P/R = 0/0/500/0** and **Brain O/G/P/R = 0/0/500/0**. Instruction batch 02A remains **HOLD** pending real correlated physical evidence, distinct reviews, managed signing secret, and an append-only Brain release/canary decision.

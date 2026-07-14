@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+. "$PSScriptRoot\lib.ps1"
 
 $targets = @(
     @{ MachineId = "dev-laptop"; Ip = $DevIp },
@@ -64,6 +65,8 @@ foreach ($target in $targets) {
     Write-Host ($output -join "`n")
 
     if ($ok) {
+        $markerLineAndObject = Write-AiOpsDiagnosticMarker -Code "SSH_READY" -Phase "brain_to_laptop_ssh" -Status "pass" -MachineId $target.MachineId -Detail "port22=$($port.TcpTestSucceeded)"
+        $markerLineAndObject | Where-Object { $_ -is [string] } | ForEach-Object { Write-Host $_ }
         Publish-Connection -MachineId $target.MachineId -Status $(if ($ok) { "online" } else { "auth_failed" }) -LatencyMs $latency -Metadata @{
             ip = $target.Ip
             user = $LaptopUser
@@ -76,20 +79,19 @@ foreach ($target in $targets) {
     } else {
         $outputText = ($output -join "`n")
         $localKeyInaccessible = $outputText -match "Identity file .* not accessible"
-        $reason = if ($localKeyInaccessible) {
-            "local_identity_file_inaccessible"
-        } elseif ($outputText -match "Connection refused") {
-            "connection_refused_sshd_not_listening"
-        } elseif ($outputText -match "timed out") {
-            "timeout_or_firewall_blocked"
-        } elseif ($outputText -match "Permission denied") {
-            "auth_failed_public_key_not_authorized"
-        } elseif ($port.TcpTestSucceeded -eq $false -and $port.PingSucceeded) {
-            "port_22_closed_or_refused"
-        } else {
-            "timeout_or_unreachable"
-        }
+        $reason = Get-AiOpsSshFailureCode -Output $outputText -PortOpen ([bool]$port.TcpTestSucceeded) -IdentityPresent (-not $localKeyInaccessible -and (Test-Path $IdentityFile))
         Write-Host "Reason=$reason"
+        $markerAction = switch ($reason) {
+            "SSH_IDENTITY_MISSING" { "Restore the approved Brain private key locally and restrict its file permissions; never copy it to telemetry or Git." }
+            "SSH_HOST_KEY_REJECTED" { "Verify the laptop host-key fingerprint out of band, then replace only the stale known_hosts entry." }
+            "SSH_PUBLIC_KEY_REJECTED" { "Install the approved Brain public key for the intended laptop account and verify authorized_keys ACLs." }
+            default { "Run the laptop inbound SSH readiness diagnostic and verify Tailscale reachability and its scoped firewall rule." }
+        }
+        $markerLineAndObject = Write-AiOpsDiagnosticMarker -Code $reason -Phase "brain_to_laptop_ssh" -Status "fail" -MachineId $target.MachineId -Detail "port22=$($port.TcpTestSucceeded)" -SuggestedAction $markerAction
+        $markerObject = $null
+        $markerLineAndObject | ForEach-Object {
+            if ($_ -is [string]) { Write-Host $_ } else { $markerObject = $_ }
+        }
         if ($localKeyInaccessible) {
             Write-Host "Skipping Brain connection publish because the local identity file could not be read by this shell." -ForegroundColor Yellow
             continue
@@ -98,9 +100,10 @@ foreach ($target in $targets) {
             ip = $target.Ip
             user = $LaptopUser
             identity_file = $IdentityFile
-            port22 = $false
+            port22 = [bool]$port.TcpTestSucceeded
             ssh_key_login = $false
             result = $reason
+            diagnostic_marker = $markerObject
             fix = "Run docker\setup-worker-openssh-tailscale-admin.ps1 on this laptop as Administrator and add the Brain public key."
         }
     }

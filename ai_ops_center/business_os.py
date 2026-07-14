@@ -128,8 +128,7 @@ LAPTOP_SETUP_PACKETS = {
         "role": "Lead Software Engineer",
         "commands": [
             "cd $env:USERPROFILE\\Desktop\\AI-Operations-center",
-            "git pull origin master",
-            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32",
+            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit APPROVED_COMMIT_SHA -BrainApprovalId APPROVAL_ID",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\test-brain-ssh-and-api.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -BrainUser aiopsbrain -AgentId programmer",
             "powershell -ExecutionPolicy Bypass -File .\\laptop_packages\\dev-laptop\\install.ps1 -BrainHost 100.70.49.32",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\start-laptop-operations.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32",
@@ -140,8 +139,7 @@ LAPTOP_SETUP_PACKETS = {
         "role": "Research Intelligence",
         "commands": [
             "cd $env:USERPROFILE\\Desktop\\AI-Operations-center",
-            "git pull origin master",
-            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32",
+            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -ApprovedCommit APPROVED_COMMIT_SHA -BrainApprovalId APPROVAL_ID",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\test-brain-ssh-and-api.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -BrainUser aiopsbrain -AgentId research-lead",
             "powershell -ExecutionPolicy Bypass -File .\\laptop_packages\\research-laptop\\install.ps1 -BrainHost 100.70.49.32",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\start-laptop-operations.ps1 -MachineId research-laptop -BrainHost 100.70.49.32",
@@ -152,8 +150,7 @@ LAPTOP_SETUP_PACKETS = {
         "role": "Business Operations",
         "commands": [
             "cd $env:USERPROFILE\\Desktop\\AI-Operations-center",
-            "git pull origin master",
-            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32",
+            "powershell -ExecutionPolicy Bypass -File .\\docker\\update-worker-from-git.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -ApprovedCommit APPROVED_COMMIT_SHA -BrainApprovalId APPROVAL_ID",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\test-brain-ssh-and-api.ps1 -MachineId business-laptop -BrainHost 100.70.49.32 -BrainUser aiopsbrain -AgentId business-manager",
             "powershell -ExecutionPolicy Bypass -File .\\laptop_packages\\business-laptop\\install.ps1 -BrainHost 100.70.49.32",
             "powershell -ExecutionPolicy Bypass -File .\\docker\\start-laptop-operations.ps1 -MachineId business-laptop -BrainHost 100.70.49.32",

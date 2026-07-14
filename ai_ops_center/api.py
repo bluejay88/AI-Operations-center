@@ -29,7 +29,15 @@ from .collaboration import (
     request_remote_assist,
     respond_to_peer_request,
 )
-from .connectivity import connection_snapshot, connection_summary, record_connection
+from .connectivity import (
+    connection_diagnostics,
+    connection_snapshot,
+    connection_summary,
+    publish_connection_diagnostics,
+    queue_diagnostic_query,
+    queue_diagnostic_response,
+    record_connection,
+)
 from .factory import factory_snapshot, redistribute_business_queue
 from .enterprise_features import enterprise_feature_catalog, seed_enterprise_feature_backlog
 from .flowise import healthcheck as flowise_healthcheck
@@ -68,7 +76,8 @@ from .pet_release import PET_RELEASE_RUBRIC, create_pet_feature_assignment, inge
 from .pet_catalog import pet_feature_detail, pet_feature_summary
 from .brain_catalog import brain_feature_detail, brain_feature_summary
 from .brain_runtime_profile import laptop_runtime_profile, runtime_profile, runtime_profile_readiness
-from .pet_machine_capabilities import capability_contracts, submit_capability_request
+from .pet_machine_capabilities import capability_contracts, capability_request_status, dispatch_approved_request, record_machine_receipt, submit_capability_request
+from .pet_conversation_actions import confirm_pet_action_proposal, propose_pet_conversation_action
 from .project_intake import audit_project_paths, import_scan as import_project_scan, route_project_intake, workspace_snapshot
 from .queue_manager import queue_health, steward_queue
 from .readiness import readiness_report, readiness_snapshot
@@ -266,6 +275,22 @@ class ConnectionUpdateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class ConnectionDiagnosticQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_machine_id: str = Field(min_length=2, max_length=80)
+    channels: list[str] = Field(default_factory=list, max_length=4)
+
+
+class ConnectionDiagnosticResponseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_machine_id: str = Field(min_length=2, max_length=80)
+    marker_codes: list[str] = Field(min_length=1, max_length=10)
+    response_type: str = Field(default="remediation", pattern="^(remediation|patch_notice|status_update)$")
+    release_ref: str | None = Field(default=None, max_length=200)
+
+
 class ApprovalCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -351,6 +376,32 @@ class PetMachineCapabilityRequest(BaseModel):
     payload: dict = Field(default_factory=dict)
     requester: str = Field(default="mini-dashboard", min_length=2, max_length=120)
     priority: int = Field(default=60, ge=1, le=100)
+
+
+class PetMachineCapabilityDispatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    actor: str = Field(min_length=1, max_length=120)
+
+
+class PetMachineCapabilityReceiptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    receipt: dict
+
+
+class PetActionProposalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: str = Field(min_length=2, max_length=80)
+    pet_id: str = Field(min_length=2, max_length=120)
+    message: str = Field(min_length=1, max_length=4000)
+    requester: str = Field(default="mini-dashboard", min_length=2, max_length=120)
+    priority: int = Field(default=60, ge=1, le=100)
+
+
+class PetActionConfirmationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed_by: str = Field(min_length=1, max_length=120)
 
 
 class PetPerformanceSample(BaseModel):
@@ -643,17 +694,6 @@ class NotificationRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class PetMachineCapabilityRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    machine_id: str = Field(min_length=2, max_length=80)
-    pet_id: str = Field(min_length=2, max_length=80)
-    capability_type: str = Field(pattern="^(browser_navigation|music_playback|device_model_chat)$")
-    payload: dict = Field(default_factory=dict)
-    requester: str = Field(min_length=1, max_length=120)
-    priority: int = Field(default=60, ge=1, le=100)
-
-
 def _normalize_workstation_update(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(payload)
     normalized["machine_id"] = str(normalized.get("machine_id") or "unknown-machine")[:80]
@@ -906,8 +946,45 @@ def connections() -> dict:
     return {"connections": snapshot, "connection_summary": connection_summary(snapshot)}
 
 
+@app.get("/connections/diagnostics")
+def connection_diagnostic_status(
+    target_machine_id: str | None = Query(default=None, min_length=2, max_length=80),
+    marker_code: list[str] | None = Query(default=None),
+) -> dict:
+    return connection_diagnostics(
+        connection_snapshot(),
+        target_machine_id=target_machine_id,
+        marker_codes=set(marker_code or []),
+    )
+
+
+@app.post("/connections/diagnostics/publish")
+def publish_connection_diagnostic_status(
+    target_machine_id: str | None = Query(default=None, min_length=2, max_length=80),
+) -> dict:
+    return publish_connection_diagnostics(target_machine_id=target_machine_id)
+
+
+@app.post("/connections/diagnostics/query")
+def request_connection_diagnostics(request: ConnectionDiagnosticQueryRequest) -> dict:
+    return queue_diagnostic_query(request.target_machine_id, request.channels)
+
+
+@app.post("/connections/diagnostics/respond")
+def respond_to_connection_diagnostics(request: ConnectionDiagnosticResponseRequest) -> dict:
+    try:
+        return queue_diagnostic_response(
+            request.target_machine_id,
+            request.marker_codes,
+            response_type=request.response_type,
+            release_ref=request.release_ref,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/connections")
-def update_connection(request: ConnectionUpdateRequest) -> dict[str, str]:
+def update_connection(request: ConnectionUpdateRequest) -> dict[str, Any]:
     record_connection(
         source_machine_id=request.source_machine_id,
         target_machine_id=request.target_machine_id,
@@ -916,7 +993,20 @@ def update_connection(request: ConnectionUpdateRequest) -> dict[str, str]:
         latency_ms=request.latency_ms,
         metadata=request.metadata,
     )
-    return {"status": "recorded"}
+    try:
+        diagnostic_publish = publish_connection_diagnostics([
+            {
+                "source_machine_id": request.source_machine_id,
+                "target_machine_id": request.target_machine_id,
+                "channel": request.channel,
+                "status": request.status,
+                "metadata": request.metadata,
+            }
+        ])
+    except Exception as exc:
+        logger.exception("Connection was recorded but its diagnostic listener publish failed")
+        diagnostic_publish = {"published": [], "listener_status": "failed", "error_type": type(exc).__name__}
+    return {"status": "recorded", "diagnostics": diagnostic_publish}
 
 
 @app.get("/tasks")
@@ -1208,6 +1298,46 @@ def pet_machine_capability_request(request: PetMachineCapabilityRequest) -> dict
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/pet-machine-capabilities/requests/{request_id}/dispatch")
+def pet_machine_capability_dispatch(request_id: str, request: PetMachineCapabilityDispatchRequest) -> dict:
+    try:
+        return dispatch_approved_request(request_id, request.actor)
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/pet-action-proposals")
+def pet_action_proposal(request: PetActionProposalRequest) -> dict:
+    try:
+        return propose_pet_conversation_action(**request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/pet-action-proposals/{proposal_id}/confirm")
+def pet_action_proposal_confirmation(proposal_id: str, request: PetActionConfirmationRequest) -> dict:
+    try:
+        return confirm_pet_action_proposal(proposal_id, request.confirmed_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+
+
+@app.post("/pet-machine-capabilities/receipts")
+def pet_machine_capability_receipt(request: PetMachineCapabilityReceiptRequest) -> dict:
+    try:
+        return record_machine_receipt(request.receipt)
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/pet-machine-capabilities/requests/{request_id}")
+def pet_machine_capability_status(request_id: str) -> dict:
+    status = capability_request_status(request_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Capability request {request_id} was not found")
+    return status
+
+
 @app.get("/brain-features/summary")
 def brain_features_summary() -> dict:
     return brain_feature_summary()
@@ -1237,19 +1367,6 @@ def brain_laptop_runtime_profile_endpoint(machine_id: str) -> dict:
     if profile is None:
         raise HTTPException(status_code=404, detail=f"Laptop runtime profile {machine_id} was not found")
     return {"profile": profile}
-
-
-@app.get("/pet-machine-capabilities/contracts")
-def pet_machine_capability_contracts_endpoint() -> dict:
-    return capability_contracts()
-
-
-@app.post("/pet-machine-capabilities/requests")
-def pet_machine_capability_request_endpoint(request: PetMachineCapabilityRequest) -> dict:
-    try:
-        return submit_capability_request(**request.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/pet-releases/submissions")

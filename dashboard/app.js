@@ -1,6 +1,8 @@
 const state = {
   registry: null,
   readiness: null,
+  readinessObservedAt: 0,
+  petDashboardPopouts: new Map(),
   tasks: [],
   taskSummary: null,
   taskAccountingAudit: null,
@@ -41,6 +43,12 @@ const state = {
   unlocked: false,
   petCompletionClusters: {},
 };
+
+const PET_DASHBOARD_PATHS = Object.freeze({
+  "dev-laptop": "/laptop-packages/dev-laptop/",
+  "research-laptop": "/laptop-packages/research-laptop/",
+  "business-laptop": "/laptop-packages/business-laptop/",
+});
 
 const PET_CAPABILITY_PROFILES = {
   "brain-gaming-pc": {
@@ -771,6 +779,8 @@ function renderPets() {
       const readinessState = String(readiness.state || "").toLowerCase();
       const sshOnline = (readiness.connections || []).some((connection) =>
         ["ssh-22", "ssh-22-brain-to-laptop"].includes(connection.channel) && String(connection.status).toLowerCase() === "online");
+      const dashboardPath = PET_DASHBOARD_PATHS[machine.id] || null;
+      const dashboardReady = Boolean(dashboardPath) && petNodeIsFullyOnline(readiness);
       const signal = readinessState === "online" && sshOnline
         ? "strong"
         : readinessState === "online" || readinessState.startsWith("reachable") || readinessState.includes("stale")
@@ -789,6 +799,8 @@ function renderPets() {
         primary: `${counts.running || 0} running / ${counts.queued || 0} queued`,
         secondary: `Done ${counts.completed || 0} / Roll x${completedCluster} / Health ${telemetry.health_score ?? "n/a"} / Battery ${telemetry.battery_percent ?? "n/a"}%`,
         capabilities: PET_CAPABILITY_PROFILES[machine.id],
+        dashboardPath,
+        dashboardReady,
       });
     }),
     petMarkup({
@@ -824,6 +836,48 @@ function renderPets() {
       <div><strong>${profiles.length * 5}</strong><span>feature lanes mapped across companions</span></div>
     `;
   }
+}
+
+function petNodeIsFullyOnline(readiness) {
+  const readinessFresh = state.readinessObservedAt > 0 && Date.now() - state.readinessObservedAt < 45000;
+  const workerOnline = String(readiness.state || "unknown").toLowerCase() === "online";
+  const sshOnline = (readiness.connections || []).some((connection) =>
+    ["ssh-22", "ssh-22-brain-to-laptop"].includes(connection.channel)
+      && String(connection.status || "").toLowerCase() === "online"
+      && connection.is_stale !== true);
+  return readinessFresh && workerOnline && sshOnline;
+}
+
+function openPetMiniDashboard(machineId, button) {
+  const dashboardPath = PET_DASHBOARD_PATHS[machineId];
+  const readiness = (state.readiness?.machines || []).find((machine) => machine.id === machineId) || {};
+  const status = document.getElementById(`pet-dashboard-popout-status-${machineId}`);
+  if (!dashboardPath || !petNodeIsFullyOnline(readiness)) {
+    if (status) status.textContent = "This mini dashboard is available only while the node and its fresh SSH signal are fully online.";
+    return;
+  }
+  const existing = state.petDashboardPopouts.get(machineId);
+  if (existing && !existing.closed) {
+    existing.focus();
+    if (status) status.textContent = `${machineId} mini dashboard focused.`;
+    return;
+  }
+  const target = new URL(dashboardPath, window.location.origin);
+  const windowName = `aiops-${machineId.replace(/[^a-z0-9_-]/gi, "-")}-mini-dashboard`;
+  const popup = window.open(target.href, windowName, "popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes");
+  if (!popup) {
+    button.textContent = "Try mini dashboard again";
+    if (status) {
+      status.classList.remove("sr-only");
+      status.textContent = "The browser blocked this pop-out. Allow pop-ups for the AI Operations Center, then try again.";
+    }
+    return;
+  }
+  state.petDashboardPopouts.set(machineId, popup);
+  try { popup.opener = null; } catch { /* The same-origin node dashboard remains independently usable. */ }
+  popup.focus();
+  button.textContent = "Focus mini dashboard";
+  if (status) status.textContent = `${machineId} mini dashboard opened in a separate window.`;
 }
 
 function renderBrainFeatureSummary() {
@@ -913,6 +967,10 @@ function petMarkup(pet) {
           </div>
           <span class="pill online" data-live-animation="${escapeHtml(pet.animation)}">${escapeHtml(pet.animation)}</span>
         </header>
+        ${pet.dashboardPath ? `<div class="pet-dashboard-popout">
+          <button type="button" data-pet-dashboard-popout="${escapeHtml(pet.machineId)}" aria-describedby="pet-dashboard-popout-status-${escapeHtml(pet.machineId)}" aria-label="Open ${escapeHtml(pet.name)} mini dashboard in a separate window" ${pet.dashboardReady ? "" : "hidden disabled"}>Open mini dashboard</button>
+          <span id="pet-dashboard-popout-status-${escapeHtml(pet.machineId)}" class="sr-only" role="status" aria-live="polite">${pet.dashboardReady ? "Mini dashboard pop-out is available." : "Available when this node is fully online with a fresh SSH signal."}</span>
+        </div>` : ""}
         <div class="pet-attributes" aria-label="PET attributes">
           ${profile.attributes.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
         </div>
@@ -1260,6 +1318,7 @@ async function refresh() {
   ]);
   state.registry = registry;
   state.readiness = readiness;
+  state.readinessObservedAt = Date.now();
   state.tasks = normalizeTasks(tasks);
   state.taskSummary = tasks?.task_summary || state.taskSummary;
   state.taskAccountingAudit = tasks?.task_accounting_audit || state.taskAccountingAudit;
@@ -1299,7 +1358,10 @@ async function refresh() {
 }
 
 function applyRealtimePayload(payload) {
-  state.readiness = payload.readiness || state.readiness;
+  if (payload.readiness) {
+    state.readiness = payload.readiness;
+    state.readinessObservedAt = Date.now();
+  }
   if (payload.tasks) state.tasks = normalizeTasks(payload.tasks);
   if (payload.task_summary) state.taskSummary = payload.task_summary;
   if (payload.task_accounting_audit) state.taskAccountingAudit = payload.task_accounting_audit;
@@ -1414,6 +1476,12 @@ els.loginForm.addEventListener("submit", async (event) => {
 });
 
 els.refresh.addEventListener("click", () => refresh().catch((error) => toast(error.message)));
+
+els.pets.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pet-dashboard-popout]");
+  if (!button) return;
+  openPetMiniDashboard(button.dataset.petDashboardPopout, button);
+});
 
 els.phoenixRefresh.addEventListener("click", () => loadPhoenixBriefing().catch((error) => toast(error.message)));
 els.refreshApprovals.addEventListener("click", () => loadApprovals().catch((error) => toast(error.message)));

@@ -2190,3 +2190,45 @@ pre { border-radius: var(--radius); }
 .pet-copy header > div { min-width: 0; }
 .pet-copy header .pill { flex: 0 0 auto; }
 @media (max-width: 720px) { .pet-copy header { align-items: center; } }
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.pet-dashboard-popout {
+  display: grid;
+  gap: .4rem;
+  justify-items: start;
+}
+
+.pet-dashboard-popout button {
+  min-height: 2.1rem;
+  padding: .42rem .7rem;
+  border-color: color-mix(in srgb, var(--pet-accent, var(--accent)) 58%, var(--line));
+  background: color-mix(in srgb, var(--panel) 88%, var(--pet-accent, var(--accent)));
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.pet-dashboard-popout button::before {
+  content: "\2197";
+  margin-right: .4rem;
+}
+
+.pet-dashboard-popout button[hidden] {
+  display: none;
+}
+
+.pet-dashboard-popout [role="status"]:not(.sr-only) {
+  padding: .45rem .55rem;
+  border-left: 2px solid var(--warn);
+  color: var(--warn);
+  font-size: .7rem;
+}

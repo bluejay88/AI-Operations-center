@@ -13,7 +13,7 @@ powershell -ExecutionPolicy Bypass -File .\docker\setup-github-credential-helper
 git push origin master
 ```
 
-Sign in as `bluejay88` when Git Credential Manager opens. After that approval, Git stores the credential in Windows Credential Manager for this Windows account and future `git pull` / `git push` operations can run non-interactively.
+Sign in as `Bluejay88` when Git Credential Manager opens. The setup stores only the username hint and configures Git Credential Manager. After approval, Git Credential Manager stores the OAuth credential in Windows Credential Manager for this Windows account, so future GitHub operations do not repeatedly prompt. Never put a password or token in Git configuration, scripts, remotes, or `.env`.
 
 ## Brain PC Update
 
@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -File .\docker\update-brain-from-github.ps1
 
 The updater:
 
-- pushes any local Brain commit if credentials are available;
+- does not push local commits by default;
 - fetches and fast-forwards from GitHub;
 - refuses non-fast-forward pulls;
 - compiles critical Python files;
@@ -35,6 +35,12 @@ The updater:
 - runs the release audit;
 - restarts the 30-second connectivity monitor;
 - writes a timestamped log under `output/`.
+
+After Brain/human review, an approved publish must carry its review identifier:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docker\update-brain-from-github.ps1 -PushApproved -BrainApprovalId REVIEW-123
+```
 
 ## Database Migration Policy
 
@@ -61,10 +67,12 @@ Invoke-RestMethod -Method Post http://100.70.49.32:8088/migrations/apply
 Each laptop can pull the same repository and run its package:
 
 ```powershell
-git pull origin master
-powershell -ExecutionPolicy Bypass -File .\docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+$approved = "<full-or-abbreviated-approved-commit-sha>"
+powershell -ExecutionPolicy Bypass -File .\docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit $approved -BrainApprovalId REVIEW-123
 ```
 
 Use `research-laptop` or `business-laptop` for those machines.
+
+The worker updater refuses dirty worktrees, non-fast-forward history, and a branch head that differs from the approved commit. It never resets, force-pushes, or embeds credentials.
 
 The Brain dashboard should show laptop Tailscale ping, SSH state, speaker feed, listener events, queued work, completed work, and peer requests after update.

@@ -23,6 +23,26 @@ def submit_listener_event(
     metadata = metadata or {}
     with connect(local=local) as conn:
         with conn.cursor() as cur:
+            dedupe_key = str(metadata.get("dedupe_key") or "").strip()
+            if dedupe_key:
+                dedupe_window_seconds = max(1, min(int(metadata.get("dedupe_window_seconds", 300)), 86400))
+                cur.execute(
+                    """
+                    select id
+                    from listener_events
+                    where source_type = %s
+                      and source_id = %s
+                      and event_type = %s
+                      and metadata->>'dedupe_key' = %s
+                      and created_at >= now() - make_interval(secs => %s)
+                    order by created_at desc
+                    limit 1
+                    """,
+                    (source_type, source_id, event_type, dedupe_key, dedupe_window_seconds),
+                )
+                duplicate = cur.fetchone()
+                if duplicate:
+                    return {"event_id": int(duplicate["id"]), "actions": [], "deduplicated": True}
             cur.execute(
                 """
                 insert into listener_events (source_type, source_id, event_type, subject, body, priority, metadata)
@@ -46,7 +66,7 @@ def submit_listener_event(
         local=local,
     )
     actions = apply_brain_logic(event_id, local=local)
-    return {"event_id": event_id, "actions": actions}
+    return {"event_id": event_id, "actions": actions, "deduplicated": False}
 
 
 def listener_snapshot(limit: int = 50, local: bool = False) -> list[dict[str, Any]]:

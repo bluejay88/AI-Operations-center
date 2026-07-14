@@ -28,11 +28,11 @@ cd $env:USERPROFILE\Desktop\AI-Operations-center
 git pull
 
 For Dev Laptop:
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId dev-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli laptop-instructions dev-laptop
 
 For Research Laptop:
-powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32
+powershell -ExecutionPolicy Bypass -File docker\update-worker-from-git.ps1 -MachineId research-laptop -BrainHost 100.70.49.32 -ApprovedCommit <approved-commit-sha> -BrainApprovalId <review-id>
 docker compose run --rm ai-ops-api python -m ai_ops_center.cli laptop-instructions research-laptop
 
 For Business Laptop once available:
@@ -93,4 +93,3 @@ Until the dedicated Business Laptop is worker-online, Brain PC, Dev Laptop, and 
 Your operating style:
 Work from the repo instructions, report progress through listener/events, pull commands from speaker/feed, request approval for sensitive actions, and keep all outputs structured with owner, status, next action, due time, risk, and evidence.
 ```
-

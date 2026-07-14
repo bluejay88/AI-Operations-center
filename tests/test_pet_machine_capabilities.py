@@ -1,11 +1,19 @@
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
+import uuid
 
 import pytest
 
 from ai_ops_center import api, pet_machine_capabilities as caps
+from ai_ops_center import worker
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def browser_allowlist(monkeypatch):
+    monkeypatch.setenv("PET_BROWSER_ALLOWED_DOMAINS", "example.com,openai.com")
 
 
 def install_bus_mocks(monkeypatch):
@@ -58,7 +66,7 @@ def test_music_is_local_identifier_only_and_approval_held(monkeypatch):
     assert result["status"] == "pending_approval"
     assert result["worker_execution_authorized"] is False
     assert approvals and "DO NOT EXECUTE" in speakers[0]["body"]
-    with pytest.raises(ValueError, match="safe local media_id"):
+    with pytest.raises(ValueError, match="safe local"):
         caps._validate_payload("music_playback", {"command": "play", "media_id": "C:\\secret.mp3"})
 
 
@@ -106,14 +114,14 @@ def test_migration_015_persists_append_only_requests_without_success_status():
 
 
 def test_dispatch_rejects_unapproved_remote_action(monkeypatch):
-    monkeypatch.setenv("PET_CAPABILITY_SIGNING_KEY", "k" * 32)
+    monkeypatch.setenv("PET_DISPATCH_SIGNING_KEY_RESEARCH_LAPTOP", "k" * 32)
     monkeypatch.setattr(caps, "_load_request", lambda *a, **k: {"request_id": "00000000-0000-0000-0000-000000000001", "machine_id": "research-laptop", "pet_id": "research-pet", "capability_type": "browser_navigation", "payload": {"url": "https://example.com"}, "approval_request_id": 1, "approval_status": "pending"})
     with pytest.raises(PermissionError, match="not approved"):
         caps.dispatch_approved_request("00000000-0000-0000-0000-000000000001", "brain")
 
 
 def test_approved_dispatch_is_signed_but_not_success(monkeypatch):
-    monkeypatch.setenv("PET_CAPABILITY_SIGNING_KEY", "k" * 32)
+    monkeypatch.setenv("PET_DISPATCH_SIGNING_KEY_RESEARCH_LAPTOP", "k" * 32)
     request = {"request_id": "00000000-0000-0000-0000-000000000001", "machine_id": "research-laptop", "pet_id": "research-pet", "capability_type": "browser_navigation", "payload": {"url": "https://example.com"}, "approval_request_id": 1, "approval_status": "approved"}
     sent = []
     monkeypatch.setattr(caps, "_load_request", lambda *a, **k: request)
@@ -127,7 +135,9 @@ def test_approved_dispatch_is_signed_but_not_success(monkeypatch):
 
 def test_machine_executor_is_disabled_by_default_and_detects_tampering():
     key = "k" * 32
-    envelope = {"contract_version": "pet-machine-execution-v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "payload": {"prompt": "hi"}, "execution_authorized": True}
+    now = datetime.now(UTC)
+    envelope = {"contract_version": "pet-machine-execution-v1", "key_id": "dispatch:dev-laptop:v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "executor": "device_model_chat", "payload": {"prompt": "hi"}, "nonce": str(uuid.uuid4()), "issued_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(), "execution_authorized": True}
+    envelope["dispatch_sha256"] = caps._payload_sha256(envelope)
     envelope["signature"] = caps._sign(envelope, key.encode())
     executor = caps.MachineCapabilityExecutor("dev-laptop", signing_key=key)
     receipt = executor.execute(envelope)
@@ -140,7 +150,9 @@ def test_machine_executor_is_disabled_by_default_and_detects_tampering():
 
 def test_enabled_machine_handler_produces_signed_machine_report_only():
     key = "k" * 32
-    envelope = {"contract_version": "pet-machine-execution-v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "payload": {"prompt": "hi"}, "execution_authorized": True}
+    now = datetime.now(UTC)
+    envelope = {"contract_version": "pet-machine-execution-v1", "key_id": "dispatch:dev-laptop:v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "executor": "device_model_chat", "payload": {"prompt": "hi"}, "nonce": str(uuid.uuid4()), "issued_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(), "execution_authorized": True}
+    envelope["dispatch_sha256"] = caps._payload_sha256(envelope)
     envelope["signature"] = caps._sign(envelope, key.encode())
     executor = caps.MachineCapabilityExecutor("dev-laptop", model_handler=lambda payload: "local answer", enable_model_chat=True, signing_key=key)
     receipt = executor.execute(envelope)
@@ -148,8 +160,48 @@ def test_enabled_machine_handler_produces_signed_machine_report_only():
     assert len(receipt["signature"]) == 64
 
 
+def test_machine_executor_rejects_signed_executor_capability_mismatch():
+    key = "k" * 32
+    now = datetime.now(UTC)
+    envelope = {"contract_version": "pet-machine-execution-v1", "key_id": "dispatch:dev-laptop:v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "executor": "browser_navigation", "payload": {"prompt": "hi"}, "nonce": str(uuid.uuid4()), "issued_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(), "execution_authorized": True}
+    envelope["dispatch_sha256"] = caps._payload_sha256(envelope)
+    envelope["signature"] = caps._sign(envelope, key.encode())
+    executor = caps.MachineCapabilityExecutor("dev-laptop", model_handler=lambda payload: "answer", enable_model_chat=True, signing_key=key)
+    with pytest.raises(PermissionError, match="executor does not match"):
+        executor.execute(envelope)
+
+
 def test_migration_016_persists_append_only_dispatch_and_receipts():
     sql = (ROOT / "sql" / "migrations" / "016_pet_machine_capability_dispatch.sql").read_text(encoding="utf-8")
     assert "pet_machine_capability_dispatches" in sql
     assert "pet_machine_capability_receipts" in sql
     assert sql.count("before update or delete") == 2
+
+
+def test_worker_consumes_signed_execution_disabled_by_default_and_records_receipt(monkeypatch):
+    key = "k" * 32
+    monkeypatch.setenv("PET_DISPATCH_VERIFY_KEY_DEV_LAPTOP", key)
+    monkeypatch.setenv("PET_RECEIPT_SIGNING_KEY_DEV_LAPTOP", key)
+    for flag in ("PET_ENABLE_BROWSER_NAVIGATION", "PET_ENABLE_MUSIC_PLAYBACK", "PET_ENABLE_DEVICE_MODEL_CHAT"):
+        monkeypatch.delenv(flag, raising=False)
+    now = datetime.now(UTC)
+    envelope = {"contract_version": "pet-machine-execution-v1", "key_id": "dispatch:dev-laptop:v1", "request_id": "r1", "machine_id": "dev-laptop", "pet_id": "development-pet", "capability_type": "device_model_chat", "executor": "device_model_chat", "payload": {"prompt": "hi"}, "nonce": str(uuid.uuid4()), "issued_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(), "execution_authorized": True}
+    envelope["dispatch_sha256"] = caps._payload_sha256(envelope)
+    envelope["signature"] = caps._sign(envelope, key.encode())
+    message = {"id": 9, "target_id": "dev-laptop", "message_type": "pet_capability_signed_execution", "metadata": envelope, "priority": 80}
+    receipts = []
+    acks = []
+    monkeypatch.setattr(worker, "machine_receipt_exists", lambda *a, **k: False)
+    monkeypatch.setattr(worker, "record_machine_receipt", lambda receipt, **k: receipts.append(receipt) or {"receipt_id": 7})
+    monkeypatch.setattr(worker, "submit_listener_event", lambda **k: {"event_id": 8})
+    monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda message_id, actor, **k: acks.append((message_id, actor)))
+    assert worker._consume_pet_capability_execution(message, "dev-laptop") is True
+    assert receipts[0]["status"] == "held"
+    assert acks == [(9, "dev-laptop")]
+
+
+def test_worker_idempotency_skips_handler_when_receipt_exists(monkeypatch):
+    monkeypatch.setattr(worker, "machine_receipt_exists", lambda *a, **k: True)
+    monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "MachineCapabilityExecutor", lambda *a, **k: pytest.fail("executor repeated"))
+    assert worker._consume_pet_capability_execution({"id": 1, "metadata": {"request_id": "r1"}}, "dev-laptop") is True

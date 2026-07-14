@@ -17,6 +17,7 @@ MAX_MOVES_PER_SWEEP = 50
 STEWARD_LOCK_ID = 2_026_071_301
 
 APPROVAL_HOLD_STATES = {"pending_approval", "approval_required", "blocked"}
+TERMINAL_TASK_STATES = {"completed", "failed", "cancelled"}
 
 
 def retry_delay_seconds(attempt_count: int) -> int:
@@ -44,6 +45,46 @@ def task_is_claim_eligible(metadata: dict[str, Any] | None) -> bool:
     requires_approval = str(metadata.get("requires_approval") or "false").strip().lower() in {"1", "true", "yes"}
     approval_status = str(metadata.get("approval_status") or "").strip().lower()
     return not requires_approval or approval_status in {"approved", "deployed"}
+
+
+def derive_parent_status(task_statuses: list[str]) -> str:
+    """Project a group of worker tasks onto its durable parent request."""
+    states = {str(status).strip().lower() for status in task_statuses if status}
+    if not states:
+        return "queued"
+    if states == {"completed"}:
+        return "completed"
+    if states <= TERMINAL_TASK_STATES:
+        return "failed" if states & {"failed", "cancelled"} else "completed"
+    if "running" in states:
+        return "running"
+    return "queued"
+
+
+def queued_hold_reason(
+    metadata: dict[str, Any] | None,
+    *,
+    retry_at: datetime | None = None,
+    now: datetime | None = None,
+    source_machine_id: str = "",
+    healthy_machine_ids: set[str] | None = None,
+) -> str | None:
+    """Return the governance reason that makes a queued task intentionally non-claimable."""
+    metadata = metadata or {}
+    queue_state = str(metadata.get("queue_state") or "").strip().lower()
+    if queue_state in APPROVAL_HOLD_STATES:
+        return str(metadata.get("hold_reason") or queue_state)
+    requires_approval = str(metadata.get("requires_approval") or "false").strip().lower() in {"1", "true", "yes"}
+    approval_status = str(metadata.get("approval_status") or "").strip().lower()
+    if requires_approval and approval_status not in {"approved", "deployed"}:
+        return str(metadata.get("hold_reason") or f"approval_{approval_status or 'not_granted'}")
+    observed_at = now or datetime.now(UTC)
+    if retry_at is not None and retry_at > observed_at:
+        return f"retry_backoff_until_{retry_at.isoformat()}"
+    healthy = healthy_machine_ids or set()
+    if source_machine_id and source_machine_id not in healthy and not task_is_automatic_eligible(metadata):
+        return str(metadata.get("hold_reason") or f"required_machine_unavailable:{source_machine_id}")
+    return None
 
 
 def rank_fallback_targets(loads: dict[str, dict[str, int]], source_machine_id: str) -> list[str]:
@@ -164,14 +205,19 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
     machine_bound_unavailable = 0
     reroutable_backlog = 0
     eligible_ages: list[float] = []
+    hold_reasons: dict[str, int] = {}
     for row in queued_rows:
         metadata = dict(row.get("metadata") or {})
         retry_at = row.get("next_attempt_at")
         if retry_at is not None and retry_at > observed_at:
             retry_waiting += 1
+            reason = queued_hold_reason(metadata, retry_at=retry_at, now=observed_at)
+            hold_reasons[reason or "retry_backoff"] = hold_reasons.get(reason or "retry_backoff", 0) + 1
             continue
         if not task_is_claim_eligible(metadata):
             approval_held += 1
+            reason = queued_hold_reason(metadata, now=observed_at)
+            hold_reasons[reason or "approval_hold"] = hold_reasons.get(reason or "approval_hold", 0) + 1
             continue
         source = str(row.get("execution_machine_id") or "")
         if source in healthy_ids:
@@ -182,6 +228,15 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
             reroutable_backlog += 1
         else:
             machine_bound_unavailable += 1
+            reason = queued_hold_reason(
+                metadata,
+                now=observed_at,
+                source_machine_id=source,
+                healthy_machine_ids=healthy_ids,
+            )
+            hold_reasons[reason or f"required_machine_unavailable:{source or 'unassigned'}"] = (
+                hold_reasons.get(reason or f"required_machine_unavailable:{source or 'unassigned'}", 0) + 1
+            )
             continue
         created_at = row.get("created_at")
         if created_at is not None:
@@ -212,6 +267,8 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
         "running": running,
         "stalled_running": stalled,
         "retry_waiting": retry_waiting,
+        "hold_reasons": hold_reasons,
+        "unexplained_waiting": max(0, queued - queued_eligible - approval_held - retry_waiting - machine_bound_unavailable),
         "oldest_queue_age_seconds": max(eligible_ages, default=0.0),
         "completed_last_5_minutes": completed_5m,
         "throughput_per_minute": round(rate_per_minute, 2),
@@ -227,9 +284,143 @@ def queue_health(local: bool = False, now: datetime | None = None) -> dict[str, 
             "invariants": {
                 "no_stalled_running_tasks": stalled == 0,
                 "no_healthy_machine_idle_while_backlogged": reroutable_backlog == 0 or not idle_healthy,
+                "no_unexplained_waiting": queued == queued_eligible + approval_held + retry_waiting + machine_bound_unavailable,
             },
         },
     }
+
+
+def _reconcile_control_plane(cur: Any, observed_at: datetime, max_moves: int) -> dict[str, Any]:
+    """Keep operator and peer-request ledgers aligned with their executable tasks."""
+    result = {"operator_requests_synced": 0, "peer_tasks_created": 0, "peer_requests_synced": 0}
+
+    cur.execute(
+        """
+        select id, routed_task_ids
+        from operator_requests
+        where status in ('queued', 'running')
+        order by priority desc, created_at
+        for update skip locked
+        limit %s
+        """,
+        (max_moves * 4,),
+    )
+    for request in [dict(row) for row in cur.fetchall()]:
+        task_ids = [int(value) for value in (request.get("routed_task_ids") or [])]
+        if not task_ids:
+            continue
+        cur.execute(
+            "select id, status, result from tasks where id = any(%s::bigint[]) order by id",
+            (task_ids,),
+        )
+        tasks = [dict(row) for row in cur.fetchall()]
+        status = derive_parent_status([str(task["status"]) for task in tasks])
+        summaries = [str(task.get("result") or "").strip() for task in tasks if task.get("result")]
+        cur.execute(
+            """
+            update operator_requests
+            set status = %s,
+                response_summary = case when %s <> '' then %s else response_summary end,
+                updated_at = %s
+            where id = %s and status is distinct from %s
+            """,
+            (status, "\n\n".join(summaries)[:4000], "\n\n".join(summaries)[:4000], observed_at, request["id"], status),
+        )
+        result["operator_requests_synced"] += cur.rowcount
+
+    cur.execute(
+        """
+        select *
+        from peer_requests
+        where status in ('requested', 'in_progress')
+        order by priority desc, created_at
+        for update skip locked
+        limit %s
+        """,
+        (max_moves * 4,),
+    )
+    peer_requests = [dict(row) for row in cur.fetchall()]
+    for request in peer_requests:
+        task_id = request.get("task_id")
+        if task_id is None:
+            cur.execute(
+                """
+                select id
+                from agents
+                where machine_id = %s and status = 'active'
+                order by case when category = %s then 0 else 1 end, id
+                limit 1
+                """,
+                (request["to_machine_id"], request["request_type"]),
+            )
+            agent = cur.fetchone()
+            if agent is None:
+                cur.execute(
+                    """
+                    update peer_requests
+                    set response_metadata = response_metadata || %s::jsonb, updated_at = %s
+                    where id = %s
+                    """,
+                    (json.dumps({"hold_reason": f"no_active_agent:{request['to_machine_id']}"}), observed_at, request["id"]),
+                )
+                continue
+            cur.execute(
+                """
+                insert into tasks (
+                    title, agent_id, category, description, priority, metadata, execution_machine_id
+                )
+                values (%s, %s, 'peer-request', %s, %s, %s::jsonb, %s)
+                returning id
+                """,
+                (
+                    f"Peer request #{request['id']}: {request['subject']}",
+                    agent["id"],
+                    request["body"],
+                    request["priority"],
+                    json.dumps({
+                        "peer_request_id": request["id"],
+                        "requested_by": request["from_machine_id"],
+                        "project_id": request.get("project_id"),
+                    }),
+                    request["to_machine_id"],
+                ),
+            )
+            task_id = int(cur.fetchone()["id"])
+            cur.execute(
+                "update peer_requests set task_id = %s, updated_at = %s where id = %s",
+                (task_id, observed_at, request["id"]),
+            )
+            cur.execute(
+                "insert into task_events (task_id, event_type, message) values (%s, 'peer_request_materialized', %s)",
+                (task_id, f"Brain steward materialized peer request {request['id']} as executable work."),
+            )
+            result["peer_tasks_created"] += 1
+
+        cur.execute("select status, result from tasks where id = %s", (task_id,))
+        task = cur.fetchone()
+        if task is None:
+            continue
+        task_status = str(task["status"])
+        peer_status = (
+            "fulfilled" if task_status == "completed"
+            else "rejected" if task_status in {"failed", "cancelled"}
+            else "in_progress" if task_status == "running"
+            else "requested"
+        )
+        cur.execute(
+            """
+            update peer_requests
+            set status = %s,
+                response_body = case when %s is not null then %s else response_body end,
+                responder_machine_id = case when %s in ('fulfilled', 'rejected') then to_machine_id else responder_machine_id end,
+                responded_at = case when %s in ('fulfilled', 'rejected') then coalesce(responded_at, %s) else responded_at end,
+                updated_at = %s
+            where id = %s and status is distinct from %s
+            """,
+            (peer_status, task.get("result"), task.get("result"), peer_status, peer_status, observed_at, observed_at, request["id"], peer_status),
+        )
+        result["peer_requests_synced"] += cur.rowcount
+    return result
 
 
 def steward_queue(
@@ -255,6 +446,7 @@ def steward_queue(
         "rerouted": 0,
         "held": 0,
         "moves": [],
+        "control_plane": {},
     }
 
     with connect(local=local) as conn:
@@ -262,6 +454,8 @@ def steward_queue(
             cur.execute("select pg_try_advisory_xact_lock(%s) as acquired", (STEWARD_LOCK_ID,))
             if not bool(cur.fetchone()["acquired"]):
                 return {**result, "status": "skipped_locked"}
+
+            result["control_plane"] = _reconcile_control_plane(cur, observed_at, max_moves)
 
             cur.execute(
                 """

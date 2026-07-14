@@ -17,6 +17,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\lib.ps1"
 
 function Normalize-Host {
     param([string]$Value)
@@ -131,7 +132,7 @@ try {
                 "-Command",
                 "python -m ai_ops_center.cli worker --machine $MachineId --sleep-seconds 10 --work-seconds 2"
             )
-            Start-Process powershell -ArgumentList $workerArgs -WindowStyle Hidden
+            Start-AiOpsBackgroundProcess -FilePath "powershell.exe" -ArgumentList $workerArgs -Name "$MachineId local worker loop"
         } else {
             powershell -ExecutionPolicy Bypass -File ".\docker\start-laptop-operations.ps1" -MachineId $MachineId -BrainHost $BrainHost -WorkSeconds 2
         }
@@ -139,7 +140,7 @@ try {
 
     if ($InstallStartupTask) {
         $taskName = "AI Operations Center - $MachineId Worker Recovery"
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$repoRoot\docker\laptop-recovery-bundle.ps1`" -MachineId $MachineId -BrainHost $BrainHost -StartWorker"
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$repoRoot\docker\laptop-recovery-bundle.ps1`" -MachineId $MachineId -BrainHost $BrainHost -StartWorker"
         $trigger = New-ScheduledTaskTrigger -AtLogOn
         Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Force | Out-Null
         Write-Host "Installed startup task: $taskName"

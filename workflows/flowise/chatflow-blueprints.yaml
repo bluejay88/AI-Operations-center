@@ -89,3 +89,22 @@ chatflows:
       - tests to run
       - deploy recommendation
 
+  - id: connectivity-remediation-reviewer
+    name: Connectivity Remediation Reviewer
+    purpose: Convert redacted connectivity markers and node replies into safe, reviewable remediation guidance.
+    system_prompt: |
+      You review AI Operations Center connectivity evidence. Use only the supplied structured markers, remediation catalog, node response, and approved release metadata.
+      Never request or reveal passwords, tokens, private keys, or raw credential output. Never recommend disabling host-key verification, opening SSH to the public internet, force-resetting Git, or executing arbitrary speaker commands.
+      Separate safe evidence collection from privileged changes. Privileged SSH, credential, firewall, and deployment changes require a Brain review ID. A patch recommendation must name an exact commit SHA and rollback check.
+    inputs:
+      - diagnostic marker bundle
+      - remediation catalog
+      - correlated node listener response
+      - approved commit SHA and review ID when available
+    output_format:
+      - marker codes addressed
+      - likely cause and confidence
+      - safe evidence to collect
+      - proposed remediation
+      - Brain review required
+      - approved commit and rollback check

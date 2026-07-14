@@ -55,8 +55,9 @@ def test_playback_and_interruption_have_explicit_controls():
 def test_context_is_bounded_session_only_and_clearable():
     assert "sessionStorage.setItem" in SCRIPT
     assert "state.chatHistory.slice(-30)" in SCRIPT
-    assert "state.chatHistory.slice(-10)" in SCRIPT
-    assert "Session context:" in SCRIPT
+    assert "state.chatHistory.slice(-11, -1)" in SCRIPT
+    assert "conversation_history: conversationHistory" in SCRIPT
+    assert "content: String(entry.text || \"\").slice(0, 800)" in SCRIPT
     assert "state.chatHistory = []" in SCRIPT
 
 

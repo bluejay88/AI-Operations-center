@@ -35,6 +35,30 @@ def test_noninstruction_notification_preserves_existing_receipt_path(monkeypatch
     assert len(acknowledgements) == 1
 
 
+def test_connectivity_query_returns_allowlisted_structured_evidence(monkeypatch):
+    events = []
+    acknowledgements = []
+    message = _message(
+        "connectivity_diagnostic_query",
+        metadata={
+            "requested_channels": ["ssh-22", "arbitrary-shell"],
+            "correlation_id": "connectivity-query-7",
+        },
+    )
+    monkeypatch.setattr(worker, "speaker_feed", lambda *args, **kwargs: {"messages": [message]})
+    monkeypatch.setattr(worker, "submit_listener_event", lambda **kwargs: events.append(kwargs) or {"event_id": 1})
+    monkeypatch.setattr(worker, "acknowledge_speaker_message", lambda *args, **kwargs: acknowledgements.append((args, kwargs)))
+
+    assert worker._consume_machine_messages("dev-laptop") == 1
+    response = events[0]
+    assert response["event_type"] == "connectivity_diagnostic_response"
+    assert response["metadata"]["requested_channels"] == ["ssh-22"]
+    assert response["metadata"]["correlation_id"] == "connectivity-query-7"
+    assert response["metadata"]["host_shell_executed"] is False
+    assert events[1]["event_type"] == "speaker_message_received"
+    assert len(acknowledgements) == 1
+
+
 def test_verified_instruction_enters_existing_receipt_path(monkeypatch):
     envelope = {"signer_id": "brain-gaming-pc"}
     events = []

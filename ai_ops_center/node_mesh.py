@@ -111,6 +111,20 @@ def node_mesh_snapshot() -> dict[str, Any]:
         "authority": "Brain PC remains scheduler, memory, policy, approval, and audit authority.",
         "nodes": NODE_ROLES,
         "task_states": TASK_STATES,
+        "continuous_flow_policy": {
+            "operating_mode": "24x7",
+            "brain_role": "continuously listen, prioritize, route, recover, and audit",
+            "worker_role": "claim the next eligible task immediately after completion",
+            "transient_states": ["created", "accepted", "in_progress", "delegated", "needs_review", "needs_correction"],
+            "hold_states": ["waiting_for_input", "blocked"],
+            "hold_requirements": ["machine-readable reason", "responsible owner", "next check or external event"],
+            "invariants": [
+                "eligible work never waits behind an idle healthy node",
+                "expired claims are recovered automatically",
+                "operator and peer requests track their executable task evidence",
+                "approval and machine-bound waits remain visible and are never bypassed",
+            ],
+        },
         "message_channels": [
             "brain.commands",
             "brain.approvals",

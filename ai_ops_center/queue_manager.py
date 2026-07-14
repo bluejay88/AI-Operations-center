@@ -320,7 +320,7 @@ def _reconcile_control_plane(cur: Any, observed_at: datetime, max_moves: int) ->
             """
             update operator_requests
             set status = %s,
-                response_summary = case when %s <> '' then %s else response_summary end,
+                response_summary = case when %s::text <> '' then %s::text else response_summary end,
                 updated_at = %s
             where id = %s and status is distinct from %s
             """,
@@ -411,13 +411,13 @@ def _reconcile_control_plane(cur: Any, observed_at: datetime, max_moves: int) ->
             """
             update peer_requests
             set status = %s,
-                response_body = case when %s is not null then %s else response_body end,
+                response_body = coalesce(%s::text, response_body),
                 responder_machine_id = case when %s in ('fulfilled', 'rejected') then to_machine_id else responder_machine_id end,
                 responded_at = case when %s in ('fulfilled', 'rejected') then coalesce(responded_at, %s) else responded_at end,
                 updated_at = %s
             where id = %s and status is distinct from %s
             """,
-            (peer_status, task.get("result"), task.get("result"), peer_status, peer_status, observed_at, observed_at, request["id"], peer_status),
+            (peer_status, task.get("result"), peer_status, peer_status, observed_at, observed_at, request["id"], peer_status),
         )
         result["peer_requests_synced"] += cur.rowcount
     return result

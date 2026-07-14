@@ -147,7 +147,6 @@ def test_review_requires_browser_domain_allowlist_to_fail_closed(monkeypatch):
         caps._validate_url("https://example.com/path")
 
 
-@pytest.mark.xfail(strict=True, reason="One shared symmetric key lets any key holder mint another machine's envelope")
 def test_review_requires_per_machine_key_isolation():
     research_executor = caps.MachineCapabilityExecutor("research-laptop", signing_key=KEY, enable_model_chat=True, model_handler=lambda _: "ok")
     forged_by_other_machine = _execution(
@@ -155,6 +154,10 @@ def test_review_requires_per_machine_key_isolation():
         payload={"prompt": "run"},
         approval_request_id=None,
         approval_status=None,
+    )
+    forged_by_other_machine["signature"] = caps._sign(
+        {name: value for name, value in forged_by_other_machine.items() if name != "signature"},
+        b"dev-machine-directional-key-material-32bytes",
     )
     with pytest.raises(PermissionError):
         research_executor.execute(forged_by_other_machine)

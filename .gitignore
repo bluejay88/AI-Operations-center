@@ -12,5 +12,6 @@ __pycache__/
 data/
 exports/
 logs/
+state/
 node_modules/
 git-server/

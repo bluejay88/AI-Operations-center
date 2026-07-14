@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     dashboard_session_secret: str = ""
     dashboard_session_ttl_seconds: int = 3600
     cors_allow_origins: str = "http://localhost:8088,http://127.0.0.1:8088,http://100.70.49.32:8088,null"
-    cors_allow_origin_regex: str = r"^https://.*\.netlify\.app$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$|^http://100\.[0-9.]+(:\d+)?$"
+    cors_allow_origin_regex: str = r"^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$"
+    trusted_hosts: str = "localhost,127.0.0.1,100.70.49.32,brain-gaming-pc,ai-ops-api,ai-ops-llm-router,testserver"
 
     @property
     def control_plane_auth_required(self) -> bool:

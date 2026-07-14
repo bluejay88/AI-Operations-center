@@ -51,7 +51,7 @@ def test_dashboard_password_hash_and_session_token_round_trip():
 
 def test_production_auth_fails_closed_without_required_secrets():
     with pytest.raises(RuntimeError, match="API_CONTROL_TOKEN"):
-        validate_security_settings(Settings(app_env="production"))
+        validate_security_settings(Settings(_env_file=None, app_env="production"))
 
 
 def test_bearer_auth_distinguishes_brain_operator_and_device():

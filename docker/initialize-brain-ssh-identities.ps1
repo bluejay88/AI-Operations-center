@@ -13,7 +13,9 @@ foreach ($machineId in $machines) {
     $safeId = $machineId -replace "-", "_"
     $privateKey = Join-Path $SshDirectory "ai_ops_brain_to_$safeId"
     if (-not (Test-Path $privateKey)) {
-        & ssh-keygen -q -t ed25519 -a 100 -N "" -C "brain-to-$machineId-ai-ops" -f $privateKey
+        # Native Windows argument binding drops a bare empty string. Passing a
+        # quoted empty value preserves the intended non-interactive -N value.
+        & ssh-keygen -q -t ed25519 -a 100 -N '""' -C "brain-to-$machineId-ai-ops" -f $privateKey
         if ($LASTEXITCODE -ne 0) { throw "Could not generate the identity for $machineId." }
     }
     icacls $privateKey /inheritance:r /grant:r "${env:USERNAME}:R" "SYSTEM:F" | Out-Null

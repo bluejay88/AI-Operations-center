@@ -11,9 +11,17 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASE_URL = "http://100.70.49.32:8088"
 
 
+def _auth_headers() -> dict[str, str]:
+    from .settings import get_settings
+
+    token = get_settings().api_control_token
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _get_json(url: str, timeout: int = 10) -> tuple[bool, Any, str]:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        request = urllib.request.Request(url, headers=_auth_headers())
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status == 200, json.loads(response.read().decode()), str(response.status)
     except Exception as exc:  # pragma: no cover - audit output path
         return False, None, repr(exc)
@@ -21,7 +29,7 @@ def _get_json(url: str, timeout: int = 10) -> tuple[bool, Any, str]:
 
 def _post_json(url: str, payload: dict[str, Any], timeout: int = 10) -> tuple[bool, Any, str]:
     data = json.dumps(payload).encode()
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **_auth_headers()}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status == 200, json.loads(response.read().decode()), str(response.status)
@@ -185,8 +193,8 @@ def run_audit(base_url: str = DEFAULT_BASE_URL) -> dict[str, Any]:
         live_payloads[path] = payload
         add(name, ok, detail)
 
-    ok, login_payload, login_detail = _post_json(f"{base_url}/dashboard/login", {"password": "BleujayBrain2026!"})
-    add("dashboard login accepts configured password", ok and login_payload and login_payload.get("ok") is True, login_payload or login_detail)
+    ok, login_payload, login_detail = _post_json(f"{base_url}/dashboard/login", {"password": "known-insecure-repository-default"})
+    add("dashboard rejects repository-known default passwords", ok and login_payload and login_payload.get("ok") is False, login_payload or login_detail)
 
     html_ok = False
     html_detail = ""

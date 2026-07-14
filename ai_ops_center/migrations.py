@@ -14,6 +14,11 @@ MIGRATIONS_DIR = ROOT / "sql" / "migrations"
 # checksum; all other applied-file changes remain fatal.
 CHECKSUM_COMPATIBILITY: dict[str, set[str]] = {
     "002": {"829a0d27a5f2f03b9b27d54bab911a720b2aff555e659e5713480262431a69ad"},
+    # Migration 018 was applied once while the parallel SSH lane was resolving
+    # its version collision. The current file is the same runtime authority
+    # contract with post-apply SQL hardening; accept only this recorded ledger
+    # checksum and no other drift.
+    "018": {"eea5aac7a3b21fb4e40e1ac199c35f4b13dcbd11c0e2673cc25f5a64cbda95f1"},
 }
 
 

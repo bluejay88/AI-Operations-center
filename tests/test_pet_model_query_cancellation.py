@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from ai_ops_center import api
 
@@ -19,6 +20,10 @@ def request(request_id: str, purpose: str) -> api.ModelQueryRequest:
     )
 
 
+def http_request() -> Request:
+    return Request({"type": "http", "method": "POST", "path": "/models/query", "headers": [], "app": api.app})
+
+
 def test_cancellation_is_scoped_to_one_unpredictable_request_id(monkeypatch):
     async def scenario():
         release = {"first": asyncio.Event(), "second": asyncio.Event()}
@@ -31,11 +36,11 @@ def test_cancellation_is_scoped_to_one_unpredictable_request_id(monkeypatch):
         monkeypatch.setattr(api, "submit_model_query", fake_submit_model_query)
         first_id = "pet_11111111222222223333333344444444"
         second_id = "pet_aaaaaaaa55555555bbbbbbbb66666666"
-        first = asyncio.create_task(api.models_query(request(first_id, "first")))
-        second = asyncio.create_task(api.models_query(request(second_id, "second")))
+        first = asyncio.create_task(api.models_query(request(first_id, "first"), http_request()))
+        second = asyncio.create_task(api.models_query(request(second_id, "second"), http_request()))
         await asyncio.sleep(0)
 
-        receipt = await api.cancel_model_query(first_id)
+        receipt = await api.cancel_model_query(first_id, http_request())
         assert receipt == {
             "request_id": first_id,
             "cancellation_requested": True,
@@ -58,7 +63,7 @@ def test_cancellation_is_scoped_to_one_unpredictable_request_id(monkeypatch):
 
 
 def test_cancel_unknown_request_is_honest_noop():
-    receipt = asyncio.run(api.cancel_model_query("pet_00000000000000000000000000000000"))
+    receipt = asyncio.run(api.cancel_model_query("pet_00000000000000000000000000000000", http_request()))
     assert receipt["cancellation_requested"] is False
     assert receipt["status"] == "not_active"
     assert receipt["upstream_cancellation_guaranteed"] is False
@@ -66,5 +71,5 @@ def test_cancel_unknown_request_is_honest_noop():
 
 def test_cancel_rejects_invalid_request_id():
     with pytest.raises(HTTPException) as error:
-        asyncio.run(api.cancel_model_query("../all"))
+        asyncio.run(api.cancel_model_query("../all", http_request()))
     assert error.value.status_code == 422

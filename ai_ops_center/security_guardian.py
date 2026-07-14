@@ -10,6 +10,8 @@ from .github_defaults import github_defaults_dict
 from .integrations import integration_status
 from .readiness import readiness_snapshot
 from .remote_ops import evaluate_remote_operation, remote_operation_snapshot
+from .settings import get_settings
+from .ssh_broker import broker_status
 
 
 SECURITY_TESTS = [
@@ -70,7 +72,11 @@ def security_guardian_audit(local: bool = False) -> dict[str, Any]:
     add("listener_bus_records_events", _table_has_rows("listener_events", local=local))
     add("speaker_bus_available", _table_exists("speaker_messages", local=local))
     add("approval_queue_visible", _table_exists("approval_requests", local=local))
-    add("dashboard_password_configured", _setting_nonempty("DASHBOARD_PASSWORD", fallback=True))
+    settings = get_settings()
+    add("control_plane_auth_required", settings.control_plane_auth_required, settings.app_env)
+    add("dashboard_password_configured", bool(settings.dashboard_password_hash) and not settings.dashboard_password, "PBKDF2 hash configured; no plaintext default")
+    add("device_credentials_configured", len(settings.device_api_tokens()) >= 3, sorted(settings.device_api_tokens()))
+    add("ssh_broker_audit_append_only", _table_exists("ssh_broker_executions", local=local), broker_status())
     add("cors_not_wildcard_credentials", True, "CORS credentials disabled in API config")
     add("security_headers_configured", True, "SecurityHeadersMiddleware configured")
     add("api_docs_controlled_by_env", True, "docs_url depends on APP_ENV/expose_api_docs")
@@ -135,7 +141,3 @@ def _failed_integration_recorded(local: bool = False) -> bool:
 
 def _github_default_owner(local: bool = False) -> str:
     return github_defaults_dict().get("owner", "")
-
-
-def _setting_nonempty(_: str, fallback: bool = False) -> bool:
-    return fallback

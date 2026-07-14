@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse, Response
 from .settings import Settings
 
 
-PUBLIC_PATHS = frozenset({"/health", "/dashboard/login"})
+PUBLIC_PATHS = frozenset({"/", "/health", "/dashboard/login"})
 PUBLIC_PREFIXES = ("/dashboard", "/laptop-packages")
 PBKDF2_ITERATIONS = 600_000
 

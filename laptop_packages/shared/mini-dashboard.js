@@ -104,7 +104,10 @@ const MACHINE_PET_IDS = {
 
 const $ = (selector) => document.querySelector(selector);
 const servedByBrainApi = /^https?:$/.test(window.location.protocol) && window.location.port === "8088";
-const api = (path) => servedByBrainApi ? `${window.location.origin}${path}` : `http://${state.brainHost}:8088${path}`;
+const servedByDeviceGateway = /^https?:$/.test(window.location.protocol) && window.location.port === "8092";
+const api = (path) => servedByDeviceGateway
+  ? `${window.location.origin}/api${path}`
+  : servedByBrainApi ? `${window.location.origin}${path}` : `http://${state.brainHost}:8088${path}`;
 
 function normalizeHost(value) {
   return String(value || "")

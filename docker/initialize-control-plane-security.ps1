@@ -6,7 +6,8 @@ $ErrorActionPreference = "Stop"
 
 function New-Secret([int]$Bytes = 48) {
     $buffer = New-Object byte[] $Bytes
-    [Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($buffer) } finally { $rng.Dispose() }
     return [Convert]::ToBase64String($buffer).TrimEnd('=').Replace('+','-').Replace('/','_')
 }
 
@@ -28,9 +29,22 @@ function Get-EnvValue([System.Collections.Generic.List[string]]$Lines, [string]$
     return $line.Substring($prefix.Length).Trim()
 }
 
+function Get-PostgresPasswordFromUrl([string]$Url) {
+    if ([string]::IsNullOrWhiteSpace($Url)) { return "" }
+    try {
+        $uri = [Uri]$Url
+        if ([string]::IsNullOrWhiteSpace($uri.UserInfo) -or -not $uri.UserInfo.Contains(":")) { return "" }
+        $password = $uri.UserInfo.Substring($uri.UserInfo.IndexOf(":") + 1)
+        return [Uri]::UnescapeDataString($password)
+    } catch {
+        return ""
+    }
+}
+
 function New-PasswordHash([string]$Password) {
     $salt = New-Object byte[] 16
-    [Security.Cryptography.RandomNumberGenerator]::Fill($salt)
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($salt) } finally { $rng.Dispose() }
     $iterations = 600000
     $derive = [Security.Cryptography.Rfc2898DeriveBytes]::new($Password, $salt, $iterations, [Security.Cryptography.HashAlgorithmName]::SHA256)
     try { $digest = $derive.GetBytes(32) } finally { $derive.Dispose() }
@@ -41,10 +55,52 @@ function New-PasswordHash([string]$Password) {
 
 $lines = [System.Collections.Generic.List[string]]::new()
 if (Test-Path $EnvFile) { Get-Content -LiteralPath $EnvFile | ForEach-Object { $lines.Add($_) } }
+
 Set-EnvValue $lines "APP_ENV" "production"
 Set-EnvValue $lines "API_AUTH_REQUIRED" "true"
+Set-EnvValue $lines "BRAIN_BIND_ADDRESS" "100.70.49.32"
+
+$postgresPassword = Get-EnvValue $lines "POSTGRES_PASSWORD"
+if ([string]::IsNullOrWhiteSpace($postgresPassword)) {
+    $postgresPassword = Get-PostgresPasswordFromUrl (Get-EnvValue $lines "DATABASE_URL")
+    if ([string]::IsNullOrWhiteSpace($postgresPassword)) {
+        $postgresPassword = New-Secret
+        Set-EnvValue $lines "DATABASE_URL" "postgresql://aiops:$postgresPassword@postgres:5432/aiops"
+        Set-EnvValue $lines "LOCAL_DATABASE_URL" "postgresql://aiops:$postgresPassword@localhost:5432/aiops"
+    }
+    Set-EnvValue $lines "POSTGRES_PASSWORD" $postgresPassword
+}
+
 foreach ($name in @("API_CONTROL_TOKEN", "DASHBOARD_SESSION_SECRET", "BRAIN_INSTRUCTION_SECRET")) {
     if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines $name))) { Set-EnvValue $lines $name (New-Secret) }
+}
+
+Set-EnvValue $lines "PET_KEY_REGISTRY_REQUIRED" "true"
+if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "PET_BROWSER_ALLOWED_SCHEMES"))) {
+    Set-EnvValue $lines "PET_BROWSER_ALLOWED_SCHEMES" "https"
+}
+if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "PET_BROWSER_ALLOWED_DOMAINS"))) {
+    Set-EnvValue $lines "PET_BROWSER_ALLOWED_DOMAINS" "chatgpt.com,openai.com,youtube.com"
+}
+
+$petGeneration = "v" + [DateTime]::UtcNow.ToString("yyyyMMddHHmmss")
+foreach ($machineId in @("brain-gaming-pc", "dev-laptop", "research-laptop", "business-laptop")) {
+    $suffix = $machineId.ToUpperInvariant().Replace("-", "_")
+    if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "PET_DISPATCH_KEY_ID_$suffix"))) {
+        Set-EnvValue $lines "PET_DISPATCH_KEY_ID_$suffix" "dispatch:${machineId}:$petGeneration"
+    }
+    if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "PET_RECEIPT_KEY_ID_$suffix"))) {
+        Set-EnvValue $lines "PET_RECEIPT_KEY_ID_$suffix" "receipt:${machineId}:$petGeneration"
+    }
+    $dispatchSecret = Get-EnvValue $lines "PET_DISPATCH_SIGNING_KEY_$suffix"
+    if ([string]::IsNullOrWhiteSpace($dispatchSecret)) { $dispatchSecret = New-Secret }
+    Set-EnvValue $lines "PET_DISPATCH_SIGNING_KEY_$suffix" $dispatchSecret
+    Set-EnvValue $lines "PET_DISPATCH_VERIFY_KEY_$suffix" $dispatchSecret
+
+    $receiptSecret = Get-EnvValue $lines "PET_RECEIPT_SIGNING_KEY_$suffix"
+    if ([string]::IsNullOrWhiteSpace($receiptSecret)) { $receiptSecret = New-Secret }
+    Set-EnvValue $lines "PET_RECEIPT_SIGNING_KEY_$suffix" $receiptSecret
+    Set-EnvValue $lines "PET_RECEIPT_VERIFY_KEY_$suffix" $receiptSecret
 }
 
 $credentialRoot = Join-Path (Split-Path -Parent $EnvFile) "state"
@@ -52,10 +108,14 @@ if (-not (Test-Path $credentialRoot)) { New-Item -ItemType Directory -Path $cred
 $passwordFile = Join-Path $credentialRoot "dashboard-bootstrap-password.txt"
 if ([string]::IsNullOrWhiteSpace((Get-EnvValue $lines "DASHBOARD_PASSWORD_HASH"))) {
     $dashboardPassword = New-Secret 24
-    Set-EnvValue $lines "DASHBOARD_PASSWORD_HASH" (New-PasswordHash $dashboardPassword)
+    Set-EnvValue $lines "DASHBOARD_PASSWORD_HASH" ("'" + (New-PasswordHash $dashboardPassword) + "'")
     Set-Content -LiteralPath $passwordFile -Value $dashboardPassword -Encoding ascii
     icacls $passwordFile /inheritance:r /grant:r "${env:USERNAME}:R" "SYSTEM:F" | Out-Null
     $dashboardPassword = $null
+}
+$storedPasswordHash = Get-EnvValue $lines "DASHBOARD_PASSWORD_HASH"
+if ($storedPasswordHash -and -not $storedPasswordHash.StartsWith("'")) {
+    Set-EnvValue $lines "DASHBOARD_PASSWORD_HASH" ("'" + $storedPasswordHash.Trim("'", '"') + "'")
 }
 
 $existingDeviceTokens = Get-EnvValue $lines "DEVICE_API_TOKENS_JSON"
@@ -69,3 +129,4 @@ Set-Content -LiteralPath $EnvFile -Value $lines -Encoding utf8
 Write-Host "Control-plane security initialized in $EnvFile."
 Write-Host "The dashboard bootstrap password is stored locally at $passwordFile with restricted ACLs."
 Write-Host "Device tokens remain only in .env until installed out-of-band on each matching managed node."
+Write-Host "PET directional secrets were provisioned without displaying them."

@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import RedirectResponse, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -179,6 +180,11 @@ async def stop_queue_steward() -> None:
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ControlPlaneAuthMiddleware, settings=settings)
+if settings.control_plane_auth_required:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[host.strip() for host in settings.trusted_hosts.split(",") if host.strip()],
+    )
 
 
 @app.get("/", include_in_schema=False)

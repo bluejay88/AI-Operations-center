@@ -2,14 +2,17 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("dev-laptop", "research-laptop", "business-laptop")]
     [string]$MachineId,
-    [Parameter(Mandatory=$true)]
-    [string]$DeviceToken
+    [string]$DeviceToken = "",
+    [switch]$DeviceTokenFromStdin
 )
 
 $ErrorActionPreference = "Stop"
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run as Administrator." }
+if ($DeviceTokenFromStdin) {
+    $DeviceToken = [Console]::In.ReadToEnd().Trim()
+}
 if ($DeviceToken.Length -lt 32) { throw "Device token is too short." }
 $root = Join-Path $env:ProgramData "AI-Ops"
 if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root | Out-Null }

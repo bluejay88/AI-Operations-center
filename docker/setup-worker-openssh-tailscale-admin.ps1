@@ -1,8 +1,8 @@
 param(
     [int]$Port = 22,
     [string]$AllowedRemoteAddress = "100.70.49.32/32",
-    [Parameter(Mandatory = $true)]
-    [string]$BrainPublicKey,
+    [string]$BrainPublicKey = "",
+    [string]$BrainPublicKeyFile = "",
     [string]$UserName = "aiops-diagnostic"
 )
 
@@ -17,6 +17,12 @@ function Assert-Admin {
 }
 
 Assert-Admin
+
+if ($BrainPublicKeyFile) {
+    if (-not (Test-Path -LiteralPath $BrainPublicKeyFile)) { throw "Brain public key file was not found." }
+    $BrainPublicKey = (Get-Content -LiteralPath $BrainPublicKeyFile -Raw).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($BrainPublicKey)) { throw "Provide BrainPublicKey or BrainPublicKeyFile." }
 
 if ($AllowedRemoteAddress -eq "100.64.0.0/10") {
     throw "The whole-tailnet SSH scope is prohibited. Pass the Brain Tailscale /32 address."
@@ -36,8 +42,10 @@ function Set-SshdConfigDirective {
 
     $pattern = "^\s*#?\s*$([regex]::Escape($Name))\s+"
     $updated = $false
+    $insideMatch = $false
     $newLines = foreach ($line in $lines) {
-        if ($line -match $pattern) {
+        if ($line -match "^\s*Match\s+") { $insideMatch = $true }
+        if (-not $insideMatch -and $line -match $pattern) {
             if (-not $updated) {
                 "$Name $Value"
                 $updated = $true
@@ -48,7 +56,15 @@ function Set-SshdConfigDirective {
     }
 
     if (-not $updated) {
-        $newLines += "$Name $Value"
+        $matchIndex = -1
+        for ($i = 0; $i -lt $newLines.Count; $i++) {
+            if ($newLines[$i] -match "^\s*Match\s+") { $matchIndex = $i; break }
+        }
+        if ($matchIndex -ge 0) {
+            $newLines = @($newLines[0..($matchIndex - 1)]) + @("$Name $Value") + @($newLines[$matchIndex..($newLines.Count - 1)])
+        } else {
+            $newLines += "$Name $Value"
+        }
     }
 
     Set-Content -Path $Path -Value $newLines -Encoding ascii
@@ -84,6 +100,7 @@ New-NetFirewallRule `
 
 $sshdConfig = "$env:ProgramData\ssh\sshd_config"
 if (Test-Path $sshdConfig) {
+    Copy-Item -LiteralPath $sshdConfig -Destination "$sshdConfig.aiops-backup" -Force
     Set-SshdConfigDirective -Path $sshdConfig -Name "PubkeyAuthentication" -Value "yes"
     Set-SshdConfigDirective -Path $sshdConfig -Name "PasswordAuthentication" -Value "no"
     Set-SshdConfigDirective -Path $sshdConfig -Name "PermitEmptyPasswords" -Value "no"
@@ -100,8 +117,6 @@ if (Test-Path $sshdConfig) {
     Set-SshdConfigDirective -Path $sshdConfig -Name "PermitUserEnvironment" -Value "no"
 }
 
-Restart-Service sshd
-
 if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
     if ($BrainPublicKey.Trim() -notmatch "^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+)\s+\S+(\s+.*)?$") {
         throw "BrainPublicKey is not a valid OpenSSH public key line."
@@ -111,7 +126,8 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
     if (-not $user) {
         $alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%_-"
         $bytes = New-Object byte[] 48
-        [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
         $randomPassword = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
         $securePassword = ConvertTo-SecureString $randomPassword -AsPlainText -Force
         $user = New-LocalUser -Name $UserName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword -Description "AI Operations read-only SSH diagnostics"
@@ -160,14 +176,21 @@ if (-not [string]::IsNullOrWhiteSpace($BrainPublicKey)) {
 
     $configTest = & sshd -t -f $sshdConfig 2>&1
     if ($LASTEXITCODE -ne 0) {
+        Copy-Item -LiteralPath "$sshdConfig.aiops-backup" -Destination $sshdConfig -Force
         throw "sshd_config failed validation:`n$($configTest -join "`n")"
     }
 
-    Restart-Service sshd
+    try {
+        Restart-Service sshd -ErrorAction Stop
+    } catch {
+        Copy-Item -LiteralPath "$sshdConfig.aiops-backup" -Destination $sshdConfig -Force
+        Start-Service sshd -ErrorAction SilentlyContinue
+        throw
+    }
     Write-Host "Brain public key installed for $UserName."
 }
 
 Write-Host "OpenSSH Server is enabled and restricted to $AllowedRemoteAddress."
 Write-Host "PasswordAuthentication=no; account=$UserName; privilege=standard-user; command_mode=allowlisted-only"
 Write-Host "On this laptop, get your Tailscale IP with: tailscale ip -4"
-Write-Host "From the Brain PC, test with: ssh -i `$env:USERPROFILE\.ssh\ai_ops_brain_to_laptops <LaptopWindowsUsername>@<LaptopTailscaleIP> hostname"
+Write-Host "From the Brain PC, invoke the signed diagnostic broker with the node-specific identity and pinned known_hosts file."

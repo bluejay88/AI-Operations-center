@@ -5,6 +5,7 @@ import pytest
 
 from ai_ops_center import pet_machine_capabilities as caps
 from ai_ops_center.api import dashboard_root
+from ai_ops_center.migrations import CHECKSUM_COMPATIBILITY
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,3 +72,7 @@ def test_root_redirects_permanently_to_canonical_dashboard():
     response = dashboard_root()
     assert response.status_code == 308
     assert response.headers["location"] == "/dashboard/"
+
+
+def test_runtime_authority_historical_checksum_compatibility_is_exact():
+    assert CHECKSUM_COMPATIBILITY["018"] == {"eea5aac7a3b21fb4e40e1ac199c35f4b13dcbd11c0e2673cc25f5a64cbda95f1"}

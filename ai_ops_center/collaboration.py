@@ -275,7 +275,17 @@ def respond_to_peer_request(
                     response_metadata = %s::jsonb,
                     responded_at = case when %s in ('fulfilled', 'rejected') then now() else responded_at end,
                     updated_at = now()
-                where id = %s and to_machine_id = %s
+                where id = %s
+                  and (
+                    to_machine_id = %s
+                    or exists (
+                        select 1
+                        from tasks
+                        where tasks.id = peer_requests.task_id
+                          and tasks.status = 'completed'
+                          and tasks.claimed_by_machine = %s
+                    )
+                  )
                 returning *
                 """,
                 (
@@ -288,11 +298,14 @@ def respond_to_peer_request(
                     status,
                     request_id,
                     responder_machine_id,
+                    responder_machine_id,
                 ),
             )
             row = cur.fetchone()
             if not row:
-                raise ValueError(f"peer request {request_id} is not addressed to {responder_machine_id}")
+                raise ValueError(
+                    f"peer request {request_id} is neither addressed to nor completed by {responder_machine_id}"
+                )
             peer_request = dict(row)
         conn.commit()
 
